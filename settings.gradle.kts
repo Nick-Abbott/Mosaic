@@ -8,3 +8,10 @@
  */
 
 rootProject.name = "Mosaic"
+
+include("mosaic-core")
+
+// Future modules can be added here:
+// include("mosaic-api")
+// include("mosaic-web")
+// include("mosaic-cli")

@@ -29,6 +29,29 @@ class UserResponseTile(mosaic: Mosaic) : SingleTile<UserResponse>(mosaic) {
 }
 ```
 
+## 🏗️ **Project Structure**
+
+This project uses a **multi-module Gradle structure** to organize code into focused, maintainable components:
+
+```
+Mosaic/
+├── mosaic-core/             # Core Mosaic framework
+│   ├── src/main/kotlin/     # Main source code
+│   └── src/test/kotlin/     # Tests
+├── build.gradle.kts         # Root build configuration
+├── settings.gradle.kts      # Module definitions
+└── MODULE_TEMPLATE.md       # Guide for adding new modules
+```
+
+### **Modules**
+
+- **`mosaic-core`**: The main Mosaic framework with tile system, registry, and core functionality
+- **Future modules**: API, CLI, web components, utils, etc.
+
+### **Adding New Modules**
+
+See [MODULE_TEMPLATE.md](MODULE_TEMPLATE.md) for detailed instructions on adding new modules to the project.
+
 ## 🧩 **Core Components**
 
 ### **Tile System**
@@ -172,13 +195,21 @@ fun `should compose complex response`() = runTest {
 ## 🏗️ **Building**
 
 ```bash
+# Build all modules
 ./gradlew build
+
+# Build specific module
+./gradlew :mosaic-core:build
 ```
 
 ## 🧪 **Testing**
 
 ```bash
+# Test all modules
 ./gradlew test
+
+# Test specific module
+./gradlew :mosaic-core:test
 ```
 
 ## 🔍 **Code Quality**

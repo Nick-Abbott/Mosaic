@@ -1,0 +1,81 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+  push:
+    branches: [ main, develop ]
+
+jobs:
+  build-and-verify:
+    name: Build and Verify
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+
+    - name: Cache Gradle packages
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
+
+    - name: Run build and all checks
+      run: ./gradlew check --no-daemon
+
+    - name: Generate XML coverage report
+      run: ./gradlew koverXmlReport --no-daemon
+
+    - name: Verify build artifacts
+      run: |
+        echo "Verifying build artifacts..."
+        find . -path "**/build/reports/*" -type d | grep -E "(detekt|kover|ktlint|tests)" | wc -l
+        echo "Build verification complete"
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results
+        path: |
+          **/build/test-results/
+          **/build/reports/tests/
+        retention-days: 30
+
+    - name: Upload coverage reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: coverage-reports
+        path: |
+          **/build/reports/kover/
+        retention-days: 30
+
+    - name: Upload detekt reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: detekt-reports
+        path: |
+          **/build/reports/detekt/
+        retention-days: 30
+
+    - name: Upload ktlint reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: ktlint-reports
+        path: |
+          **/build/reports/ktlint/
+        retention-days: 30
