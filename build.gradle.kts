@@ -8,10 +8,10 @@ plugins {
   kotlin("jvm") version "2.2.10"
   id("org.jlleitschuh.gradle.ktlint") version "12.1.0"
   id("io.gitlab.arturbosch.detekt") version "1.23.5"
+  id("org.jetbrains.kotlinx.kover") version "0.7.5"
 }
 
 repositories {
-  // You can declare any Maven/Ivy/file repository here.
   mavenCentral()
 }
 
@@ -22,6 +22,21 @@ dependencies {
   testImplementation("org.junit.jupiter:junit-jupiter:5.10.0")
 }
 
+// ============================================================================
+// TEST CONFIGURATION
+// ============================================================================
+
+tasks.withType<Test> {
+  useJUnitPlatform()
+
+  // Ensure tests run before coverage collection
+  finalizedBy("koverHtmlReport")
+}
+
+// ============================================================================
+// CODE QUALITY CONFIGURATION
+// ============================================================================
+
 // ktlint configuration
 ktlint {
   version.set("1.0.1")
@@ -30,7 +45,6 @@ ktlint {
   filter {
     exclude { element -> element.file.path.contains("build/") }
   }
-  // Additional ktlint rules
   ignoreFailures.set(false)
   reporters {
     reporter(org.jlleitschuh.gradle.ktlint.reporter.ReporterType.PLAIN)
@@ -45,25 +59,103 @@ detekt {
   buildUponDefaultConfig = true
   allRules = false
   autoCorrect = true
-
-  // Additional detekt configuration
   ignoreFailures = false
   parallel = true
 }
 
-// Add style checks to the Gradle lifecycle
-tasks.named("check") {
-  dependsOn("styleCheck")
+// ============================================================================
+// CODE COVERAGE CONFIGURATION
+// ============================================================================
+
+koverReport {
+  filters {
+    includes {
+      packages("com.abbott.mosaic.*")
+    }
+    excludes {
+      classes("**.*Test*")
+      classes("**.*Test")
+      classes("**.*Tests")
+    }
+  }
+
+  verify {
+    rule {
+      isEnabled = true
+      entity = kotlinx.kover.gradle.plugin.dsl.GroupingEntityType.APPLICATION
+
+      bound {
+        minValue = 80
+        metric = kotlinx.kover.gradle.plugin.dsl.MetricType.LINE
+        aggregation = kotlinx.kover.gradle.plugin.dsl.AggregationType.COVERED_PERCENTAGE
+      }
+
+      bound {
+        minValue = 80
+        metric = kotlinx.kover.gradle.plugin.dsl.MetricType.BRANCH
+        aggregation = kotlinx.kover.gradle.plugin.dsl.AggregationType.COVERED_PERCENTAGE
+      }
+    }
+  }
 }
 
-// Create a convenient task for running all style checks
+// ============================================================================
+// TASK LIFECYCLE CONFIGURATION
+// ============================================================================
+
+// Create a task for code style checks
 tasks.register("styleCheck") {
   group = "verification"
   description = "Run all code style and quality checks"
   dependsOn("ktlintCheck", "detekt")
 }
 
-// Add style checks to the build task (optional - uncomment if you want build to fail on style issues)
+// Create a task for coverage verification
+tasks.register("coverageCheck") {
+  group = "verification"
+  description = "Run tests and verify coverage thresholds"
+  dependsOn("test", "koverVerify")
+}
+
+// Create a comprehensive verification task
+tasks.register("verifyAll") {
+  group = "verification"
+  description = "Run all code style, quality checks, and coverage verification"
+  dependsOn("styleCheck", "coverageCheck")
+}
+
+// Configure the main check task to include all verifications
+tasks.named("check") {
+  dependsOn("verifyAll")
+}
+
+// Configure build task to include verification (optional)
+// Uncomment the following lines if you want builds to fail on quality issues
 // tasks.named("build") {
 //   dependsOn("check")
 // }
+
+// ============================================================================
+// CONVENIENCE TASKS
+// ============================================================================
+
+// Task to run everything needed for a complete build
+tasks.register("fullBuild") {
+  group = "build"
+  description = "Clean, build, test, and verify everything"
+  dependsOn("clean", "build", "verifyAll")
+}
+
+// Task to generate all reports
+tasks.register("generateReports") {
+  group = "reporting"
+  description = "Generate all reports (tests, coverage, style checks)"
+  dependsOn("test", "koverHtmlReport", "koverXmlReport", "ktlintCheck", "detekt")
+}
+
+// Task to fix code style issues
+tasks.register("fixCodeStyle") {
+  group = "verification"
+  description = "Auto-fix code style issues where possible"
+  dependsOn("ktlintFormat", "detektMain")
+}

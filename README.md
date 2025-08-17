@@ -219,6 +219,96 @@ The project includes GitHub Actions workflows that automatically run code qualit
 
 Reports are generated and stored as artifacts for review.
 
+## 🚀 **Gradle Lifecycle & Convenience Tasks**
+
+The project includes an optimized Gradle lifecycle with intelligent task dependencies and convenient shortcuts.
+
+### **Core Verification Tasks**
+
+```bash
+# Run all code style and quality checks
+./gradlew styleCheck
+
+# Run tests and verify coverage thresholds
+./gradlew coverageCheck
+
+# Run all verifications (style, quality, coverage)
+./gradlew verifyAll
+
+# Run the standard Gradle check (includes all verifications)
+./gradlew check
+```
+
+### **Convenience Tasks**
+
+```bash
+# Complete build with verification
+./gradlew fullBuild
+
+# Generate all reports (tests, coverage, style checks)
+./gradlew generateReports
+
+# Auto-fix code style issues where possible
+./gradlew fixCodeStyle
+```
+
+### **Task Dependencies**
+
+The lifecycle is organized with intelligent dependencies:
+
+- **`test`** → automatically generates HTML coverage report
+- **`styleCheck`** → runs ktlint and detekt
+- **`coverageCheck`** → runs tests and verifies coverage thresholds
+- **`verifyAll`** → runs style checks and coverage verification
+- **`check`** → includes all verifications
+- **`fullBuild`** → clean, build, test, and verify everything
+
+### **Task Groups**
+
+- **`verification`**: Code quality and testing tasks
+- **`build`**: Build and compilation tasks  
+- **`reporting`**: Report generation tasks
+
+## 📊 **Code Coverage**
+
+This project uses **Kover** for code coverage analysis, providing comprehensive insights into test coverage without affecting Kotlin compilation.
+
+### **Running Coverage Analysis**
+
+```bash
+# Generate coverage reports
+./gradlew koverHtmlReport
+
+# Generate XML report (useful for CI/CD)
+./gradlew koverXmlReport
+
+# Verify coverage meets minimum thresholds
+./gradlew koverVerify
+
+# Run all verification including coverage
+./gradlew verifyAll
+```
+
+### **Coverage Configuration**
+
+- **Minimum Thresholds**: 80% line and branch coverage
+- **Coverage Scope**: All classes in `com.abbott.mosaic.*` packages
+- **Exclusions**: Test classes and generated code are excluded
+- **Reports**: HTML and XML formats available
+
+### **Coverage Reports**
+
+After running coverage analysis, reports are available at:
+- **HTML Report**: `build/reports/kover/html/index.html`
+- **XML Report**: `build/reports/kover/xml/report.xml`
+
+### **CI/CD Integration**
+
+Coverage verification is automatically included in the build process:
+- Coverage reports are generated during CI builds
+- Coverage thresholds are enforced to maintain quality standards
+- Coverage data is available for trend analysis
+
 ## 💡 **Benefits**
 
 1. **Efficient**: Eliminates redundant data fetching through intelligent caching

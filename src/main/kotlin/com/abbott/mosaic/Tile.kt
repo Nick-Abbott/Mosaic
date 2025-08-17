@@ -64,16 +64,12 @@ abstract class MultiTile<SingleType, MultiType>(mosaic: Mosaic) : Tile(mosaic) {
       // Create deferreds for missing keys and start retrieval immediately
       val missingDeferreds = mutableMapOf<String, Deferred<SingleType>>()
       if (missingKeys.isNotEmpty()) {
-        val batchDeferred =
-          async {
-            retrieveForKeys(missingKeys)
-          }
+        val batchResponse = retrieveForKeys(missingKeys)
 
         for (key in missingKeys) {
           val deferred =
             async {
-              val response = batchDeferred.await()
-              normalize(key, response)
+              normalize(key, batchResponse)
             }
           cache[key] = deferred
           missingDeferreds[key] = deferred

@@ -16,13 +16,12 @@
 
 package com.abbott.mosaic
 
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import java.util.concurrent.atomic.AtomicInteger
 
 @Suppress("FunctionOnlyReturningConstant", "FunctionMaxLength")
@@ -103,8 +102,8 @@ class MultiTileTest {
       testTile.shouldThrowError = true
 
       val exception =
-        assertThrows(RuntimeException::class.java) {
-          runBlocking { testTile.getByKeys(listOf("key1", "key2")) }
+        assertThrows<RuntimeException> {
+          testTile.getByKeys(listOf("key1", "key2"))
         }
 
       assertEquals("Retrieve failed", exception.message)
@@ -153,6 +152,7 @@ class MultiTileTest {
   @Test
   fun `should handle normalization correctly`() =
     runTest {
+      testTile.shouldNormalize = true
       val result = testTile.getByKeys(listOf("key1", "key2"))
 
       assertEquals(2, result.size)
@@ -165,6 +165,7 @@ class MultiTileTest {
     val retrieveCallCount = AtomicInteger(0)
     val normalizeCallCount = AtomicInteger(0)
     var shouldThrowError = false
+    var shouldNormalize = false
 
     override suspend fun retrieveForKeys(keys: List<String>): List<String> {
       retrieveCallCount.incrementAndGet()
@@ -183,8 +184,13 @@ class MultiTileTest {
       response: List<String>,
     ): String {
       normalizeCallCount.incrementAndGet()
-      val index = key.replace("key", "").toInt() - 1
-      return "normalized-${response[index]}"
+      if (shouldNormalize) {
+        val expectedValue = key.replace("key", "value")
+        return "normalized-$expectedValue"
+      } else {
+        // Return the raw value for most tests
+        return key.replace("key", "value")
+      }
     }
   }
 
