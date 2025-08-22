@@ -10,6 +10,7 @@
 rootProject.name = "Mosaic"
 
 include("mosaic-core")
+include("mosaic-test")
 
 // Future modules can be added here:
 // include("mosaic-api")

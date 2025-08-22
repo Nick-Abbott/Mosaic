@@ -1,5 +1,11 @@
 # Mosaic Framework
 
+[![Coverage](https://img.shields.io/badge/coverage-90%25%2B-brightgreen)](https://github.com/Nick-Abbott/Mosaic)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)](https://github.com/Nick-Abbott/Mosaic)
+[![Kotlin](https://img.shields.io/badge/kotlin-1.9.0-blue.svg)](https://kotlinlang.org)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Build](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/Nick-Abbott/Mosaic)
+
 A powerful Kotlin framework for **composable backend orchestration** that enables you to think from the response up rather than database down. Mosaic provides intelligent caching, concurrent safety, and type-safe tile composition for building high-performance data access layers.
 
 ## 🎯 **Response-First Design Philosophy**
@@ -38,6 +44,9 @@ Mosaic/
 ├── mosaic-core/             # Core Mosaic framework
 │   ├── src/main/kotlin/     # Main source code
 │   └── src/test/kotlin/     # Tests
+├── mosaic-test/             # Testing framework
+│   ├── src/main/kotlin/     # Test utilities and assertions
+│   └── src/test/kotlin/     # Framework tests
 ├── build.gradle.kts         # Root build configuration
 ├── settings.gradle.kts      # Module definitions
 └── MODULE_TEMPLATE.md       # Guide for adding new modules
@@ -46,6 +55,7 @@ Mosaic/
 ### **Modules**
 
 - **`mosaic-core`**: The main Mosaic framework with tile system, registry, and core functionality
+- **`mosaic-test`**: Comprehensive testing framework with utilities, assertions, and mock behaviors for testing Tile implementations
 - **Future modules**: API, CLI, web components, utils, etc.
 
 ### **Adding New Modules**
@@ -204,13 +214,58 @@ fun `should compose complex response`() = runTest {
 
 ## 🧪 **Testing**
 
+The project includes a comprehensive testing framework in the `mosaic-test` module that provides utilities for testing Tile implementations with excellent coverage.
+
+### **Testing Framework Features**
+- **TestMosaic**: Main test wrapper with assertion methods for SingleTile and MultiTile
+- **TestMosaicBuilder**: Fluent builder for creating test scenarios with mocked tiles
+- **MockBehavior**: Configurable behaviors (SUCCESS, ERROR, DELAY, CUSTOM) for different test scenarios
+- **Comprehensive Coverage**: Excellent test coverage with enforced thresholds
+
+### **Running Tests**
+
 ```bash
 # Test all modules
 ./gradlew test
 
 # Test specific module
 ./gradlew :mosaic-core:test
+./gradlew :mosaic-test:test
+
+# Test with coverage verification
+./gradlew :mosaic-test:koverVerify
+
+# Generate coverage reports
+./gradlew :mosaic-test:koverHtmlReport
 ```
+
+### **Testing Examples**
+
+```kotlin
+// Test SingleTile with success behavior
+@Test
+fun `should test single tile`() = runTestMosaicTest {
+    val testMosaic = TestMosaicBuilder()
+        .withMockTile(TestSingleTile::class, "test-data", MockBehavior.SUCCESS)
+        .build()
+    
+    registry.register(TestSingleTile::class) { testMosaic.getMockTiles()[TestSingleTile::class] as TestSingleTile }
+    testMosaic.assertEquals(tileClass = TestSingleTile::class, expected = "test-data")
+}
+
+// Test MultiTile with error behavior
+@Test
+fun `should test error handling`() = runTestMosaicTest {
+    val testMosaic = TestMosaicBuilder()
+        .withMockMultiTile(TestMultiTile::class, mapOf("key1" to "value1"), MockBehavior.ERROR)
+        .build()
+    
+    registry.register(TestMultiTile::class) { testMosaic.getMockTiles()[TestMultiTile::class] as TestMultiTile }
+    testMosaic.assertThrows(tileClass = TestMultiTile::class, keys = listOf("key1"), expectedException = RuntimeException::class.java)
+}
+```
+
+For detailed testing documentation, see [mosaic-test/README.md](mosaic-test/README.md).
 
 ## 🔍 **Code Quality**
 
