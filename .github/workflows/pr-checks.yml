@@ -1,14 +1,12 @@
-name: PR Checks
+name: PR Validation
 
 on:
   pull_request:
     branches: [ main, develop ]
-  push:
-    branches: [ main, develop ]
 
 jobs:
-  build-and-verify:
-    name: Build and Verify
+  validate-pr:
+    name: Validate Pull Request
     runs-on: ubuntu-latest
 
     steps:
@@ -31,8 +29,15 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-gradle-
 
-    - name: Run build and all checks
-      run: ./gradlew check --no-daemon
+    - name: Run comprehensive PR validation
+      run: ./gradlew fullBuild --no-daemon
+      # This runs the most comprehensive validation including:
+      # - Compilation (compileKotlin, compileJava)
+      # - Tests (test with coverage)
+      # - Code quality (ktlint, detekt)
+      # - Coverage verification (koverVerify)
+      # - Artifact generation (jar, assemble)
+      # - All verification tasks (check, verifyAll)
 
     - name: Generate XML coverage report
       run: ./gradlew koverXmlReport --no-daemon
@@ -43,39 +48,11 @@ jobs:
         find . -path "**/build/reports/*" -type d | grep -E "(detekt|kover|ktlint|tests)" | wc -l
         echo "Build verification complete"
 
-    - name: Upload test results
+    - name: Upload build reports (only on failure)
       uses: actions/upload-artifact@v4
-      if: always()
+      if: failure()
       with:
-        name: test-results
+        name: build-reports
         path: |
-          **/build/test-results/
-          **/build/reports/tests/
-        retention-days: 30
-
-    - name: Upload coverage reports
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: coverage-reports
-        path: |
-          **/build/reports/kover/
-        retention-days: 30
-
-    - name: Upload detekt reports
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: detekt-reports
-        path: |
-          **/build/reports/detekt/
-        retention-days: 30
-
-    - name: Upload ktlint reports
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: ktlint-reports
-        path: |
-          **/build/reports/ktlint/
-        retention-days: 30
+          **/build/reports/
+        retention-days: 7

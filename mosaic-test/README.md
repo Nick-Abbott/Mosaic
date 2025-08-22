@@ -1,7 +1,7 @@
 # Mosaic Test Framework
 
-[![Coverage](https://img.shields.io/badge/coverage-90%25%2B-brightgreen)](https://github.com/Nick-Abbott/Mosaic)
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)](https://github.com/Nick-Abbott/Mosaic)
+[![Tests](https://github.com/Nick-Abbott/Mosaic/workflows/Test%20Badge/badge.svg)](https://github.com/Nick-Abbott/Mosaic/actions?query=workflow%3A%22Test+Badge%22)
+[![Build](https://github.com/Nick-Abbott/Mosaic/workflows/Build%20Badge/badge.svg)](https://github.com/Nick-Abbott/Mosaic/actions?query=workflow%3A%22Build+Badge%22)
 [![Kotlin](https://img.shields.io/badge/kotlin-1.9.0-blue.svg)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
@@ -233,17 +233,12 @@ When contributing to the testing framework:
 - **Type Safety**: Leverages Kotlin's type system for compile-time safety
 - **Extensible Design**: Easy to extend with new behaviors and utilities
 
-## 📝 Note on Badges
+## 📝 Badge Information
 
-The badges in this README are currently using placeholder URLs. To set up proper dynamic badges:
+The badges in this README are powered by GitHub Actions workflows:
 
-1. **Coverage Badge**: Use a service like [Shields.io](https://shields.io/) with your CI/CD pipeline
-2. **Test Badge**: Configure your CI/CD to update badge status automatically
-3. **Build Badge**: Set up GitHub Actions or similar to update build status
+- **Tests Badge**: Shows the status of the `Test Badge` workflow that runs `./gradlew test`
+- **Build Badge**: Shows the status of the `Build Badge` workflow that runs `./gradlew build` (includes compilation, tests, styling, and quality checks)
 
-Example dynamic badge setup:
-```markdown
-[![Coverage](https://img.shields.io/badge/coverage-${COVERAGE}%25-brightgreen)](https://github.com/Nick-Abbott/Mosaic)
-[![Tests](https://img.shields.io/badge/tests-${STATUS}-brightgreen)](https://github.com/Nick-Abbott/Mosaic)
-```
+These badges automatically update based on the latest workflow runs and provide real-time status of the project's health.
 
