@@ -16,6 +16,7 @@ dependencyResolutionManagement {
 
 include("mosaic-core")
 include("mosaic-test")
+include("mosaic-build")
 
 // Future modules can be added here:
 // include("mosaic-api")

@@ -7,6 +7,8 @@ coroutines = "1.10.2"
 junit = "5.10.2"
 mockk = "1.14.5"
 assertj = "3.27.4"
+kotlinpoet = "2.2.0"
+classgraph = "4.8.180"
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
@@ -19,6 +21,8 @@ assertj = { module = "org.assertj:assertj-core", version.ref = "assertj" }
 ktlint-gradle = { module = "org.jlleitschuh.gradle:ktlint-gradle", version.ref = "ktlint" }
 detekt-gradle-plugin = { module = "io.gitlab.arturbosch.detekt:detekt-gradle-plugin", version.ref = "detekt" }
 kover-gradle-plugin = { module = "org.jetbrains.kotlinx:kover-gradle-plugin", version.ref = "kover" }
+kotlinpoet = { module = "com.squareup:kotlinpoet", version.ref = "kotlinpoet" }
+classgraph = { module = "io.github.classgraph:classgraph", version.ref = "classgraph" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
