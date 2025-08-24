@@ -5,9 +5,8 @@
 
 plugins {
   kotlin("jvm") version "2.2.10" apply false
-  id("org.jlleitschuh.gradle.ktlint") version "12.1.0" apply false
-  id("io.gitlab.arturbosch.detekt") version "1.23.5" apply false
-  id("org.jetbrains.kotlinx.kover") version "0.7.5" apply false
+  id("com.abbott.mosaic.quality") apply false
+  id("com.abbott.mosaic.testing") apply false
 }
 
 // Configure all projects
@@ -23,14 +22,8 @@ allprojects {
 // Configure all subprojects
 subprojects {
   apply(plugin = "org.jetbrains.kotlin.jvm")
-  apply(plugin = "org.jlleitschuh.gradle.ktlint")
-  apply(plugin = "io.gitlab.arturbosch.detekt")
-  apply(plugin = "org.jetbrains.kotlinx.kover")
-
-  tasks.withType<Test> {
-    useJUnitPlatform()
-    finalizedBy("koverHtmlReport")
-  }
+  apply(plugin = "com.abbott.mosaic.quality")
+  apply(plugin = "com.abbott.mosaic.testing")
 
   tasks.register("styleCheck") {
     group = "verification"

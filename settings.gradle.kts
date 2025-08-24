@@ -9,6 +9,10 @@
 
 rootProject.name = "Mosaic"
 
+pluginManagement {
+    includeBuild("build-logic")
+}
+
 include("mosaic-core")
 include("mosaic-test")
 

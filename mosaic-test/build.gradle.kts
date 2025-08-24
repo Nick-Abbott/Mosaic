@@ -32,32 +32,6 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
   }
 }
 
-// ktlint configuration
-ktlint {
-  version.set("1.0.1")
-  android.set(false)
-  verbose.set(true)
-  filter {
-    exclude { element -> element.file.path.contains("build/") }
-  }
-  ignoreFailures.set(false)
-  reporters {
-    reporter(org.jlleitschuh.gradle.ktlint.reporter.ReporterType.PLAIN)
-    reporter(org.jlleitschuh.gradle.ktlint.reporter.ReporterType.CHECKSTYLE)
-    reporter(org.jlleitschuh.gradle.ktlint.reporter.ReporterType.HTML)
-  }
-}
-
-// detekt configuration
-detekt {
-  config.setFrom(files("${rootProject.projectDir}/config/detekt/detekt.yml"))
-  buildUponDefaultConfig = true
-  allRules = false
-  autoCorrect = true
-  ignoreFailures = false
-  parallel = true
-}
-
 // kover configuration - reasonable thresholds based on achieved coverage
 koverReport {
   filters {
