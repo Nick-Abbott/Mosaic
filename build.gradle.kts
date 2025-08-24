@@ -4,24 +4,15 @@
  */
 
 plugins {
-  kotlin("jvm") version "2.2.10" apply false
+  alias(libs.plugins.kotlin.jvm) apply false
+  id("com.abbott.mosaic.kotlin") apply false
   id("com.abbott.mosaic.quality") apply false
   id("com.abbott.mosaic.testing") apply false
 }
 
-// Configure all projects
-allprojects {
-  group = "com.abbott.mosaic"
-  version = "1.0.0-SNAPSHOT"
-
-  repositories {
-    mavenCentral()
-  }
-}
-
 // Configure all subprojects
 subprojects {
-  apply(plugin = "org.jetbrains.kotlin.jvm")
+  apply(plugin = "com.abbott.mosaic.kotlin")
   apply(plugin = "com.abbott.mosaic.quality")
   apply(plugin = "com.abbott.mosaic.testing")
 
