@@ -45,6 +45,10 @@ This module depends on:
 
 ## 🚀 Usage
 
+When the `mosaic-build` Gradle plugin is applied, the test builder automatically registers all real
+`Tile` implementations before applying mocks. If you choose to register tiles manually, you can still
+do so by calling `MosaicRegistry.register` yourself.
+
 ### Basic Tile Testing
 
 ```kotlin
@@ -53,9 +57,6 @@ fun `should test single tile with success behavior`() = runTestMosaicTest {
     val testMosaic = TestMosaicBuilder()
         .withMockTile(TestSingleTile::class, "test-data", MockBehavior.SUCCESS)
         .build()
-    
-    registry.register(TestSingleTile::class) { testMosaic.getMockTiles()[TestSingleTile::class] as TestSingleTile }
-    
     testMosaic.assertEquals(tileClass = TestSingleTile::class, expected = "test-data")
 }
 ```
@@ -68,9 +69,6 @@ fun `should test multi tile with delay behavior`() = runTestMosaicTest {
     val testMosaic = TestMosaicBuilder()
         .withMockMultiTile(TestMultiTile::class, mapOf("key1" to "value1"), MockBehavior.DELAY)
         .build()
-    
-    registry.register(TestMultiTile::class) { testMosaic.getMockTiles()[TestMultiTile::class] as TestMultiTile }
-    
     testMosaic.assertEquals(
         tileClass = TestMultiTile::class,
         keys = listOf("key1"),
@@ -87,9 +85,6 @@ fun `should test error behavior`() = runTestMosaicTest {
     val testMosaic = TestMosaicBuilder()
         .withMockTile(TestSingleTile::class, "error-data", MockBehavior.ERROR)
         .build()
-    
-    registry.register(TestSingleTile::class) { testMosaic.getMockTiles()[TestSingleTile::class] as TestSingleTile }
-    
     testMosaic.assertThrows(tileClass = TestSingleTile::class, expectedException = RuntimeException::class.java)
 }
 ```
@@ -104,11 +99,6 @@ fun `should test multiple tiles with different behaviors`() = runTestMosaicTest 
         .withMockMultiTile(TestMultiTile::class, mapOf("key1" to "delay-value"), MockBehavior.DELAY)
         .withRequest(MockMosaicRequest())
         .build()
-    
-    // Test both tiles
-    registry.register(TestSingleTile::class) { testMosaic.getMockTiles()[TestSingleTile::class] as TestSingleTile }
-    registry.register(TestMultiTile::class) { testMosaic.getMockTiles()[TestMultiTile::class] as TestMultiTile }
-    
     testMosaic.assertEquals(tileClass = TestSingleTile::class, expected = "success-data")
     testMosaic.assertEquals(
         tileClass = TestMultiTile::class,
