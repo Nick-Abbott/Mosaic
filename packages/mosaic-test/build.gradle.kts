@@ -8,7 +8,7 @@ import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
 
 dependencies {
   // Core Mosaic dependency
-  implementation(project(":mosaic-core"))
+  implementation(project(":packages:mosaic-core"))
 
   // Coroutines dependency for main source set
   implementation(libs.kotlinx.coroutines.core)

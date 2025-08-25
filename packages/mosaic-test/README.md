@@ -19,7 +19,7 @@ The `mosaic-test` module is designed to make testing Tile implementations as eas
 ## 🏗️ Module Structure
 
 ```
-mosaic-test/
+packages/mosaic-test/
 ├── src/main/kotlin/com/abbott/mosaic/test/
 │   ├── TestMosaic.kt              # Main test wrapper with assertion methods
 │   ├── TestMosaicBuilder.kt       # Fluent builder for creating test scenarios
@@ -159,7 +159,7 @@ Coverage thresholds are enforced in the build:
 - Branch coverage: 80% minimum
 - Instruction coverage: 90% minimum
 
-Run `./gradlew :mosaic-test:koverHtmlReport` to generate detailed coverage reports.
+Run `./gradlew :packages:mosaic-test:koverHtmlReport` to generate detailed coverage reports.
 
 ## 🛠️ Development
 
@@ -174,16 +174,16 @@ Run `./gradlew :mosaic-test:koverHtmlReport` to generate detailed coverage repor
 
 ```bash
 # Run all tests
-./gradlew :mosaic-test:test
+./gradlew :packages:mosaic-test:test
 
 # Run with coverage verification
-./gradlew :mosaic-test:koverVerify
+./gradlew :packages:mosaic-test:koverVerify
 
 # Run specific test class
-./gradlew :mosaic-test:test --tests "com.abbott.mosaic.test.TestMosaicBuilderTest"
+./gradlew :packages:mosaic-test:test --tests "com.abbott.mosaic.test.TestMosaicBuilderTest"
 
 # Generate coverage reports
-./gradlew :mosaic-test:koverHtmlReport
+./gradlew :packages:mosaic-test:koverHtmlReport
 ```
 
 ### Code Quality

@@ -14,8 +14,8 @@ dependencyResolutionManagement {
     }
 }
 
-include("mosaic-core")
-include("mosaic-test")
+include("packages:mosaic-core")
+include("packages:mosaic-test")
 include("mosaic-build")
 
 // Future modules can be added here:

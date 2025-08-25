@@ -3,13 +3,12 @@
  * This module provides a Gradle plugin for automatic Mosaic tile registration
  */
 
-
 plugins {
   `java-gradle-plugin`
 }
 
 dependencies {
-  implementation(project(":mosaic-core"))
+  implementation(project(":packages:mosaic-core"))
   implementation(libs.kotlinpoet)
   implementation(libs.classgraph)
 }
