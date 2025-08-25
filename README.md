@@ -40,15 +40,17 @@ This project uses a **multi-module Gradle structure** to organize code into focu
 
 ```
 Mosaic/
-├── mosaic-core/             # Core Mosaic framework
-│   ├── src/main/kotlin/     # Main source code
-│   └── src/test/kotlin/     # Tests
-├── mosaic-test/             # Testing framework
-│   ├── src/main/kotlin/     # Test utilities and assertions
-│   └── src/test/kotlin/     # Framework tests
-├── build.gradle.kts         # Root build configuration
-├── settings.gradle.kts      # Module definitions
-└── MODULE_TEMPLATE.md       # Guide for adding new modules
+├── packages/
+│   ├── mosaic-core/             # Core Mosaic framework
+│   │   ├── src/main/kotlin/     # Main source code
+│   │   └── src/test/kotlin/     # Tests
+│   └── mosaic-test/             # Testing framework
+│       ├── src/main/kotlin/     # Test utilities and assertions
+│       └── src/test/kotlin/     # Framework tests
+├── packages/build.gradle.kts    # Publishing config for all packages
+├── build.gradle.kts             # Root build configuration
+├── settings.gradle.kts          # Module definitions
+└── MODULE_TEMPLATE.md           # Guide for adding new modules
 ```
 
 ### **Modules**
@@ -208,7 +210,7 @@ fun `should compose complex response`() = runTest {
 ./gradlew build
 
 # Build specific module
-./gradlew :mosaic-core:build
+./gradlew :packages:mosaic-core:build
 ```
 
 ## 🧪 **Testing**
@@ -228,14 +230,14 @@ The project includes a comprehensive testing framework in the `mosaic-test` modu
 ./gradlew test
 
 # Test specific module
-./gradlew :mosaic-core:test
-./gradlew :mosaic-test:test
+./gradlew :packages:mosaic-core:test
+./gradlew :packages:mosaic-test:test
 
 # Test with coverage verification
-./gradlew :mosaic-test:koverVerify
+./gradlew :packages:mosaic-test:koverVerify
 
 # Generate coverage reports
-./gradlew :mosaic-test:koverHtmlReport
+./gradlew :packages:mosaic-test:koverHtmlReport
 ```
 
 ### **Testing Examples**
