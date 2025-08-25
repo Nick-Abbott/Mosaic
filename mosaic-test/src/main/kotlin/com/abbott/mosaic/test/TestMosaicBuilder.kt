@@ -52,10 +52,6 @@ class TestMosaicBuilder {
   ): TestMosaicBuilder {
     val mockTile = createMockTileWithMockK(tileClass, returnData, behavior)
     mockTiles[tileClass] = mockTile
-
-    internalRegistry.register(tileClass) { _ ->
-      mockTile
-    }
     return this
   }
 
@@ -88,10 +84,6 @@ class TestMosaicBuilder {
   ): TestMosaicBuilder {
     val mockTile = createMockTileWithMockK(tileClass, returnData, behavior)
     mockTiles[tileClass] = mockTile
-
-    internalRegistry.register(tileClass) { _ ->
-      mockTile
-    }
     return this
   }
 
@@ -126,6 +118,18 @@ class TestMosaicBuilder {
    * @return A TestMosaic with the configured mocks and request
    */
   fun build(): TestMosaic {
+    runCatching {
+      Class
+        .forName("com.abbott.mosaic.generated.GeneratedMosaicRegistryKt")
+        .getMethod("registerGeneratedTiles", MosaicRegistry::class.java)
+        .invoke(null, internalRegistry)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    mockTiles.forEach { (clazz, tile) ->
+      internalRegistry.register(clazz as KClass<Tile>) { tile }
+    }
+
     val mosaic = Mosaic(internalRegistry, request)
     return TestMosaic(mosaic, mockTiles)
   }
