@@ -508,8 +508,6 @@ class TestMosaicBuilderTest : BaseTestMosaicTest() {
           .withMockTile(TestSingleTile::class, "delay-data", MockBehavior.DELAY)
           .build()
 
-      registry.register(TestSingleTile::class) { testMosaic.getMockTiles()[TestSingleTile::class] as TestSingleTile }
-
       // When & Then - This should trigger the DELAY branch
       testMosaic.assertEquals(tileClass = TestSingleTile::class, expected = "delay-data")
     }
@@ -523,8 +521,6 @@ class TestMosaicBuilderTest : BaseTestMosaicTest() {
           .withMockTile(TestSingleTile::class, "custom-data", MockBehavior.CUSTOM)
           .build()
 
-      registry.register(TestSingleTile::class) { testMosaic.getMockTiles()[TestSingleTile::class] as TestSingleTile }
-
       // When & Then - This should trigger the CUSTOM branch
       testMosaic.assertEquals(tileClass = TestSingleTile::class, expected = "custom-data")
     }
@@ -537,8 +533,6 @@ class TestMosaicBuilderTest : BaseTestMosaicTest() {
         builder
           .withMockMultiTile(TestMultiTile::class, mapOf("key1" to "delay-value"), MockBehavior.DELAY)
           .build()
-
-      registry.register(TestMultiTile::class) { testMosaic.getMockTiles()[TestMultiTile::class] as TestMultiTile }
 
       // When & Then - This should trigger the DELAY branch
       testMosaic.assertEquals(
@@ -557,8 +551,6 @@ class TestMosaicBuilderTest : BaseTestMosaicTest() {
           .withMockMultiTile(TestMultiTile::class, mapOf("key1" to "custom-value"), MockBehavior.CUSTOM)
           .build()
 
-      registry.register(TestMultiTile::class) { testMosaic.getMockTiles()[TestMultiTile::class] as TestMultiTile }
-
       // When & Then - This should trigger the CUSTOM branch
       testMosaic.assertEquals(
         tileClass = TestMultiTile::class,
@@ -576,8 +568,6 @@ class TestMosaicBuilderTest : BaseTestMosaicTest() {
           .withMockMultiTile(TestMultiTile::class, mapOf("key1" to "error-value"), MockBehavior.ERROR)
           .build()
 
-      registry.register(TestMultiTile::class) { testMosaic.getMockTiles()[TestMultiTile::class] as TestMultiTile }
-
       // When & Then - This should trigger the ERROR branch and throw
       testMosaic.assertThrows(
         tileClass = TestMultiTile::class,
@@ -594,8 +584,6 @@ class TestMosaicBuilderTest : BaseTestMosaicTest() {
         builder
           .withMockTile(TestSingleTile::class, "error-data", MockBehavior.ERROR)
           .build()
-
-      registry.register(TestSingleTile::class) { testMosaic.getMockTiles()[TestSingleTile::class] as TestSingleTile }
 
       // When & Then - This should trigger the ERROR branch and throw
       testMosaic.assertThrows(tileClass = TestSingleTile::class, expectedException = RuntimeException::class.java)
