@@ -208,7 +208,7 @@ fun `should compose complex response`() = runTest {
 ./gradlew build
 
 # Build specific module
-./gradlew :mosaic-core:build
+./gradlew :packages:mosaic-core:build
 ```
 
 ## 🧪 **Testing**
@@ -228,14 +228,14 @@ The project includes a comprehensive testing framework in the `mosaic-test` modu
 ./gradlew test
 
 # Test specific module
-./gradlew :mosaic-core:test
-./gradlew :mosaic-test:test
+./gradlew :packages:mosaic-core:test
+./gradlew :packages:mosaic-test:test
 
 # Test with coverage verification
-./gradlew :mosaic-test:koverVerify
+./gradlew :packages:mosaic-test:koverVerify
 
 # Generate coverage reports
-./gradlew :mosaic-test:koverHtmlReport
+./gradlew :packages:mosaic-test:koverHtmlReport
 ```
 
 ### **Testing Examples**

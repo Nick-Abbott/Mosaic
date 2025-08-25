@@ -10,7 +10,7 @@ Add your new module to `settings.gradle.kts`:
 
 ```kotlin
 // Include all modules
-include(":mosaic-core")
+include(":packages:mosaic-core")
 include(":your-new-module")  // Add this line
 ```
 
@@ -57,7 +57,7 @@ dependencies {
     // implementation("some-library:version")
     
     // If you need to depend on other modules in this project:
-    // implementation(project(":mosaic-core"))
+    // implementation(project(":packages:mosaic-core"))
 }
 
 // Example: Override specific configurations for this module
@@ -82,7 +82,7 @@ If your new module needs to depend on other modules in this project:
 
 ```kotlin
 dependencies {
-    implementation(project(":mosaic-core"))
+    implementation(project(":packages:mosaic-core"))
     // Add other module dependencies as needed
 }
 ```
@@ -95,7 +95,7 @@ Here are some example module types you might want to add:
 ```kotlin
 // api/build.gradle.kts
 dependencies {
-    implementation(project(":mosaic-core"))
+    implementation(project(":packages:mosaic-core"))
     implementation("org.springframework.boot:spring-boot-starter-web:3.2.0")
 }
 ```
@@ -104,7 +104,7 @@ dependencies {
 ```kotlin
 // cli/build.gradle.kts
 dependencies {
-    implementation(project(":mosaic-core"))
+    implementation(project(":packages:mosaic-core"))
     implementation("com.github.ajalt:clikt:2.8.0")
 }
 ```
@@ -113,7 +113,7 @@ dependencies {
 ```kotlin
 // utils/build.gradle.kts
 dependencies {
-    implementation(project(":mosaic-core"))
+    implementation(project(":packages:mosaic-core"))
     implementation("org.apache.commons:commons-lang3:3.12.0")
 }
 ```
@@ -122,7 +122,7 @@ dependencies {
 
 All tasks from the root build.gradle.kts are available for each module:
 
-- `./gradlew :mosaic-core:build` - Build only the mosaic-core module
+- `./gradlew :packages:mosaic-core:build` - Build only the mosaic-core module
 - `./gradlew :your-new-module:test` - Run tests for your new module
 - `./gradlew :your-new-module:ktlintCheck` - Check code style for your new module
 - `./gradlew build` - Build all modules
