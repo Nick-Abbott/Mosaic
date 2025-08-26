@@ -41,22 +41,23 @@ This project uses a **multi-module Gradle structure** to organize code into focu
 ```
 Mosaic/
 ├── packages/
-│   ├── mosaic-core/             # Core Mosaic framework
-│   │   ├── src/main/kotlin/     # Main source code
-│   │   └── src/test/kotlin/     # Tests
-│   └── mosaic-test/             # Testing framework
-│       ├── src/main/kotlin/     # Test utilities and assertions
-│       └── src/test/kotlin/     # Framework tests
-├── packages/build.gradle.kts    # Publishing config for all packages
-├── build.gradle.kts             # Root build configuration
-├── settings.gradle.kts          # Module definitions
-└── MODULE_TEMPLATE.md           # Guide for adding new modules
+│   ├── build.gradle.kts    # Root build configuration and publishing setup
+│   ├── settings.gradle.kts # Module definitions
+│   ├── config/             # Static analysis configs
+│   ├── mosaic-core/        # Core Mosaic framework
+│   ├── mosaic-test/        # Testing framework
+│   └── mosaic-build/       # Gradle build plugin
+├── examples/               # Standalone example projects
+│   ├── build.gradle.kts
+│   └── settings.gradle.kts
+└── MODULE_TEMPLATE.md      # Guide for adding new modules
 ```
 
 ### **Modules**
 
 - **`mosaic-core`**: The main Mosaic framework with tile system, registry, and core functionality
 - **`mosaic-test`**: Comprehensive testing framework with utilities, assertions, and mock behaviors for testing Tile implementations
+- **`mosaic-build`**: Gradle plugin that automates Mosaic build configuration
 - **Future modules**: API, CLI, web components, utils, etc.
 
 ### **Adding New Modules**
@@ -207,10 +208,10 @@ fun `should compose complex response`() = runTest {
 
 ```bash
 # Build all modules
-./gradlew build
+./gradlew -p packages build
 
 # Build specific module
-./gradlew :packages:mosaic-core:build
+./gradlew -p packages :mosaic-core:build
 ```
 
 ## 🧪 **Testing**
@@ -227,17 +228,17 @@ The project includes a comprehensive testing framework in the `mosaic-test` modu
 
 ```bash
 # Test all modules
-./gradlew test
+./gradlew -p packages test
 
 # Test specific module
-./gradlew :packages:mosaic-core:test
-./gradlew :packages:mosaic-test:test
+./gradlew -p packages :mosaic-core:test
+./gradlew -p packages :mosaic-test:test
 
 # Test with coverage verification
-./gradlew :packages:mosaic-test:koverVerify
+./gradlew -p packages :mosaic-test:koverVerify
 
 # Generate coverage reports
-./gradlew :packages:mosaic-test:koverHtmlReport
+./gradlew -p packages :mosaic-test:koverHtmlReport
 ```
 
 ### **Testing Examples**
@@ -277,10 +278,10 @@ Enforces Kotlin coding conventions and formatting rules.
 
 ```bash
 # Check code formatting
-./gradlew ktlintCheck
+./gradlew -p packages ktlintCheck
 
 # Auto-fix formatting issues
-./gradlew ktlintFormat
+./gradlew -p packages ktlintFormat
 ```
 
 ### **detekt** - Static Code Analysis
@@ -288,15 +289,15 @@ Performs static code analysis to detect potential bugs, code smells, and complex
 
 ```bash
 # Run static analysis
-./gradlew detekt
+./gradlew -p packages detekt
 
 # Run with auto-correction
-./gradlew detektMain
+./gradlew -p packages detektMain
 ```
 
 ### **Configuration**
-- **ktlint**: Configured in `build.gradle.kts` with version 1.0.1
-- **detekt**: Configured in `config/detekt/detekt.yml` with comprehensive rule sets
+- **ktlint**: Configured in `packages/build.gradle.kts` with version 1.0.1
+- **detekt**: Configured in `packages/config/detekt/detekt.yml` with comprehensive rule sets
 - **EditorConfig**: `.editorconfig` ensures consistent formatting across editors
 
 ### **CI/CD Integration**
@@ -314,29 +315,29 @@ The project includes an optimized Gradle lifecycle with intelligent task depende
 
 ```bash
 # Run all code style and quality checks
-./gradlew styleCheck
+./gradlew -p packages styleCheck
 
 # Run tests and verify coverage thresholds
-./gradlew coverageCheck
+./gradlew -p packages coverageCheck
 
 # Run all verifications (style, quality, coverage)
-./gradlew verifyAll
+./gradlew -p packages verifyAll
 
 # Run the standard Gradle check (includes all verifications)
-./gradlew check
+./gradlew -p packages check
 ```
 
 ### **Convenience Tasks**
 
 ```bash
 # Complete build with verification
-./gradlew fullBuild
+./gradlew -p packages fullBuild
 
 # Generate all reports (tests, coverage, style checks)
-./gradlew generateReports
+./gradlew -p packages generateReports
 
 # Auto-fix code style issues where possible
-./gradlew fixCodeStyle
+./gradlew -p packages fixCodeStyle
 ```
 
 ### **Task Dependencies**
@@ -364,16 +365,16 @@ This project uses **Kover** for code coverage analysis, providing comprehensive 
 
 ```bash
 # Generate coverage reports
-./gradlew koverHtmlReport
+./gradlew -p packages koverHtmlReport
 
 # Generate XML report (useful for CI/CD)
-./gradlew koverXmlReport
+./gradlew -p packages koverXmlReport
 
 # Verify coverage meets minimum thresholds
-./gradlew koverVerify
+./gradlew -p packages koverVerify
 
 # Run all verification including coverage
-./gradlew verifyAll
+./gradlew -p packages verifyAll
 ```
 
 ### **Coverage Configuration**

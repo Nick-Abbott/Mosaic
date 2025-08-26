@@ -30,7 +30,7 @@ jobs:
           ${{ runner.os }}-gradle-
 
     - name: Run comprehensive PR validation
-      run: ./gradlew fullBuild --no-daemon
+      run: ./gradlew -p packages fullBuild --no-daemon
       # This runs the most comprehensive validation including:
       # - Compilation (compileKotlin, compileJava)
       # - Tests (test with coverage)
@@ -40,7 +40,7 @@ jobs:
       # - All verification tasks (check, verifyAll)
 
     - name: Generate XML coverage report
-      run: ./gradlew koverXmlReport --no-daemon
+      run: ./gradlew -p packages koverXmlReport --no-daemon
 
     - name: Verify build artifacts
       run: |

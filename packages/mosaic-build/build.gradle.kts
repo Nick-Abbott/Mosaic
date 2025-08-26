@@ -8,7 +8,7 @@ plugins {
 }
 
 dependencies {
-  implementation(project(":packages:mosaic-core"))
+  implementation(project(":mosaic-core"))
   implementation(libs.kotlinpoet)
   implementation(libs.classgraph)
 }

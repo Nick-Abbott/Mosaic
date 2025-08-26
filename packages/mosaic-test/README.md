@@ -159,7 +159,7 @@ Coverage thresholds are enforced in the build:
 - Branch coverage: 80% minimum
 - Instruction coverage: 90% minimum
 
-Run `./gradlew :packages:mosaic-test:koverHtmlReport` to generate detailed coverage reports.
+Run `./gradlew -p packages :mosaic-test:koverHtmlReport` to generate detailed coverage reports.
 
 ## 🛠️ Development
 
@@ -174,16 +174,16 @@ Run `./gradlew :packages:mosaic-test:koverHtmlReport` to generate detailed cover
 
 ```bash
 # Run all tests
-./gradlew :packages:mosaic-test:test
+./gradlew -p packages :mosaic-test:test
 
 # Run with coverage verification
-./gradlew :packages:mosaic-test:koverVerify
+./gradlew -p packages :mosaic-test:koverVerify
 
 # Run specific test class
-./gradlew :packages:mosaic-test:test --tests "com.abbott.mosaic.test.TestMosaicBuilderTest"
+./gradlew -p packages :mosaic-test:test --tests "com.abbott.mosaic.test.TestMosaicBuilderTest"
 
 # Generate coverage reports
-./gradlew :packages:mosaic-test:koverHtmlReport
+./gradlew -p packages :mosaic-test:koverHtmlReport
 ```
 
 ### Code Quality
