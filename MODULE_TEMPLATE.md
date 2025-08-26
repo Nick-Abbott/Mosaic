@@ -4,14 +4,14 @@ This document explains how to add new modules to the Mosaic project.
 
 ## Adding a New Module
 
-### 1. Update settings.gradle.kts
+### 1. Update packages/settings.gradle.kts
 
-Add your new module to `settings.gradle.kts`:
+Add your new module to `packages/settings.gradle.kts`:
 
 ```kotlin
 // Include all modules
-include("packages:mosaic-core")
-include("packages:your-new-module")  // Add this line
+include("mosaic-core")
+include("your-new-module")  // Add this line
 ```
 
 ### 2. Create Module Directory Structure
@@ -46,10 +46,10 @@ Create a `build.gradle.kts` file in your module directory:
 ```kotlin
 /*
  * Your New Module build.gradle.kts
- * This module inherits all configuration from the root build.gradle.kts
+ * This module inherits all configuration from packages/build.gradle.kts
  */
 
-// This module inherits all configuration from the root build.gradle.kts
+// This module inherits all configuration from packages/build.gradle.kts
 // Additional module-specific configuration can be added here
 
 dependencies {
@@ -57,7 +57,7 @@ dependencies {
     // implementation("some-library:version")
     
     // If you need to depend on other modules in this project:
-    // implementation(project(":packages:mosaic-core"))
+    // implementation(project(":mosaic-core"))
 }
 
 // Example: Override specific configurations for this module
@@ -82,7 +82,7 @@ If your new module needs to depend on other modules in this project:
 
 ```kotlin
 dependencies {
-    implementation(project(":packages:mosaic-core"))
+    implementation(project(":mosaic-core"))
     // Add other module dependencies as needed
 }
 ```
@@ -95,7 +95,7 @@ Here are some example module types you might want to add:
 ```kotlin
 // api/build.gradle.kts
 dependencies {
-    implementation(project(":packages:mosaic-core"))
+    implementation(project(":mosaic-core"))
     implementation("org.springframework.boot:spring-boot-starter-web:3.2.0")
 }
 ```
@@ -104,7 +104,7 @@ dependencies {
 ```kotlin
 // cli/build.gradle.kts
 dependencies {
-    implementation(project(":packages:mosaic-core"))
+    implementation(project(":mosaic-core"))
     implementation("com.github.ajalt:clikt:2.8.0")
 }
 ```
@@ -113,20 +113,20 @@ dependencies {
 ```kotlin
 // utils/build.gradle.kts
 dependencies {
-    implementation(project(":packages:mosaic-core"))
+    implementation(project(":mosaic-core"))
     implementation("org.apache.commons:commons-lang3:3.12.0")
 }
 ```
 
 ## Running Tasks
 
-All tasks from the root build.gradle.kts are available for each module:
+All tasks from `packages/build.gradle.kts` are available for each module:
 
-- `./gradlew :packages:mosaic-core:build` - Build only the mosaic-core module
-- `./gradlew :packages:your-new-module:test` - Run tests for your new module
-- `./gradlew :packages:your-new-module:ktlintCheck` - Check code style for your new module
-- `./gradlew build` - Build all modules
-- `./gradlew test` - Run tests for all modules
+- `./gradlew -p packages :mosaic-core:build` - Build only the mosaic-core module
+- `./gradlew -p packages :your-new-module:test` - Run tests for your new module
+- `./gradlew -p packages :your-new-module:ktlintCheck` - Check code style for your new module
+- `./gradlew -p packages build` - Build all modules
+- `./gradlew -p packages test` - Run tests for all modules
 
 ## Code Quality and Coverage
 

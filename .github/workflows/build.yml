@@ -30,7 +30,7 @@ jobs:
           ${{ runner.os }}-gradle-
 
     - name: Build project (includes compilation, tests, styling, and quality checks)
-      run: ./gradlew build --no-daemon
+      run: ./gradlew -p packages fullBuild --no-daemon
       # This runs the full build lifecycle including:
       # - compileKotlin (compilation)
       # - test (unit tests with coverage)

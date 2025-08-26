@@ -30,6 +30,6 @@ jobs:
           ${{ runner.os }}-gradle-
 
     - name: Run tests
-      run: ./gradlew test --no-daemon
+      run: ./gradlew -p packages test --no-daemon
 
 

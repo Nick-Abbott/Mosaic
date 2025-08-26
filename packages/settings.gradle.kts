@@ -1,7 +1,7 @@
 rootProject.name = "Mosaic"
 
 pluginManagement {
-    includeBuild("build-logic")
+    includeBuild("../build-logic")
     repositories {
         gradlePluginPortal()
         mavenCentral()
@@ -9,13 +9,18 @@ pluginManagement {
 }
 
 dependencyResolutionManagement {
+    versionCatalogs {
+        create("libs") {
+            from(files("../gradle/libs.versions.toml"))
+        }
+    }
     repositories {
         mavenCentral()
     }
 }
 
-include("packages:mosaic-core")
-include("packages:mosaic-test")
+include("mosaic-core")
+include("mosaic-test")
 include("mosaic-build")
 
 // Future modules can be added here:
