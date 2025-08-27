@@ -17,7 +17,7 @@ jobs:
       uses: actions/setup-java@v4
       with:
         java-version: '21'
-        distribution: 'temurin'
+        distribution: 'zulu'
 
     - name: Cache Gradle packages
       uses: actions/cache@v4
@@ -38,6 +38,9 @@ jobs:
       # - Coverage verification (koverVerify)
       # - Artifact generation (jar, assemble)
       # - All verification tasks (check, verifyAll)
+
+    - name: Validate examples
+      run: ./gradlew -p examples build --no-daemon
 
     - name: Generate XML coverage report
       run: ./gradlew -p packages koverXmlReport --no-daemon
