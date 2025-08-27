@@ -35,6 +35,8 @@ abstract class GenerateMosaicRegistryTask : DefaultTask() {
         .filterNot { it.isAbstract || it.isInterface }
         .mapTo(mutableSetOf()) { ClassName.bestGuess(it.name) }
 
+    System.out.println(classpath)
+
     if (classNames.isEmpty()) return
 
     val registerFun =
