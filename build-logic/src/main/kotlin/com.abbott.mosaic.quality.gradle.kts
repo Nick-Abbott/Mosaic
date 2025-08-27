@@ -19,7 +19,7 @@ ktlint {
 }
 
 detekt {
-    config.setFrom(files("${rootProject.projectDir}/config/detekt/detekt.yml"))
+    config.setFrom(files("${rootProject.projectDir}/../build-logic/config/detekt/detekt.yml"))
     buildUponDefaultConfig = true
     allRules = false
     autoCorrect = true

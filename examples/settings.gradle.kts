@@ -9,11 +9,17 @@ pluginManagement {
     }
 }
 
+includeBuild("../packages")
+
 dependencyResolutionManagement {
-    repositories {
-        mavenCentral()
+  versionCatalogs {
+    create("libs") {
+      from(files("../gradle/libs.versions.toml"))
     }
+  }
+  repositories {
+    mavenCentral()
+  }
 }
 
-// Future examples can be added here:
-// include("some-example")
+include("spring-example")
