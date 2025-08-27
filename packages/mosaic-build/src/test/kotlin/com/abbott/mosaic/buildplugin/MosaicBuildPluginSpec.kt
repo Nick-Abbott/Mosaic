@@ -11,31 +11,36 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
 import com.abbott.mosaic.build.GenerateMosaicRegistryTask
+import org.gradle.api.internal.project.ProjectInternal
 
 class MosaicBuildPluginSpec {
   @Test
   fun `plugin registers task and compile dependency`() {
     val project = ProjectBuilder.builder().build()
     project.plugins.apply("java")
-    val compileKotlin = project.tasks.register("compileKotlin")
-
     project.plugins.apply("com.abbott.mosaic.build")
+    (project as ProjectInternal).evaluate()
 
-    val generateProvider = project.tasks.named("generateMosaicRegistry")
-    val generate = generateProvider.get()
+    val generate = project.tasks.named("generateMosaicRegistry").get()
+    val build = project.tasks.named("build").get()
 
-    val sourceSets = project.extensions.getByName("sourceSets") as org.gradle.api.tasks.SourceSetContainer
-    val generatedDir = project.layout.buildDirectory.dir("generated/mosaic").get().asFile
-    assertTrue(sourceSets.getByName("main").java.srcDirs.contains(generatedDir))
-
-    val dependsOnNames = compileKotlin.get().dependsOn.map { dep ->
+    val generateDepends = generate.dependsOn.map { dep ->
       when (dep) {
         is org.gradle.api.Task -> dep.name
         is org.gradle.api.tasks.TaskProvider<*> -> dep.name
         else -> dep.toString()
       }
     }
-    assertTrue("generateMosaicRegistry" in dependsOnNames)
+    assertTrue("classes" in generateDepends)
+
+    val buildDepends = build.dependsOn.map { dep ->
+      when (dep) {
+        is org.gradle.api.Task -> dep.name
+        is org.gradle.api.tasks.TaskProvider<*> -> dep.name
+        else -> dep.toString()
+      }
+    }
+    assertTrue("generateMosaicRegistry" in buildDepends)
   }
 
   @Test

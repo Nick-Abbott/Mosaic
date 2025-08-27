@@ -29,16 +29,20 @@ abstract class GenerateMosaicRegistryTask : DefaultTask() {
         .enableClassInfo()
         .scan()
 
-    val tileClasses = scanResult.getSubclasses("com.abbott.mosaic.Tile")
-    if (tileClasses.isEmpty()) return
+    val classNames =
+      scanResult
+        .getSubclasses("com.abbott.mosaic.Tile")
+        .filterNot { it.isAbstract || it.isInterface }
+        .mapTo(mutableSetOf()) { ClassName.bestGuess(it.name) }
+
+    if (classNames.isEmpty()) return
 
     val registerFun =
       FunSpec
         .builder("registerGeneratedTiles")
         .receiver(ClassName("com.abbott.mosaic", "MosaicRegistry"))
 
-    tileClasses.forEach { classInfo ->
-      val className = ClassName.bestGuess(classInfo.name)
+    classNames.forEach { className ->
       registerFun.addStatement(
         "register(%T::class) { mosaic -> %T(mosaic) }",
         className,
@@ -60,15 +64,17 @@ abstract class GenerateMosaicRegistryTask : DefaultTask() {
 
 class MosaicBuildPlugin : Plugin<Project> {
   override fun apply(project: Project) {
-    val sourceSets = project.extensions.getByType(SourceSetContainer::class.java)
-    val generateTask =
-      project.tasks.register("generateMosaicRegistry", GenerateMosaicRegistryTask::class.java) { task ->
-        task.outputDir.set(project.layout.buildDirectory.dir("generated/mosaic"))
-        task.classpath.setFrom(project.configurations.getByName("compileClasspath"))
-      }
+    project.afterEvaluate {
+      val sourceSets = project.extensions.getByType(SourceSetContainer::class.java)
 
-    sourceSets.getByName("main").java.srcDir(generateTask.map { it.outputDir })
+        val generateTask =
+          project.tasks.register("generateMosaicRegistry", GenerateMosaicRegistryTask::class.java) { task ->
+            task.outputDir.set(project.layout.buildDirectory.dir("generated/mosaic"))
+            task.classpath.from(sourceSets.getByName("main").runtimeClasspath)
+            task.dependsOn(project.tasks.named("classes"))
+          }
 
-    project.tasks.named("compileKotlin").configure { it.dependsOn(generateTask) }
+        project.tasks.named("build").configure { it.dependsOn(generateTask) }
+    }
   }
 }
