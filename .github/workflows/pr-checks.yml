@@ -21,7 +21,7 @@ jobs:
         cache: gradle
 
     - name: Run comprehensive PR validation
-      run: ./gradlew check --no-daemon --info
+      run: ./gradlew check --no-daemon
       # This runs the most comprehensive validation including:
       # - Compilation (compileKotlin, compileJava)
       # - Tests (test with coverage - koverHtmlReport, koverVerify)
