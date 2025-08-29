@@ -16,20 +16,17 @@ jobs:
     - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
-        java-version: '21'
-        distribution: 'temurin'
-
-    - name: Cache Gradle packages
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-        restore-keys: |
-          ${{ runner.os }}-gradle-
+        java-version: 21
+        distribution: zulu
+        cache: gradle
 
     - name: Run tests
-      run: ./gradlew -p packages test --no-daemon
+      run: ./gradlew test --no-daemon
+      # This runs tests only:
+      # - compileKotlin (compilation dependency)
+      # - compileTestKotlin (test compilation)
+      # - test (unit tests with coverage)
+      # - koverHtmlReport (coverage report generation)
+      # NO style checks (ktlint/detekt), NO koverVerify
 
 

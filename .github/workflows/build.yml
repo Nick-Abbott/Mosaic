@@ -6,7 +6,7 @@ on:
 
 jobs:
   build:
-    name: Build with Styling
+    name: Build Compilation Only
     runs-on: ubuntu-latest
 
     steps:
@@ -16,27 +16,16 @@ jobs:
     - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
-        java-version: '21'
-        distribution: 'temurin'
+        java-version: 21
+        distribution: zulu
+        cache: gradle
 
-    - name: Cache Gradle packages
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-        restore-keys: |
-          ${{ runner.os }}-gradle-
-
-    - name: Build project (includes compilation, tests, styling, and quality checks)
-      run: ./gradlew -p packages fullBuild --no-daemon
-      # This runs the full build lifecycle including:
-      # - compileKotlin (compilation)
-      # - test (unit tests with coverage)
-      # - ktlintCheck (code formatting)
-      # - detekt (static analysis)
-      # - koverVerify (coverage verification)
-      # - check (runs verifyAll which includes styleCheck + coverageCheck)
+    - name: Build project (compilation only)
+      run: ./gradlew assemble --no-daemon
+      # This runs compilation only:
+      # - compileKotlin (main source compilation)
+      # - jar (artifact generation)
+      # - assemble (all output artifacts)
+      # NO tests, NO style checks, NO quality checks
 
 

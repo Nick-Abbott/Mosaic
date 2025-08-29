@@ -16,36 +16,25 @@ jobs:
     - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
-        java-version: '21'
-        distribution: 'zulu'
-
-    - name: Cache Gradle packages
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-        restore-keys: |
-          ${{ runner.os }}-gradle-
+        java-version: 21
+        distribution: zulu
+        cache: gradle
 
     - name: Run comprehensive PR validation
-      run: ./gradlew -p packages fullBuild --no-daemon
+      run: ./gradlew check --no-daemon --info
       # This runs the most comprehensive validation including:
       # - Compilation (compileKotlin, compileJava)
-      # - Tests (test with coverage)
-      # - Code quality (ktlint, detekt)
-      # - Coverage verification (koverVerify)
-      # - Artifact generation (jar, assemble)
-      # - All verification tasks (check, verifyAll)
+      # - Tests (test with coverage - koverHtmlReport, koverVerify)
+      # - Code quality (ktlintCheck, detekt)
+      # - Coverage verification (koverCachedVerify)
+      # - All verification tasks across all projects
 
-    - name: Validate examples
-      run: ./gradlew -p examples build --no-daemon
-
-    - name: Generate XML coverage report
-      run: ./gradlew -p packages koverXmlReport --no-daemon
+    - name: Generate XML coverage report (for debugging)
+      if: failure()
+      run: ./gradlew koverXmlReport --no-daemon
 
     - name: Verify build artifacts
+      if: failure()
       run: |
         echo "Verifying build artifacts..."
         find . -path "**/build/reports/*" -type d | grep -E "(detekt|kover|ktlint|tests)" | wc -l

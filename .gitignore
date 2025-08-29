@@ -6,7 +6,8 @@
 .vscode
 .DS_Store
 bin
-build
+**/build/
+!**/src/**/build/
 target
 ktDebugJsonLog.txt
 .kotlin
