@@ -9,6 +9,10 @@ import com.abbott.mosaic.examples.spring.orders.service.OrderService
 class OrderTile(mosaic: Mosaic) : SingleTile<Order>(mosaic) {
   override suspend fun retrieve(): Order {
     val orderId = (mosaic.request as OrderRequest).orderId
-    return OrderService.getOrder(orderId)
+    return try {
+      OrderService.getOrder(orderId)
+    } catch (e: NoSuchElementException) {
+      throw OrderNotFoundException(orderId, e)
+    }
   }
 }
