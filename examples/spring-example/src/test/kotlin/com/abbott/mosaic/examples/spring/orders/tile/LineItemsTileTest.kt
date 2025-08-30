@@ -32,8 +32,8 @@ class LineItemsTileTest {
       val testMosaic =
         TestMosaicBuilder()
           .withMockTile(OrderTile::class, order)
-          .withMockMultiTile(ProductsByIdTile::class, products)
-          .withMockMultiTile(PricingBySkuTile::class, prices)
+          .withMockTile(ProductsByIdTile::class, products)
+          .withMockTile(PricingBySkuTile::class, prices)
           .build()
       testMosaic.assertEquals(LineItemsTile::class, expected)
     }

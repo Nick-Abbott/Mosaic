@@ -17,18 +17,18 @@
 package com.abbott.mosaic.test
 
 /**
- * Defines the behavior of mock tiles during testing.
+ * Internal behaviors used by [TestMosaicBuilder] when constructing mocks.
  */
-enum class MockBehavior {
+internal enum class MockBehavior {
   /** Mock returns the specified data successfully */
   SUCCESS,
 
-  /** Mock throws a RuntimeException */
+  /** Mock throws the provided [Throwable] */
   ERROR,
 
-  /** Mock delays for 100ms before returning data */
+  /** Mock delays for a configured duration before returning data */
   DELAY,
 
-  /** Mock uses custom behavior (extensible for future use) */
+  /** Mock executes the provided custom lambda */
   CUSTOM,
 }

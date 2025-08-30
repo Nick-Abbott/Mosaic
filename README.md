@@ -221,7 +221,6 @@ The project includes a comprehensive testing framework in the `mosaic-test` modu
 ### **Testing Framework Features**
 - **TestMosaic**: Main test wrapper with assertion methods for SingleTile and MultiTile
 - **TestMosaicBuilder**: Fluent builder for creating test scenarios with mocked tiles
-- **MockBehavior**: Configurable behaviors (SUCCESS, ERROR, DELAY, CUSTOM) for different test scenarios
 - **Comprehensive Coverage**: Excellent test coverage with enforced thresholds
 
 ### **Running Tests**
@@ -244,24 +243,24 @@ The project includes a comprehensive testing framework in the `mosaic-test` modu
 ### **Testing Examples**
 
 ```kotlin
-// Test SingleTile with success behavior
+// Test SingleTile with mock response
 @Test
 fun `should test single tile`() = runTestMosaicTest {
     val testMosaic = TestMosaicBuilder()
-        .withMockTile(TestSingleTile::class, "test-data", MockBehavior.SUCCESS)
+        .withMockTile(TestSingleTile::class, "test-data")
         .build()
-    
+
     registry.register(TestSingleTile::class) { testMosaic.getMockTiles()[TestSingleTile::class] as TestSingleTile }
     testMosaic.assertEquals(tileClass = TestSingleTile::class, expected = "test-data")
 }
 
-// Test MultiTile with error behavior
+// Test MultiTile with failure
 @Test
 fun `should test error handling`() = runTestMosaicTest {
     val testMosaic = TestMosaicBuilder()
-        .withMockMultiTile(TestMultiTile::class, mapOf("key1" to "value1"), MockBehavior.ERROR)
+        .withFailedTile(TestMultiTile::class, RuntimeException("error"))
         .build()
-    
+
     registry.register(TestMultiTile::class) { testMosaic.getMockTiles()[TestMultiTile::class] as TestMultiTile }
     testMosaic.assertThrows(tileClass = TestMultiTile::class, keys = listOf("key1"), expectedException = RuntimeException::class.java)
 }

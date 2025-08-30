@@ -22,7 +22,7 @@ class LogisticsTileTest {
       val testMosaic =
         TestMosaicBuilder()
           .withMockTile(AddressTile::class, address)
-          .withMockMultiTile(CarrierQuotesTile::class, quotes)
+          .withMockTile(CarrierQuotesTile::class, quotes)
           .build()
       testMosaic.assertEquals(LogisticsTile::class, expected)
     }
