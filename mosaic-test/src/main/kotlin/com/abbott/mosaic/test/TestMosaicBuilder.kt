@@ -48,9 +48,8 @@ class TestMosaicBuilder {
   fun <T : Tile, R> withMockTile(
     tileClass: KClass<T>,
     returnData: R,
-    behavior: MockBehavior = MockBehavior.SUCCESS,
   ): TestMosaicBuilder {
-    val mockTile = createMockTileWithMockK(tileClass, returnData, behavior)
+    val mockTile = createMockTileWithMockK(tileClass, returnData, MockBehavior.SUCCESS)
     mockTiles[tileClass] = mockTile
     return this
   }
@@ -58,21 +57,17 @@ class TestMosaicBuilder {
   fun <T : SingleTile<R>, R> withMockTile(
     tileClass: KClass<T>,
     returnData: R,
-    behavior: MockBehavior = MockBehavior.SUCCESS,
   ): TestMosaicBuilder {
-    val mockTile = createMockTileWithMockK(tileClass, returnData, behavior)
+    val mockTile = createMockTileWithMockK(tileClass, returnData, MockBehavior.SUCCESS)
     mockTiles[tileClass] = mockTile
     return this
   }
 
-  inline fun <reified T : SingleTile<R>, R> withMockTile(
-    returnData: R,
-    behavior: MockBehavior = MockBehavior.SUCCESS,
-  ): TestMosaicBuilder {
-    return withMockTile(T::class, returnData, behavior)
+  inline fun <reified T : SingleTile<R>, R> withMockTile(returnData: R): TestMosaicBuilder {
+    return withMockTile(T::class, returnData)
   }
 
-  fun <T : SingleTile<R>, R> withMockTileDelay(
+  fun <T : SingleTile<R>, R> withDelayedTile(
     tileClass: KClass<T>,
     returnData: R,
   ): TestMosaicBuilder {
@@ -81,42 +76,37 @@ class TestMosaicBuilder {
     return this
   }
 
-  inline fun <reified T : SingleTile<R>, R> withMockTileDelay(
-    returnData: R,
-  ): TestMosaicBuilder {
-    return withMockTileDelay(T::class, returnData)
+  inline fun <reified T : SingleTile<R>, R> withDelayedTile(returnData: R): TestMosaicBuilder {
+    return withDelayedTile(T::class, returnData)
   }
 
-  fun <T : SingleTile<R>, R> withMockTileError(
+  fun <T : SingleTile<R>, R> withFailingTile(
     tileClass: KClass<T>,
     error: Throwable,
   ): TestMosaicBuilder {
-    val mockTile = createMockTileWithMockK<T, R>(tileClass, returnData = null as R, behavior = MockBehavior.ERROR, error = error)
+    val mockTile =
+      createMockTileWithMockK<T, R>(tileClass, returnData = null as R, behavior = MockBehavior.ERROR, error = error)
     mockTiles[tileClass] = mockTile
     return this
   }
 
-  inline fun <reified T : SingleTile<R>, R> withMockTileError(
-    error: Throwable,
-  ): TestMosaicBuilder {
-    return withMockTileError<T, R>(T::class, error)
+  inline fun <reified T : SingleTile<R>, R> withFailingTile(error: Throwable): TestMosaicBuilder {
+    return withFailingTile<T, R>(T::class, error)
   }
 
-  fun <T : SingleTile<R>, R> withMockTileCustom(
+  fun <T : SingleTile<R>, R> withCustomTile(
     tileClass: KClass<T>,
     custom: suspend () -> R,
   ): TestMosaicBuilder {
-    val mockTile = createMockTileWithMockK<T, R>(tileClass, returnData = null as R, behavior = MockBehavior.CUSTOM, custom = custom)
+    val mockTile =
+      createMockTileWithMockK<T, R>(tileClass, returnData = null as R, behavior = MockBehavior.CUSTOM, custom = custom)
     mockTiles[tileClass] = mockTile
     return this
   }
 
-  inline fun <reified T : SingleTile<R>, R> withMockTileCustom(
-    noinline custom: suspend () -> R,
-  ): TestMosaicBuilder {
-    return withMockTileCustom<T, R>(T::class, custom)
+  inline fun <reified T : SingleTile<R>, R> withCustomTile(noinline custom: suspend () -> R): TestMosaicBuilder {
+    return withCustomTile<T, R>(T::class, custom)
   }
-
 
   /**
    * Adds a mock multi-tile that returns the specified data.
@@ -129,9 +119,8 @@ class TestMosaicBuilder {
   fun <T : Tile, R> withMockMultiTile(
     tileClass: KClass<T>,
     returnData: Map<String, R>,
-    behavior: MockBehavior = MockBehavior.SUCCESS,
   ): TestMosaicBuilder {
-    val mockTile = createMockTileWithMockK(tileClass, returnData, behavior)
+    val mockTile = createMockTileWithMockK(tileClass, returnData, MockBehavior.SUCCESS)
     mockTiles[tileClass] = mockTile
     return this
   }
@@ -139,21 +128,17 @@ class TestMosaicBuilder {
   fun <T : MultiTile<*, R>, R> withMockMultiTile(
     tileClass: KClass<T>,
     returnData: Map<String, R>,
-    behavior: MockBehavior = MockBehavior.SUCCESS,
   ): TestMosaicBuilder {
-    val mockTile = createMockTileWithMockK(tileClass, returnData, behavior)
+    val mockTile = createMockTileWithMockK(tileClass, returnData, MockBehavior.SUCCESS)
     mockTiles[tileClass] = mockTile
     return this
   }
 
-  inline fun <reified T : MultiTile<*, R>, R> withMockMultiTile(
-    returnData: Map<String, R>,
-    behavior: MockBehavior = MockBehavior.SUCCESS,
-  ): TestMosaicBuilder {
-    return withMockMultiTile(T::class, returnData, behavior)
+  inline fun <reified T : MultiTile<*, R>, R> withMockMultiTile(returnData: Map<String, R>): TestMosaicBuilder {
+    return withMockMultiTile(T::class, returnData)
   }
 
-  fun <T : MultiTile<*, R>, R> withMockMultiTileDelay(
+  fun <T : MultiTile<*, R>, R> withDelayedMultiTile(
     tileClass: KClass<T>,
     returnData: Map<String, R>,
   ): TestMosaicBuilder {
@@ -162,42 +147,49 @@ class TestMosaicBuilder {
     return this
   }
 
-  inline fun <reified T : MultiTile<*, R>, R> withMockMultiTileDelay(
-    returnData: Map<String, R>,
-  ): TestMosaicBuilder {
-    return withMockMultiTileDelay(T::class, returnData)
+  inline fun <reified T : MultiTile<*, R>, R> withDelayedMultiTile(returnData: Map<String, R>): TestMosaicBuilder {
+    return withDelayedMultiTile(T::class, returnData)
   }
 
-  fun <T : MultiTile<*, R>, R> withMockMultiTileError(
+  fun <T : MultiTile<*, R>, R> withFailingMultiTile(
     tileClass: KClass<T>,
     error: Throwable,
   ): TestMosaicBuilder {
-    val mockTile = createMockTileWithMockK<T, Map<String, R>>(tileClass, returnData = emptyMap(), behavior = MockBehavior.ERROR, error = error)
+    val mockTile =
+      createMockTileWithMockK<T, Map<String, R>>(
+        tileClass,
+        returnData = emptyMap(),
+        behavior = MockBehavior.ERROR,
+        error = error,
+      )
     mockTiles[tileClass] = mockTile
     return this
   }
 
-  inline fun <reified T : MultiTile<*, R>, R> withMockMultiTileError(
-    error: Throwable,
-  ): TestMosaicBuilder {
-    return withMockMultiTileError<T, R>(T::class, error)
+  inline fun <reified T : MultiTile<*, R>, R> withFailingMultiTile(error: Throwable): TestMosaicBuilder {
+    return withFailingMultiTile<T, R>(T::class, error)
   }
 
-  fun <T : MultiTile<*, R>, R> withMockMultiTileCustom(
+  fun <T : MultiTile<*, R>, R> withCustomMultiTile(
     tileClass: KClass<T>,
     custom: suspend (keys: List<String>) -> Map<String, R>,
   ): TestMosaicBuilder {
-    val mockTile = createMockTileWithMockK<T, Map<String, R>>(tileClass, returnData = emptyMap(), behavior = MockBehavior.CUSTOM, custom = custom)
+    val mockTile =
+      createMockTileWithMockK<T, Map<String, R>>(
+        tileClass,
+        returnData = emptyMap(),
+        behavior = MockBehavior.CUSTOM,
+        custom = custom,
+      )
     mockTiles[tileClass] = mockTile
     return this
   }
 
-  inline fun <reified T : MultiTile<*, R>, R> withMockMultiTileCustom(
+  inline fun <reified T : MultiTile<*, R>, R> withCustomMultiTile(
     noinline custom: suspend (keys: List<String>) -> Map<String, R>,
   ): TestMosaicBuilder {
-    return withMockMultiTileCustom<T, R>(T::class, custom)
+    return withCustomMultiTile<T, R>(T::class, custom)
   }
-
 
   /**
    * Sets the request to use for the test mosaic.
@@ -304,8 +296,8 @@ class TestMosaicBuilder {
     error: Throwable?,
     custom: (suspend (List<String>) -> Map<String, R>)?,
   ) {
-    coEvery { mock.getByKeys(any()) } answers {
-      val keys = this.args[0] as List<String>
+    coEvery { mock.getByKeys(io.mockk.any<List<String>>() ) } answers {
+      val keys = io.mockk.firstArg<List<String>>()
       runBlocking {
         when (behavior) {
           MockBehavior.SUCCESS -> returnData.filterKeys { it in keys }

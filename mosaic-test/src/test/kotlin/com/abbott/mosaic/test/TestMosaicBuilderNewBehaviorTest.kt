@@ -1,8 +1,8 @@
 package com.abbott.mosaic.test
 
 import com.abbott.mosaic.Mosaic
-import com.abbott.mosaic.SingleTile
 import com.abbott.mosaic.MultiTile
+import com.abbott.mosaic.SingleTile
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -21,85 +21,97 @@ private class StringMultiTile(mosaic: Mosaic) : MultiTile<String, String>(mosaic
 }
 
 class TestMosaicBuilderNewBehaviorTest {
-
   @Test
-  fun singleTile_error_throwsProvidedThrowable() {
+  fun `SingleTile failing throws provided Throwable`() {
     val ex = IllegalStateException("boom")
-    val mosaic = TestMosaicBuilder()
-      .withMockTileError<StringSingleTile, String>(ex)
-      .build()
+    val mosaic =
+      TestMosaicBuilder()
+        .withFailingTile<StringSingleTile, String>(ex)
+        .build()
 
     val tile = mosaic.getTile<StringSingleTile>()
-    val thrown = assertThrows(IllegalStateException::class.java) {
-      runBlocking { tile.get() }
-    }
+    val thrown =
+      assertThrows(IllegalStateException::class.java) {
+        runBlocking { tile.get() }
+      }
     assertEquals("boom", thrown.message)
   }
 
   @Test
-  fun multiTile_error_throwsProvidedThrowable() {
+  fun `MultiTile failing throws provided Throwable`() {
     val ex = IllegalArgumentException("bad")
-    val mosaic = TestMosaicBuilder()
-      .withMockMultiTileError<StringMultiTile, String>(ex)
-      .build()
+    val mosaic =
+      TestMosaicBuilder()
+        .withFailingMultiTile<StringMultiTile, String>(ex)
+        .build()
 
     val tile = mosaic.getTile<StringMultiTile>()
-    val thrown = assertThrows(IllegalArgumentException::class.java) {
-      runBlocking { tile.getByKeys(listOf("a")) }
-    }
+    val thrown =
+      assertThrows(IllegalArgumentException::class.java) {
+        runBlocking { tile.getByKeys(listOf("a")) }
+      }
     assertEquals("bad", thrown.message)
   }
 
   @Test
-  fun singleTile_custom_invokesLambda() = runBlocking {
-    val mosaic = TestMosaicBuilder()
-      .withMockTileCustom<StringSingleTile, String> { "computed" }
-      .build()
+  fun `SingleTile custom invokes lambda`() =
+    runBlocking {
+      val mosaic =
+        TestMosaicBuilder()
+          .withCustomTile<StringSingleTile, String> { "computed" }
+          .build()
 
-    val tile = mosaic.getTile<StringSingleTile>()
-    assertEquals("computed", tile.get())
-  }
-
-  @Test
-  fun multiTile_custom_invokesLambdaWithKeys() = runBlocking {
-    val mosaic = TestMosaicBuilder()
-      .withMockMultiTileCustom<StringMultiTile, String> { keys ->
-        keys.associateWith { k -> "v:$k" }
-      }
-      .build()
-
-    val tile = mosaic.getTile<StringMultiTile>()
-    val result = tile.getByKeys(listOf("x", "y", "z"))
-    assertEquals(mapOf("x" to "v:x", "y" to "v:y", "z" to "v:z"), result)
-  }
+      val tile = mosaic.getTile<StringSingleTile>()
+      assertEquals("computed", tile.get())
+    }
 
   @Test
-  fun singleTile_success_returnsTypedData() = runBlocking {
-    val mosaic = TestMosaicBuilder()
-      .withMockTile<StringSingleTile, String>("hello", MockBehavior.SUCCESS)
-      .build()
+  fun `MultiTile custom invokes lambda with keys`() =
+    runBlocking {
+      val mosaic =
+        TestMosaicBuilder()
+          .withCustomMultiTile<StringMultiTile, String> { keys ->
+            keys.associateWith { k -> "v:$k" }
+          }
+          .build()
 
-    val tile = mosaic.getTile<StringSingleTile>()
-    assertEquals("hello", tile.get())
-  }
-
-  @Test
-  fun multiTile_delay_returnsTypedDataAfterDelay() = runBlocking {
-    val data = mapOf("a" to 1, "b" to 2)
-    val mosaic = TestMosaicBuilder()
-      .withMockMultiTileDelay<StringMultiTile, String>(returnData = data.mapValues { it.key + it.value })
-      .build()
-
-    val tile = mosaic.getTile<StringMultiTile>()
-    val result = tile.getByKeys(listOf("a", "b"))
-    assertEquals(mapOf("a" to "a1", "b" to "b2"), result)
-  }
+      val tile = mosaic.getTile<StringMultiTile>()
+      val result = tile.getByKeys(listOf("x", "y", "z"))
+      assertEquals(mapOf("x" to "v:x", "y" to "v:y", "z" to "v:z"), result)
+    }
 
   @Test
-  fun singleTile_typeSafety_compilesWithCorrectR() {
-    val mosaic = TestMosaicBuilder()
-      .withMockTile<IntSingleTile, Int>(42, MockBehavior.SUCCESS)
-      .build()
+  fun `SingleTile success returns typed data`() =
+    runBlocking {
+      val mosaic =
+        TestMosaicBuilder()
+          .withMockTile<StringSingleTile, String>("hello")
+          .build()
+
+      val tile = mosaic.getTile<StringSingleTile>()
+      assertEquals("hello", tile.get())
+    }
+
+  @Test
+  fun `MultiTile delay returns typed data after delay`() =
+    runBlocking {
+      val data = mapOf("a" to "a1", "b" to "b2")
+      val mosaic =
+        TestMosaicBuilder()
+          .withDelayedMultiTile<StringMultiTile, String>(returnData = data)
+          .build()
+
+      val tile = mosaic.getTile<StringMultiTile>()
+      val result = tile.getByKeys(listOf("a", "b"))
+      assertEquals(mapOf("a" to "a1", "b" to "b2"), result)
+    }
+
+  @Test
+  fun `SingleTile type-safety compiles with correct R`() {
+    val mosaic =
+      TestMosaicBuilder()
+        .withMockTile<IntSingleTile, Int>(42)
+        .build()
 
     val tile = mosaic.getTile<IntSingleTile>()
     val v = runBlocking { tile.get() }
