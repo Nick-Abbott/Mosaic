@@ -29,4 +29,21 @@ class OrderPageTileTest {
           .build()
       testMosaic.assertEquals(OrderPageTile::class, expected)
     }
+
+  @Test
+  fun `order page tile fails when logistics tile fails`() =
+    runBlocking {
+      val summary =
+        OrderSummary(
+          order = Order("order-1", "customer-1", emptyList()),
+          customer = Customer("customer-1", "Jane Doe"),
+          lineItems = emptyList(),
+        )
+      val testMosaic =
+        TestMosaicBuilder()
+          .withMockTile(OrderSummaryTile::class, summary)
+          .withFailedTile(LogisticsTile::class, RuntimeException("boom"))
+          .build()
+      testMosaic.assertThrows(OrderPageTile::class, RuntimeException::class.java)
+    }
 }

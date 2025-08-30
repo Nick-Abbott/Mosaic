@@ -23,4 +23,14 @@ class OrderTotalTileTest {
           .build()
       testMosaic.assertEquals(OrderTotalTile::class, expected)
     }
+
+  @Test
+  fun `order total tile fails when line items fail`() =
+    runBlocking {
+      val testMosaic =
+        TestMosaicBuilder()
+          .withFailedTile(LineItemsTile::class, RuntimeException("boom"))
+          .build()
+      testMosaic.assertThrows(OrderTotalTile::class, RuntimeException::class.java)
+    }
 }

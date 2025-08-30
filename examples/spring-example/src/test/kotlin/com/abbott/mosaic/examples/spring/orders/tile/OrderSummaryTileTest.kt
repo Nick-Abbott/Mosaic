@@ -27,4 +27,14 @@ class OrderSummaryTileTest {
           .build()
       testMosaic.assertEquals(OrderSummaryTile::class, expected)
     }
+
+  @Test
+  fun `order summary tile fails when order tile fails`() =
+    runBlocking {
+      val testMosaic =
+        TestMosaicBuilder()
+          .withFailedTile(OrderTile::class, RuntimeException("boom"))
+          .build()
+      testMosaic.assertThrows(OrderSummaryTile::class, RuntimeException::class.java)
+    }
 }

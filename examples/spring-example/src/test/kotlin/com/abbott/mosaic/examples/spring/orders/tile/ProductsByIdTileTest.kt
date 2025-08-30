@@ -18,4 +18,15 @@ class ProductsByIdTileTest {
       val testMosaic = TestMosaicBuilder().build()
       testMosaic.assertEquals(ProductsByIdTile::class, keys, expected)
     }
+
+  @Test
+  fun `products tile propagates failures`() =
+    runBlocking {
+      val keys = listOf("product-1")
+      val testMosaic =
+        TestMosaicBuilder()
+          .withFailedTile(ProductsByIdTile::class, RuntimeException("boom"))
+          .build()
+      testMosaic.assertThrows(ProductsByIdTile::class, keys, RuntimeException::class.java)
+    }
 }

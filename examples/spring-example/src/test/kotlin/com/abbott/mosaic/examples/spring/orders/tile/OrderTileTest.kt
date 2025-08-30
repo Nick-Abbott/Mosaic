@@ -24,4 +24,11 @@ class OrderTileTest {
       val testMosaic = TestMosaicBuilder().withRequest(OrderRequest("order-1")).build()
       testMosaic.assertEquals(OrderTile::class, expected)
     }
+
+  @Test
+  fun `order tile throws custom exception when missing`() =
+    runBlocking {
+      val testMosaic = TestMosaicBuilder().withRequest(OrderRequest("missing")).build()
+      testMosaic.assertThrows(OrderTile::class, OrderNotFoundException::class.java)
+    }
 }
