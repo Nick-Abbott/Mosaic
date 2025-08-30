@@ -5,6 +5,7 @@ import com.abbott.mosaic.MosaicRegistry
 import com.abbott.mosaic.examples.spring.orders.OrderRequest
 import com.abbott.mosaic.examples.spring.orders.model.OrderPage
 import com.abbott.mosaic.examples.spring.orders.tile.OrderPageTile
+import com.abbott.mosaic.examples.spring.orders.tile.OrderTotalTile
 import kotlinx.coroutines.runBlocking
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -21,5 +22,14 @@ class OrderController(private val registry: MosaicRegistry) {
     runBlocking {
       val mosaic = Mosaic(registry, OrderRequest(id))
       mosaic.getTile<OrderPageTile>().get()
+    }
+
+  @GetMapping("/{id}/total")
+  fun getOrderTotal(
+    @PathVariable("id") id: String,
+  ): Double =
+    runBlocking {
+      val mosaic = Mosaic(registry, OrderRequest(id))
+      mosaic.getTile<OrderTotalTile>().get()
     }
 }
