@@ -15,7 +15,6 @@ import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.ksp.writeTo
-import java.io.File
 
 class MosaicSymbolProcessor(
   private val codeGenerator: CodeGenerator
@@ -37,12 +36,12 @@ class MosaicSymbolProcessor(
       .toList()
 
     val metadataTiles =
-      allFiles
-        .filter {
-          it.fileName == "tiles.mosaic-metadata" &&
-            it.packageName.asString() == "com.abbott.mosaic.generated"
-        }
-        .flatMap { file -> File(file.filePath).readLines().asSequence() }
+      Thread.currentThread()
+        .contextClassLoader
+        .getResources("com/abbott/mosaic/generated/tiles.mosaic-metadata")
+        .toList()
+        .asSequence()
+        .flatMap { url -> url.openStream().bufferedReader().readLines().asSequence() }
         .filter { it.isNotBlank() }
         .map { ClassName.bestGuess(it) }
         .toList()

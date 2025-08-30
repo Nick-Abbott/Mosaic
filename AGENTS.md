@@ -92,7 +92,8 @@ class UserProfileTile(mosaic: Mosaic) : SingleTile<UserProfile>(mosaic) {
 - Isolate tiles from their dependent tiles by using `TestMosaicBuilder`
 - Test both success and error scenarios
 - Use `TestMosaicBuilder` helpers (`withMockTile`, `withFailedTile`, etc.) for different test scenarios
-- Aim for 80%+ code coverage (enforced by Kover)
+- Build plugin modules (`mosaic-build` and `mosaic-metadata`) do not have unit tests
+- Aim for 80%+ code coverage for other modules (enforced by Kover)
 
 ### Common Operations
 
@@ -139,6 +140,9 @@ class UserProfileTile(mosaic: Mosaic) : SingleTile<UserProfile>(mosaic) {
 - Demonstrates real-world usage patterns
 - Spring Boot integration example available
 - Good reference for best practices
+
+#### mosaic-build & mosaic-metadata
+- Build plugin modules without unit tests
 
 ### Performance Considerations
 - Tiles should be lightweight and focused
