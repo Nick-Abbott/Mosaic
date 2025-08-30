@@ -36,7 +36,8 @@ class TileMetadataSymbolProcessor(
     }
 
     @Suppress("SpreadOperator")
-    val dependencies = Dependencies(false, *tiles.mapNotNull { it.containingFile }.toTypedArray())
+    val dependencies =
+      Dependencies(aggregating = true, *tiles.mapNotNull { it.containingFile }.toTypedArray())
     val out =
       codeGenerator.createNewFile(
         dependencies,
