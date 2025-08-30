@@ -9,6 +9,7 @@ dependencies {
   implementation("org.springframework.boot:spring-boot-starter-web:3.2.5")
   implementation(libs.kotlinx.coroutines.core)
   ksp(project(":mosaic-build"))
+  testImplementation(project(":mosaic-test"))
 }
 
 application {
