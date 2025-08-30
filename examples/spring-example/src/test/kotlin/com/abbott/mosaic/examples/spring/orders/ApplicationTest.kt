@@ -25,6 +25,14 @@ class ApplicationTest {
   }
 
   @Test
+  fun `order controller returns order total`() {
+    val registry = MosaicConfig().mosaicRegistry()
+    val controller = OrderController(registry)
+    val total = controller.getOrderTotal("order-1")
+    assertEquals(55.97, total, 0.001)
+  }
+
+  @Test
   fun `order controller throws when missing`() {
     val registry = MosaicConfig().mosaicRegistry()
     val controller = OrderController(registry)
