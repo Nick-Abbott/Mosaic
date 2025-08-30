@@ -26,4 +26,16 @@ class LogisticsTileTest {
           .build()
       testMosaic.assertEquals(LogisticsTile::class, expected)
     }
+
+  @Test
+  fun `logistics tile fails when quotes tile fails`() =
+    runBlocking {
+      val address = Address("123 Main St", "Springfield")
+      val testMosaic =
+        TestMosaicBuilder()
+          .withMockTile(AddressTile::class, address)
+          .withFailedTile(CarrierQuotesTile::class, RuntimeException("boom"))
+          .build()
+      testMosaic.assertThrows(LogisticsTile::class, RuntimeException::class.java)
+    }
 }

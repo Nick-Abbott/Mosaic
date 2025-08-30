@@ -37,4 +37,21 @@ class LineItemsTileTest {
           .build()
       testMosaic.assertEquals(LineItemsTile::class, expected)
     }
+
+  @Test
+  fun `line items tile fails when products tile fails`() =
+    runBlocking {
+      val order =
+        Order(
+          id = "order-1",
+          customerId = "customer-1",
+          items = listOf(OrderLineItem("product-1", "sku-1", 1)),
+        )
+      val testMosaic =
+        TestMosaicBuilder()
+          .withMockTile(OrderTile::class, order)
+          .withFailedTile(ProductsByIdTile::class, RuntimeException("boom"))
+          .build()
+      testMosaic.assertThrows(LineItemsTile::class, RuntimeException::class.java)
+    }
 }

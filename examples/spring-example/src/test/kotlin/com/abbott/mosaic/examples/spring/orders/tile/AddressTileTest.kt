@@ -14,4 +14,14 @@ class AddressTileTest {
       val expected = Address("123 Main St", "Springfield")
       testMosaic.assertEquals(AddressTile::class, expected)
     }
+
+  @Test
+  fun `address tile propagates failures`() =
+    runBlocking {
+      val testMosaic =
+        TestMosaicBuilder()
+          .withFailedTile(AddressTile::class, RuntimeException("boom"))
+          .build()
+      testMosaic.assertThrows(AddressTile::class, RuntimeException::class.java)
+    }
 }

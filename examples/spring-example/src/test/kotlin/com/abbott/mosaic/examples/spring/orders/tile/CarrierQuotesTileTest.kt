@@ -20,4 +20,15 @@ class CarrierQuotesTileTest {
       val testMosaic = TestMosaicBuilder().withMockTile(AddressTile::class, address).build()
       testMosaic.assertEquals(CarrierQuotesTile::class, carriers, quotes)
     }
+
+  @Test
+  fun `carrier quotes tile fails when address fails`() =
+    runBlocking {
+      val carriers = listOf("UPS", "FEDEX")
+      val testMosaic =
+        TestMosaicBuilder()
+          .withFailedTile(AddressTile::class, RuntimeException("boom"))
+          .build()
+      testMosaic.assertThrows(CarrierQuotesTile::class, carriers, RuntimeException::class.java)
+    }
 }
