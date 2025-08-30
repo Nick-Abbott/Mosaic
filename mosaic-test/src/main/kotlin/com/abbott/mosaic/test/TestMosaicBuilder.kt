@@ -32,6 +32,7 @@ import kotlin.reflect.KClass
  * Builder for creating test mosaics with mocked tiles.
  * Provides a fluent API for setting up test scenarios.
  */
+@Suppress("LargeClass")
 class TestMosaicBuilder {
   private val internalRegistry = MosaicRegistry()
   private var request: MosaicRequest = MockMosaicRequest()
@@ -236,7 +237,7 @@ class TestMosaicBuilder {
     return mock
   }
 
-  @Suppress("UNCHECKED_CAST")
+  @Suppress("UNCHECKED_CAST", "LongParameterList")
   private fun <T : Tile, R> setupMockBehavior(
     mock: T,
     tileClass: KClass<T>,
@@ -296,8 +297,8 @@ class TestMosaicBuilder {
     error: Throwable?,
     custom: (suspend (List<String>) -> Map<String, R>)?,
   ) {
-    coEvery { mock.getByKeys(io.mockk.any<List<String>>() ) } answers {
-      val keys = io.mockk.firstArg<List<String>>()
+    coEvery { mock.getByKeys(any<List<String>>() ) } answers {
+      val keys = firstArg<List<String>>()
       runBlocking {
         when (behavior) {
           MockBehavior.SUCCESS -> returnData.filterKeys { it in keys }
