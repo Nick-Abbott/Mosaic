@@ -41,7 +41,7 @@ Instead of thinking "what database queries do I need?", developers think "what r
 ```
 Mosaic/
 ├── mosaic-core/        # Core framework (SingleTile, MultiTile, Mosaic, Registry)
-├── mosaic-test/        # Testing framework (TestMosaic, MockBehavior, etc.)
+├── mosaic-test/        # Testing framework (TestMosaic, TestMosaicBuilder, etc.)
 ├── mosaic-build/       # Gradle build plugin
 ├── examples/           # Example implementations
 ├── buildSrc/           # Gradle convention plugins
@@ -91,7 +91,7 @@ class UserProfileTile(mosaic: Mosaic) : SingleTile<UserProfile>(mosaic) {
 - Use the `mosaic-test` framework for testing tiles
 - Isolate tiles from their dependent tiles by using `TestMosaicBuilder`
 - Test both success and error scenarios
-- Use `MockBehavior` for different test scenarios (SUCCESS, ERROR, DELAY, CUSTOM)
+- Use `TestMosaicBuilder` helpers (`withMockTile`, `withFailedTile`, etc.) for different test scenarios
 - Aim for 80%+ code coverage (enforced by Kover)
 
 ### Common Operations

@@ -23,7 +23,7 @@ packages/mosaic-test/
 ├── src/main/kotlin/com/abbott/mosaic/test/
 │   ├── TestMosaic.kt              # Main test wrapper with assertion methods
 │   ├── TestMosaicBuilder.kt       # Fluent builder for creating test scenarios
-│   ├── MockBehavior.kt            # Enum defining mock tile behaviors
+│   ├── MockBehavior.kt            # Internal enum defining mock tile behaviors
 │   └── MockMosaicRequest.kt       # Default request implementation for testing
 ├── src/test/kotlin/com/abbott/mosaic/test/
 │   ├── BaseTestMosaicTest.kt      # Base test class with common setup
@@ -55,7 +55,7 @@ do so by calling `MosaicRegistry.register` yourself.
 @Test
 fun `should test single tile with success behavior`() = runTestMosaicTest {
     val testMosaic = TestMosaicBuilder()
-        .withMockTile(TestSingleTile::class, "test-data", MockBehavior.SUCCESS)
+        .withMockTile(TestSingleTile::class, "test-data")
         .build()
     testMosaic.assertEquals(tileClass = TestSingleTile::class, expected = "test-data")
 }
@@ -67,7 +67,7 @@ fun `should test single tile with success behavior`() = runTestMosaicTest {
 @Test
 fun `should test multi tile with delay behavior`() = runTestMosaicTest {
     val testMosaic = TestMosaicBuilder()
-        .withMockMultiTile(TestMultiTile::class, mapOf("key1" to "value1"), MockBehavior.DELAY)
+        .withDelayedTile(TestMultiTile::class, mapOf("key1" to "value1"), 100)
         .build()
     testMosaic.assertEquals(
         tileClass = TestMultiTile::class,
@@ -83,7 +83,7 @@ fun `should test multi tile with delay behavior`() = runTestMosaicTest {
 @Test
 fun `should test error behavior`() = runTestMosaicTest {
     val testMosaic = TestMosaicBuilder()
-        .withMockTile(TestSingleTile::class, "error-data", MockBehavior.ERROR)
+        .withFailedTile(TestSingleTile::class, RuntimeException("boom"))
         .build()
     testMosaic.assertThrows(tileClass = TestSingleTile::class, expectedException = RuntimeException::class.java)
 }
@@ -95,8 +95,8 @@ fun `should test error behavior`() = runTestMosaicTest {
 @Test
 fun `should test multiple tiles with different behaviors`() = runTestMosaicTest {
     val testMosaic = TestMosaicBuilder()
-        .withMockTile(TestSingleTile::class, "success-data", MockBehavior.SUCCESS)
-        .withMockMultiTile(TestMultiTile::class, mapOf("key1" to "delay-value"), MockBehavior.DELAY)
+        .withMockTile(TestSingleTile::class, "success-data")
+        .withDelayedTile(TestMultiTile::class, mapOf("key1" to "delay-value"), 100)
         .withRequest(MockMosaicRequest())
         .build()
     testMosaic.assertEquals(tileClass = TestSingleTile::class, expected = "success-data")
