@@ -47,7 +47,7 @@ Mosaic/
 │   ├── mosaic-core/        # Core Mosaic framework
 │   ├── mosaic-test/        # Testing framework
 │   └── mosaic-build/       # Gradle build plugin
-├── examples/               # Standalone example projects
+├── examples/               # Standalone example projects (includes Spring Boot sample with parallel tile aggregation)
 │   ├── build.gradle.kts
 │   └── settings.gradle.kts
 └── MODULE_TEMPLATE.md      # Guide for adding new modules
