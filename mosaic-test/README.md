@@ -194,3 +194,6 @@ testMosaic.assertThrows(
 - **⚡ Coroutine Support**: Full support for testing async tile operations
 - **📊 Automatic Registration**: Works seamlessly with mosaic-build-plugin
 
+## 🔗 **Related Modules**
+
+- **[mosaic-core](../mosaic-core/README.md)**: The core framework for composable backend orchestration

@@ -432,25 +432,6 @@ class OrderController(private val registry: MosaicRegistry) {
 }
 ```
 
-### **Core Components**
-
-**SingleTile**: Caches a single value per request
-```kotlin
-abstract class SingleTile<T>(mosaic: Mosaic) : Tile(mosaic) {
-    abstract suspend fun retrieve(): T
-    suspend fun get(): T  // Returns cached value or calls retrieve()
-}
-```
-
-**MultiTile**: Caches multiple values with batch fetching
-```kotlin
-abstract class MultiTile<T, R>(mosaic: Mosaic) : Tile(mosaic) {
-    abstract suspend fun retrieveForKeys(keys: List<String>): R
-    abstract fun normalize(key: String, response: R): T
-    suspend fun getByKeys(keys: List<String>): Map<String, T>
-}
-```
-
 ## 🎯 **Perfect For**
 
 - **🚀 High-performance APIs** requiring efficient data access
@@ -470,6 +451,11 @@ abstract class MultiTile<T, R>(mosaic: Mosaic) : Tile(mosaic) {
 - **📦 Production Ready**: Handles errors, edge cases, and performance optimization
 
 Mosaic transforms backend development by making data composition as natural as function composition, with enterprise-grade performance and reliability.
+
+## 🔗 **Related Modules**
+
+- **[mosaic-core](../mosaic-core/README.md)**: The core framework for composable backend orchestration
+- **[mosaic-test](../mosaic-test/README.md)**: Testing framework for tiles
 
 ## 📄 **License**
 
