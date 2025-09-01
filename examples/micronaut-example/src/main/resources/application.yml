@@ -1,0 +1,5 @@
+micronaut:
+  application:
+    name: micronaut-example
+  server:
+    port: 8082

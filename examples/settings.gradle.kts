@@ -18,5 +18,6 @@ pluginManagement {
 
 include("spring-example")
 include("ktor-example")
+include("micronaut-example")
 include("tile-library")
 includeBuild("..")
