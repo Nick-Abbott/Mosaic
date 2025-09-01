@@ -5,7 +5,7 @@
 ### Minimal Setup (Fastest)
 ```bash
 # No special setup required - Gradle wrapper handles everything
-# Just ensure Java is available (JDK 11+ recommended)
+# Just ensure Java is available (JDK 21+ recommended)
 ```
 
 ### Verification Build
@@ -40,12 +40,14 @@ Instead of thinking "what database queries do I need?", developers think "what r
 
 ```
 Mosaic/
-├── mosaic-core/        # Core framework (SingleTile, MultiTile, Mosaic, Registry)
-├── mosaic-test/        # Testing framework (TestMosaic, TestMosaicBuilder, etc.)
-├── mosaic-build/       # Gradle build plugin
-├── examples/           # Example implementations
-├── buildSrc/           # Gradle convention plugins
-└── build.gradle.kts    # Root build configuration
+├── mosaic-core/          # Core framework (SingleTile, MultiTile, Mosaic, Registry)
+├── mosaic-test/          # Testing framework (TestMosaic, TestMosaicBuilder, etc.)
+├── mosaic-build-plugin/  # Gradle build plugin
+├── mosaic-build-ksp/     # KSP plugin to generate tile registration code
+├── mosaic-catalog-ksp/   # KSP plugin to generate tile catalogs for tile libraries
+├── examples/             # Example implementations
+├── buildSrc/             # Gradle convention plugins
+└── build.gradle.kts      # Root build configuration
 ```
 
 ### Technology Stack
@@ -139,10 +141,9 @@ class UserProfileTile(mosaic: Mosaic) : SingleTile<UserProfile>(mosaic) {
 #### examples/
 - Demonstrates real-world usage patterns
 - Spring Boot integration example available
+- Tile library for reuse between different examples
 - Good reference for best practices
-
-#### mosaic-build & mosaic-metadata
-- Build plugin modules without unit tests
+- Is a separate gradle project. Gradle commands on examples must be run using `-p examples` flag
 
 ### Performance Considerations
 - Tiles should be lightweight and focused
@@ -162,6 +163,7 @@ class UserProfileTile(mosaic: Mosaic) : SingleTile<UserProfile>(mosaic) {
 3. Fix any ktlint/detekt issues before submitting
 4. Consider impact on existing tile compositions
 5. Update tests when adding new functionality
+6. If a ksp or gradle plugin has been modified, also test examples with `./gradlew clean build -p examples`
 
 ### Debugging Tips
 - Use the test framework to isolate tile behavior
