@@ -5,230 +5,192 @@
 [![Kotlin](https://img.shields.io/badge/kotlin-2.2.0-blue.svg)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-A comprehensive testing framework for the Mosaic backend orchestration system. This module provides utilities, assertions, and testing patterns specifically designed for testing Tile implementations with excellent code coverage.
+**Test your Mosaic tiles with confidence.**
 
-## 🎯 Purpose
+Mosaic-test provides a fluent testing API that makes testing tile compositions simple and comprehensive. Mock dependencies, simulate failures, and verify behavior with type-safe assertions.
 
-The `mosaic-test` module is designed to make testing Tile implementations as easy and comprehensive as possible. It provides:
+## 🚀 **Quick Start**
 
-- **Test Utilities**: Helper functions for creating mock Mosaic instances and test fixtures
-- **Assertion Helpers**: Specialized assertions for verifying Tile behavior and caching
-- **Mock Behavior Control**: Configurable mock behaviors (SUCCESS, ERROR, DELAY, CUSTOM)
-- **Comprehensive Coverage**: Excellent test coverage with enforced thresholds
-
-## 🏗️ Module Structure
-
-```
-mosaic-test/
-├── src/main/kotlin/com/abbott/mosaic/test/
-│   ├── TestMosaic.kt              # Main test wrapper with assertion methods
-│   ├── TestMosaicBuilder.kt       # Fluent builder for creating test scenarios
-│   ├── MockBehavior.kt            # Internal enum defining mock tile behaviors
-│   └── MockMosaicRequest.kt       # Default request implementation for testing
-├── src/test/kotlin/com/abbott/mosaic/test/
-│   ├── BaseTestMosaicTest.kt      # Base test class with common setup
-│   ├── TestMosaicTest.kt          # Tests for TestMosaic functionality
-│   ├── TestMosaicBuilderTest.kt   # Tests for TestMosaicBuilder functionality
-│   ├── TestData.kt                # Sample tile implementations for testing
-│   └── MockTileTest.kt            # Tests for mock tile behavior
-└── build.gradle.kts               # Module build configuration
-```
-
-## 🔧 Dependencies
-
-This module depends on:
-- **mosaic-core**: The core Mosaic framework being tested
-- **JUnit 5**: Modern testing framework
-- **MockK**: Kotlin-first mocking library
-- **Kotlin Coroutines Test**: Testing utilities for coroutines
-- **Kover**: Code coverage tool
-
-## 🚀 Usage
-
-When the mosaic build plugin (`com.abbott.mosaic.build`) is applied, the test builder automatically
-registers all real `Tile` implementations before applying mocks. If you choose to register tiles
-manually, you can still do so by calling `MosaicRegistry.register` yourself.
-
-### Basic Tile Testing
+### **Installation**
 
 ```kotlin
-@Test
-fun `should test single tile with success behavior`() = runTestMosaicTest {
-    val testMosaic = TestMosaicBuilder()
-        .withMockTile(TestSingleTile::class, "test-data")
-        .build()
-    testMosaic.assertEquals(tileClass = TestSingleTile::class, expected = "test-data")
+dependencies {
+    testImplementation("com.abbott.mosaic:mosaic-test:1.0.0")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
 }
 ```
 
-### MultiTile Testing
+### **Your First Test**
 
 ```kotlin
 @Test
-fun `should test multi tile with delay behavior`() = runTestMosaicTest {
+fun `customer tile fetches customer data`() = runBlocking {
     val testMosaic = TestMosaicBuilder()
-        .withDelayedTile(TestMultiTile::class, mapOf("key1" to "value1"), 100)
+        .withMockTile(CustomerTile::class, Customer("123", "John Doe"))
         .build()
+    
     testMosaic.assertEquals(
-        tileClass = TestMultiTile::class,
-        keys = listOf("key1"),
-        expected = mapOf("key1" to "value1")
+        tileClass = CustomerTile::class,
+        expected = Customer("123", "John Doe")
     )
 }
 ```
 
-### Error Testing
+## 🧪 **Testing Patterns**
+
+### **Mock Dependencies**
+
+Test tiles in isolation by mocking their dependencies:
 
 ```kotlin
 @Test
-fun `should test error behavior`() = runTestMosaicTest {
+fun `order summary combines order, customer, and line items`() = runBlocking {
+    val mockOrder = Order("order-1", "customer-1", listOf("item-1"))
+    val mockCustomer = Customer("customer-1", "Jane Doe")
+    val mockLineItems = listOf(LineItemDetail(product, price, 2))
+    
     val testMosaic = TestMosaicBuilder()
-        .withFailedTile(TestSingleTile::class, RuntimeException("boom"))
+        .withMockTile(OrderTile::class, mockOrder)
+        .withMockTile(CustomerTile::class, mockCustomer)
+        .withMockTile(LineItemsTile::class, mockLineItems)
         .build()
-    testMosaic.assertThrows(tileClass = TestSingleTile::class, expectedException = RuntimeException::class.java)
+    
+    val expected = OrderSummary(mockOrder, mockCustomer, mockLineItems)
+    testMosaic.assertEquals(OrderSummaryTile::class, expected)
 }
 ```
 
-### Integration Testing
+### **Test Error Handling**
+
+Verify your tiles handle failures gracefully:
 
 ```kotlin
 @Test
-fun `should test multiple tiles with different behaviors`() = runTestMosaicTest {
+fun `order page fails when customer service is down`() = runBlocking {
     val testMosaic = TestMosaicBuilder()
-        .withMockTile(TestSingleTile::class, "success-data")
-        .withDelayedTile(TestMultiTile::class, mapOf("key1" to "delay-value"), 100)
-        .withRequest(MockMosaicRequest())
+        .withMockTile(OrderTile::class, mockOrder)
+        .withFailedTile(CustomerTile::class, CustomerServiceException("Service unavailable"))
+        .withMockTile(LineItemsTile::class, mockLineItems)
         .build()
-    testMosaic.assertEquals(tileClass = TestSingleTile::class, expected = "success-data")
-    testMosaic.assertEquals(
-        tileClass = TestMultiTile::class,
-        keys = listOf("key1"),
-        expected = mapOf("key1" to "delay-value")
+    
+    testMosaic.assertThrows(
+        tileClass = OrderSummaryTile::class,
+        expectedException = CustomerServiceException::class.java
     )
 }
 ```
 
-## 📋 Mock Behaviors
-
-The framework supports four different mock behaviors:
-
-### 1. SUCCESS
-- Mock returns the specified data immediately
-- Default behavior for most test scenarios
-
-### 2. ERROR
-- Mock throws a RuntimeException when called
-- Useful for testing error handling paths
-
-### 3. DELAY
-- Mock delays for 100ms before returning data
-- Useful for testing timeout and performance scenarios
-
-### 4. CUSTOM
-- Mock uses custom behavior (extensible for future use)
-- Currently behaves like SUCCESS but allows for future customization
-
-## 🔍 Assertion Utilities
-
-The framework provides specialized assertions for common Tile testing scenarios:
+### **Test MultiTile Batch Operations**
 
 ```kotlin
-// Verify SingleTile results
-testMosaic.assertEquals(tileClass = TestSingleTile::class, expected = "expected-value")
+@Test
+fun `pricing tile fetches multiple prices in batch`() = runBlocking {
+    val mockPrices = mapOf(
+        "SKU1" to Price(10.99),
+        "SKU2" to Price(25.50),
+        "SKU3" to Price(5.00)
+    )
+    
+    val testMosaic = TestMosaicBuilder()
+        .withMockTile(PricingBySkuTile::class, mockPrices)
+        .build()
+    
+    testMosaic.assertEquals(
+        tileClass = PricingBySkuTile::class,
+        keys = listOf("SKU1", "SKU2", "SKU3"),
+        expected = mockPrices
+    )
+}
+```
 
-// Verify MultiTile results
+### **Test Complex Compositions**
+
+```kotlin
+@Test
+fun `order page tile composes summary and logistics`() = runBlocking {
+    val mockSummary = OrderSummary(mockOrder, mockCustomer, mockLineItems)
+    val mockLogistics = Logistics(mockAddress, mockCarrierQuotes)
+    
+    val testMosaic = TestMosaicBuilder()
+        .withMockTile(OrderSummaryTile::class, mockSummary)
+        .withMockTile(LogisticsTile::class, mockLogistics)
+        .build()
+    
+    val expected = OrderPage(mockSummary, mockLogistics)
+    testMosaic.assertEquals(OrderPageTile::class, expected)
+}
+```
+
+### **Test Performance and Delays**
+
+```kotlin
+@Test
+fun `handles slow external services`() = runBlocking {
+    val testMosaic = TestMosaicBuilder()
+        .withDelayedTile(ExternalApiTile::class, mockData, delayMs = 200)
+        .build()
+    
+    val startTime = System.currentTimeMillis()
+    testMosaic.assertEquals(ExternalApiTile::class, mockData)
+    val elapsed = System.currentTimeMillis() - startTime
+    
+    assertTrue(elapsed >= 200, "Should respect delay")
+}
+```
+
+## 📋 **Mock Behaviors**
+
+Control how your mocked tiles behave:
+
+```kotlin
+// Success: Returns data immediately (default)
+.withMockTile(CustomerTile::class, mockCustomer)
+
+// Error: Throws exception when called
+.withFailedTile(CustomerTile::class, CustomerNotFoundException("Customer not found"))
+
+// Delay: Simulates slow external services
+.withDelayedTile(ExternalApiTile::class, mockData, delayMs = 500)
+```
+
+## 🔍 **Assertion API**
+
+Type-safe assertions for all tile types:
+
+```kotlin
+// Test SingleTile
 testMosaic.assertEquals(
-    tileClass = TestMultiTile::class,
-    keys = listOf("key1", "key2"),
-    expected = mapOf("key1" to "value1", "key2" to "value2")
+    tileClass = CustomerTile::class,
+    expected = Customer("123", "John Doe")
 )
 
-// Verify exceptions
-testMosaic.assertThrows(tileClass = TestSingleTile::class, expectedException = RuntimeException::class.java)
+// Test MultiTile with specific keys
+testMosaic.assertEquals(
+    tileClass = PricingBySkuTile::class,
+    keys = listOf("SKU1", "SKU2"),
+    expected = mapOf("SKU1" to price1, "SKU2" to price2)
+)
 
-// Get mock tiles for verification
-val mockTiles = testMosaic.getMockTiles()
+// Test exceptions
+testMosaic.assertThrows(
+    tileClass = CustomerTile::class,
+    expectedException = CustomerNotFoundException::class.java
+)
 ```
 
-## 📊 Coverage Metrics
+## 🎯 **Best Practices**
 
-The framework maintains excellent code coverage with enforced thresholds:
+- **Test in isolation**: Mock all dependencies to focus on the tile under test
+- **Test error paths**: Verify your tiles handle failures gracefully
+- **Test edge cases**: Empty results, null values, network timeouts
+- **Use realistic data**: Mock data should resemble production data
+- **Test composition**: Verify complex tiles compose their dependencies correctly
 
-Coverage thresholds are enforced in the build:
-- Line coverage: 90% minimum
-- Branch coverage: 80% minimum
-- Instruction coverage: 90% minimum
+## 🌟 **Key Features**
 
-Run `./gradlew :mosaic-test:koverHtmlReport` to generate detailed coverage reports.
-
-## 🛠️ Development
-
-### Adding New Test Utilities
-
-1. Create the utility in the appropriate package under `src/main/kotlin/`
-2. Add comprehensive tests in `src/test/kotlin/`
-3. Update documentation and examples
-4. Ensure all tests pass with coverage requirements
-
-### Running Tests
-
-```bash
-# Run all tests
-./gradlew :mosaic-test:test
-
-# Run with coverage verification
-./gradlew :mosaic-test:koverVerify
-
-# Run specific test class
-./gradlew :mosaic-test:test --tests "com.abbott.mosaic.test.TestMosaicBuilderTest"
-
-# Generate coverage reports
-./gradlew :mosaic-test:koverHtmlReport
-```
-
-### Code Quality
-
-The project uses several tools to maintain code quality:
-
-- **KtLint**: Code formatting and style enforcement
-- **Detekt**: Static code analysis
-- **Kover**: Code coverage analysis and enforcement
-
-## 📚 Examples
-
-The `src/test/kotlin/com/abbott/mosaic/test/` directory contains comprehensive examples:
-
-- **TestMosaicTest.kt**: 836 lines of tests covering all TestMosaic functionality
-- **TestMosaicBuilderTest.kt**: 604 lines of tests covering all builder scenarios
-- **TestData.kt**: Sample tile implementations for testing
-- **BaseTestMosaicTest.kt**: Base class with common testing utilities
-
-## 🤝 Contributing
-
-When contributing to the testing framework:
-
-1. Follow the existing code style and patterns
-2. Add tests for any new functionality
-3. Update documentation for new features
-4. Ensure all existing tests continue to pass
-5. Maintain coverage thresholds (90% line, 80% branch, 90% instruction)
-6. Consider backward compatibility for public APIs
-
-## 🎯 Key Features
-
-- **Fluent API**: Easy-to-use builder pattern for test setup
-- **Comprehensive Coverage**: Excellent test coverage with enforced thresholds and dynamic monitoring
-- **Mock Behavior Control**: Configurable mock behaviors for different test scenarios
-- **Coroutine Support**: Full support for testing async Tile operations
-- **Type Safety**: Leverages Kotlin's type system for compile-time safety
-- **Extensible Design**: Easy to extend with new behaviors and utilities
-
-## 📝 Badge Information
-
-The badges in this README are powered by GitHub Actions workflows:
-
-- **Tests Badge**: Shows the status of the `Test Badge` workflow that runs `./gradlew test`
-- **Build Badge**: Shows the status of the `Build Badge` workflow that runs `./gradlew build` (includes compilation, tests, styling, and quality checks)
-
-These badges automatically update based on the latest workflow runs and provide real-time status of the project's health.
+- **🧪 Fluent Testing API**: Easy-to-use builder pattern for test setup
+- **🎯 Type-Safe Assertions**: Compile-time guarantees for test correctness
+- **🔄 Mock Behavior Control**: SUCCESS, ERROR, DELAY behaviors for comprehensive testing
+- **⚡ Coroutine Support**: Full support for testing async tile operations
+- **📊 Automatic Registration**: Works seamlessly with mosaic-build-plugin
 

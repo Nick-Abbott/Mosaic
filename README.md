@@ -5,321 +5,412 @@
 [![Kotlin](https://img.shields.io/badge/kotlin-2.2.0-blue.svg)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-A powerful Kotlin framework for **composable backend orchestration** that enables you to think from the response up rather than database down. Mosaic provides intelligent caching, concurrent safety, and type-safe tile composition for building high-performance data access layers.
+**Think from the response up, not the database down.**
 
-## 🎯 **Response-First Design Philosophy**
+Mosaic is a Kotlin framework that transforms backend development through **composable tiles** that automatically handle caching, concurrency, and dependency resolution. Build complex responses by composing simple, testable pieces.
 
-Mosaic transforms backend development from imperative data fetching to declarative response composition. Instead of thinking "what database queries do I need?", you think "what response do I want to build?"
+## 🚀 **Why Mosaic?**
 
-### Traditional Approach (Database Down)
+- **🧩 Type-Safe Composition**: Compile-time guarantees for all your data dependencies
+- **⚡ Zero Duplication**: Call the same tile from anywhere - it fetches only once
+- **🔄 Out-of-the-Box Concurrency**: Automatic parallel execution without the complexity
+- **🧪 Natural Testability**: Mock any tile, test in isolation
+- **📦 Response-First Design**: Build what you need, not how to get it
+
+## 🏁 **Quick Start**
+
+### **Installation**
+
+Add Mosaic to your Gradle project:
+
 ```kotlin
-// Database-first thinking
-val user = userRepository.findById(id)
-val profile = profileRepository.findByUserId(user.id)
-val preferences = preferenceRepository.findByUserId(user.id)
-return UserResponse(user, profile, preferences)
-```
+// For applications using tiles
+plugins {
+    kotlin("jvm")
+    id("com.google.devtools.ksp")
+    id("com.abbott.mosaic.build") version "1.0.0"  // Auto-registers tiles and applies KSP
+}
 
-### Mosaic Approach (Response Up)
-```kotlin
-// Response-first thinking
-class UserResponseTile(mosaic: Mosaic) : SingleTile<UserResponse>(mosaic) {
-    override suspend fun retrieve(): UserResponse {
-        val user = mosaic.getTile<UserTile>().get()
-        val profile = mosaic.getTile<ProfileTile>().get()
-        val preferences = mosaic.getTile<PreferencesTile>().get()
-        
-        return UserResponse(user, profile, preferences)
-    }
+dependencies {
+    implementation("com.abbott.mosaic:mosaic-core:1.0.0")      // Core tile system and registry
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")  // Coroutines support
+    testImplementation("com.abbott.mosaic:mosaic-test:1.0.0")  // Testing utilities and mocks
+    testImplementation(kotlin("test"))                         // Kotlin test framework
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")  // JUnit 5
 }
 ```
 
-## 🏗️ **Project Structure**
-
-This project uses a **multi-module Gradle structure** to organize code into focused, maintainable components:
-
-```
-Mosaic/
-├── mosaic-core/          # Core framework
-├── mosaic-test/          # Testing framework
-├── mosaic-build-plugin/  # Gradle build plugin
-├── mosaic-build-ksp/     # KSP plugin to generate tile registration code
-├── mosaic-catalog-ksp/   # KSP plugin to generate tile catalogs for tile libraries
-├── examples/             # Example implementations
-├── buildSrc/             # Gradle convention plugins
-├── build.gradle.kts      # Root build configuration
-└── settings.gradle.kts   # Gradle settings
-```
-
-### **Modules**
-
-- **`mosaic-core`** – Core Mosaic framework with tile system, registry, and core functionality
-- **`mosaic-test`** – Comprehensive testing utilities and assertions for Tile implementations
-- **`mosaic-build-plugin`** – Gradle plugin that wires KSP processors and merges tile catalogs
-- **`mosaic-build-ksp`** – KSP plugin that generates tile registration code
-- **`mosaic-catalog-ksp`** – KSP plugin that generates tile catalogs for tile libraries
-- **`examples`** – Standalone example projects demonstrating Mosaic in real applications
-- **`buildSrc`** – Gradle convention plugins shared across modules
-
-## 🧩 **Core Components**
-
-### **Tile System**
-- **SingleTile**: Caches single values with automatic retrieval and concurrent access handling
-- **MultiTile**: Caches multiple key-value pairs with batch retrieval and normalization
-- Both use `Deferred` for thread-safe caching and concurrent operation sharing
-
-### **Mosaic Registry**
-- **Dependency Injection**: Maps tile classes to their constructors
-- **Type Safety**: Uses `KClass<T>` for compile-time type checking
-- **Flexible Construction**: Supports custom constructor functions for each tile type
-
-### **Request Context**
-- **MosaicRequest**: Interface for request-specific data (headers, auth, parameters, etc.)
-- **Context Propagation**: Tiles can access request data via `mosaic.request`
-- **Extensible**: Easy to add new request properties as needed
-
-## 🚀 **Tile Composition Power**
-
-### **Automatic Dependency Resolution**
 ```kotlin
-class OrderDetailsTile(mosaic: Mosaic) : SingleTile<OrderDetails>(mosaic) {
-    override suspend fun retrieve(): OrderDetails {
-        val order = mosaic.getTile<OrderTile>().get()
+// For tile libraries
+plugins {
+    kotlin("jvm")
+    id("com.google.devtools.ksp") version "2.2.0-1.0.13"  // Kotlin Symbol Processing
+}
+
+dependencies {
+    implementation("com.abbott.mosaic:mosaic-core:1.0.0")           // Core tile system
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")      // Coroutines support
+    ksp("com.abbott.mosaic:mosaic-catalog-ksp:1.0.0")              // Generates tile catalogs
+    testImplementation("com.abbott.mosaic:mosaic-test:1.0.0")      // Testing framework
+    testImplementation(kotlin("test"))                             // Kotlin test framework
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")  // JUnit 5
+}
+```
+
+### **Your First Tile**
+
+```kotlin
+// A simple tile that fetches and caches data
+class CustomerTile(mosaic: Mosaic) : SingleTile<Customer>(mosaic) {
+    override suspend fun retrieve(): Customer {
+        val customerId = (mosaic.request as OrderRequest).customerId
+        return CustomerService.fetchCustomer(customerId)
+    }
+}
+
+// Parallel composition: These tiles run concurrently
+class OrderSummaryTile(mosaic: Mosaic) : SingleTile<OrderSummary>(mosaic) {
+    override suspend fun retrieve(): OrderSummary = coroutineScope {
+        // These run in parallel automatically!
+        val orderDeferred = async { mosaic.getTile<OrderTile>().get() }
+        val customerDeferred = async { mosaic.getTile<CustomerTile>().get() }
+        val lineItemsDeferred = async { mosaic.getTile<LineItemsTile>().get() }
+        
+        OrderSummary(
+            order = orderDeferred.await(),
+            customer = customerDeferred.await(),
+            lineItems = lineItemsDeferred.await()
+        )
+    }
+}
+
+// Sequential composition: Choose tiles based on previous results
+class PaymentProcessorTile(mosaic: Mosaic) : SingleTile<PaymentProcessor>(mosaic) {
+    override suspend fun retrieve(): PaymentProcessor {
         val customer = mosaic.getTile<CustomerTile>().get()
-        val products = mosaic.getTile<ProductTile>().getByKeys(order.productIds)
-        val shipping = mosaic.getTile<ShippingTile>().getByKeys(listOf(order.shippingId))[order.shippingId]!!
         
-        return OrderDetails(order, customer, products, shipping)
-    }
-}
-```
-
-### **Intelligent Caching Cascade**
-- If `OrderDetailsTile` is called, it automatically caches all its dependencies
-- Subsequent calls to `CustomerTile`, `ProductTile`, etc. return cached results
-- The framework handles the entire dependency graph efficiently
-
-### **Request Context Propagation**
-```kotlin
-class PersonalizedContentTile(mosaic: Mosaic) : SingleTile<Content>(mosaic) {
-    override suspend fun retrieve(): Content {
-        val userId = mosaic.request.userId // Access request context
-        val user = mosaic.getTile<UserTile>().get()
-        val preferences = mosaic.getTile<PreferencesTile>().get()
-        
-        return generatePersonalizedContent(user, preferences)
-    }
-}
-```
-
-## 🎨 **Composition Patterns**
-
-### **Aggregation Tiles**
-```kotlin
-class SearchResultsTile(mosaic: Mosaic) : MultiTile<SearchResult, List<SearchResult>>(mosaic) {
-    override suspend fun retrieveForKeys(queryIds: List<String>): List<SearchResult> {
-        val queries = mosaic.getTile<QueryTile>().getByKeys(queryIds)
-        val searchEngineIds = queries.values.map { it.id }
-        val searchResults = mosaic.getTile<SearchEngineTile>().getByKeys(searchEngineIds)
-        
-        return queryIds.map { queryId ->
-            val query = queries[queryId]!!
-            val results = searchResults[query.id]!!
-            SearchResult(query, results)
+        // Choose processor based on customer tier
+        return when (customer.tier) {
+            CustomerTier.PREMIUM -> mosaic.getTile<PremiumProcessorTile>().get()
+            CustomerTier.BUSINESS -> mosaic.getTile<BusinessProcessorTile>().get()
+            else -> mosaic.getTile<StandardProcessorTile>().get()
         }
     }
 }
 ```
 
-### **Transformation Tiles**
+## 🎯 **Response-First Design**
+
+### **Traditional Approach (Database Down)**
 ```kotlin
-class EnrichedProductTile(mosaic: Mosaic) : SingleTile<EnrichedProduct>(mosaic) {
-    override suspend fun retrieve(): EnrichedProduct {
-        val product = mosaic.getTile<BasicProductTile>().get()
-        val reviews = mosaic.getTile<ReviewTile>().getByKeys(product.reviewIds)
-        val inventory = mosaic.getTile<InventoryTile>().getByKeys(listOf(product.id))[product.id]!!
+// Imperative: manually orchestrating queries, passing data between functions
+val order = orderRepository.findById(orderId)
+val customer = customerRepository.findById(order.customerId) 
+val lineItems = lineItemRepository.findByOrderId(orderId)
+val productIds = lineItems.map { it.productId }
+val products = productRepository.findByIds(productIds)
+val prices = pricingService.getPrices(lineItems.map { it.sku })
+
+// Data gets passed around everywhere - coupling and complexity
+val enrichedItems = enrichLineItems(lineItems, products, prices)
+val summary = buildOrderSummary(order, customer, enrichedItems)
+val logistics = calculateLogistics(order, customer, enrichedItems)
+// ... manual assembly, error handling, caching logic ...
+```
+
+### **Mosaic Approach (Response Up)**
+```kotlin
+// Declarative: tiles retrieve their own dependencies - no data passing!
+class OrderPageTile(mosaic: Mosaic) : SingleTile<OrderPage>(mosaic) {
+    override suspend fun retrieve(): OrderPage = coroutineScope {
+        val summaryDeferred = async { mosaic.getTile<OrderSummaryTile>().get() }
+        val logisticsDeferred = async { mosaic.getTile<LogisticsTile>().get() }
         
-        return EnrichedProduct(product, reviews, inventory)
+        OrderPage(
+            summary = summaryDeferred.await(),
+            logistics = logisticsDeferred.await()
+        )
+    }
+}
+
+// Each tile knows how to get what it needs - no coupling!
+class OrderSummaryTile(mosaic: Mosaic) : SingleTile<OrderSummary>(mosaic) {
+    override suspend fun retrieve(): OrderSummary = coroutineScope {
+        val orderDeferred = async { mosaic.getTile<OrderTile>().get() }
+        val customerDeferred = async { mosaic.getTile<CustomerTile>().get() }
+        val lineItemsDeferred = async { mosaic.getTile<LineItemsTile>().get() }
+        
+        OrderSummary(
+            order = orderDeferred.await(),
+            customer = customerDeferred.await(),
+            lineItems = lineItemsDeferred.await()
+        )
     }
 }
 ```
 
-## ⚡ **Key Features**
+## 🧩 **Deep Composition**
 
-### **Performance**
-- **Intelligent Caching**: Only retrieves data once, subsequent calls return cached results
-- **Concurrent Safety**: Multiple simultaneous requests share the same retrieval operation
-- **Batch Operations**: MultiTile retrieves multiple keys in a single operation
-- **Automatic Optimization**: Dependencies are deduplicated and executed in parallel when possible
-
-### **Type Safety**
-- **Reified Generics**: Compile-time type checking with `getTile<T>()`
-- **KClass Integration**: Runtime type safety with `KClass<T>`
-- **Generic Constraints**: All tiles must extend the base `Tile` class
-
-### **Developer Experience**
-- **Natural Composition**: Tiles compose like functions, building complex responses from simple pieces
-- **Declarative Data Flow**: Define what you need, not how to get it
-- **Request Context**: Full access to request data throughout the composition chain
-- **Testability**: Each tile can be tested independently with mocked dependencies
-
-## 📦 **Usage Example**
+Mosaic shines when composing tiles multiple levels deep. Each tile focuses on one responsibility:
 
 ```kotlin
-// Setup
-val registry = MosaicRegistry()
-registry.register(UserTile::class) { mosaic -> UserTile(mosaic) }
-registry.register(ProductTile::class) { mosaic -> ProductTile(mosaic) }
-registry.register(OrderTile::class) { mosaic -> OrderTile(mosaic) }
+// Level 1: Entry point tile
+class OrderPageTile(mosaic: Mosaic) : SingleTile<OrderPage>(mosaic) {
+    override suspend fun retrieve(): OrderPage = coroutineScope {
+        // Parallel execution of two major components
+        val summaryDeferred = async { mosaic.getTile<OrderSummaryTile>().get() }
+        val logisticsDeferred = async { mosaic.getTile<LogisticsTile>().get() }
+        
+        OrderPage(summaryDeferred.await(), logisticsDeferred.await())
+    }
+}
 
-val request = MyRequest(userId = "123", headers = mapOf("auth" to "token"))
-val mosaic = Mosaic(registry, request)
+// Level 2: Summary aggregates order data
+class OrderSummaryTile(mosaic: Mosaic) : SingleTile<OrderSummary>(mosaic) {
+    override suspend fun retrieve(): OrderSummary = coroutineScope {
+        // These three tiles run in parallel
+        val orderDeferred = async { mosaic.getTile<OrderTile>().get() }
+        val customerDeferred = async { mosaic.getTile<CustomerTile>().get() }
+        val lineItemsDeferred = async { mosaic.getTile<LineItemsTile>().get() }
+        
+        OrderSummary(
+            order = orderDeferred.await(),
+            customer = customerDeferred.await(),
+            lineItems = lineItemsDeferred.await()
+        )
+    }
+}
 
-// Usage - automatic caching and concurrency handling
-val user = mosaic.getTile<UserTile>().get() // Retrieves and caches
-val products = mosaic.getTile<ProductTile>().getByKeys("prod1", "prod2") // Batch retrieval
-val orderDetails = mosaic.getTile<OrderDetailsTile>().get() // Composed response
-```
-
-## 🧪 **Testing**
-
-```kotlin
-@Test
-fun `should compose complex response`() = runTest {
-    val registry = MosaicRegistry()
-    registry.register(UserTile::class) { mosaic -> UserTile(mosaic) }
-    registry.register(ProductTile::class) { mosaic -> ProductTile(mosaic) }
-    
-    val request = TestRequest(userId = "123")
-    val mosaic = Mosaic(registry, request)
-    
-    val orderDetails = mosaic.getTile<OrderDetailsTile>().get()
-    
-    assertNotNull(orderDetails.user)
-    assertNotNull(orderDetails.products)
-    assertEquals(2, orderDetails.products.size)
+// Level 3: Line items enriches with product and pricing data
+class LineItemsTile(mosaic: Mosaic) : SingleTile<List<LineItemDetail>>(mosaic) {
+    override suspend fun retrieve(): List<LineItemDetail> {
+        val order = mosaic.getTile<OrderTile>().get()
+        
+        // Batch fetch products and prices in parallel
+        val (products, prices) = coroutineScope {
+            val productsDeferred = async { 
+                mosaic.getTile<ProductsByIdTile>().getByKeys(order.productIds) 
+            }
+            val pricesDeferred = async { 
+                mosaic.getTile<PricingBySkuTile>().getByKeys(order.skus) 
+            }
+            productsDeferred.await() to pricesDeferred.await()
+        }
+        
+        return order.items.map { item ->
+            LineItemDetail(
+                product = products[item.productId],
+                price = prices[item.sku],
+                quantity = item.quantity
+            )
+        }
+    }
 }
 ```
 
-## 🏗️ **Building**
+## ⚡ **Zero Duplication**
 
-```bash
-# Build all modules
-./gradlew build
-
-# Build specific module
-./gradlew :mosaic-core:build
-```
-
-## 🧪 **Testing**
-
-The project includes a comprehensive testing framework in the `mosaic-test` module that provides utilities for testing Tile implementations with excellent coverage.
-
-### **Testing Framework Features**
-- **TestMosaic**: Main test wrapper with assertion methods for SingleTile and MultiTile
-- **TestMosaicBuilder**: Fluent builder for creating test scenarios with mocked tiles
-- **Comprehensive Coverage**: Excellent test coverage with enforced thresholds
-
-### **Running Tests**
-
-```bash
-# Test all modules
-./gradlew test
-
-# Test specific module
-./gradlew :mosaic-core:test
-./gradlew :mosaic-test:test
-
-# Test with coverage verification
-./gradlew :mosaic-test:koverVerify
-
-# Generate coverage reports
-./gradlew :mosaic-test:koverHtmlReport
-```
-
-### **Testing Examples**
+Call the same tile from multiple places without redundant fetches:
 
 ```kotlin
-// Test SingleTile with mock response
+class OrderTotalTile(mosaic: Mosaic) : SingleTile<Double>(mosaic) {
+    override suspend fun retrieve(): Double {
+        // This calls LineItemsTile
+        val lineItems = mosaic.getTile<LineItemsTile>().get()
+        return lineItems.sumOf { it.price.amount * it.quantity }
+    }
+}
+
+class TaxCalculatorTile(mosaic: Mosaic) : SingleTile<Tax>(mosaic) {
+    override suspend fun retrieve(): Tax {
+        // Also calls LineItemsTile - but it's already cached!
+        val lineItems = mosaic.getTile<LineItemsTile>().get()
+        val address = mosaic.getTile<AddressTile>().get()
+        return TaxService.calculate(lineItems, address)
+    }
+}
+
+// In your controller:
+val orderPage = mosaic.getTile<OrderPageTile>().get()    // Fetches LineItemsTile
+val orderTotal = mosaic.getTile<OrderTotalTile>().get()  // Uses cached LineItemsTile
+val tax = mosaic.getTile<TaxCalculatorTile>().get()      // Uses cached LineItemsTile
+// LineItemsTile was only fetched ONCE!
+```
+
+## 🔧 **Batch Operations with MultiTile**
+
+MultiTile abstracts batching strategy from consumers. **Key insight: if you request the same key multiple times, even in different lists, Mosaic automatically deduplicates and only fetches uncached keys.**
+
+```kotlin
+// Strategy 1: Large batch operations (efficient for bulk APIs)
+class PricingBySkuTile(mosaic: Mosaic) : MultiTile<Price, Map<String, Price>>(mosaic) {
+    override suspend fun retrieveForKeys(skus: List<String>): Map<String, Price> {
+        // Fetch all prices in one batch call - efficient for APIs that support bulk operations
+        return PricingService.getPrices(skus)
+    }
+    
+    override fun normalize(sku: String, response: Map<String, Price>): Price = response.getValue(sku)
+}
+
+// Strategy 2: Individual requests (for APIs without batch support)
+class ProductByIdTile(mosaic: Mosaic) : MultiTile<Product, List<Product>>(mosaic) {
+    override suspend fun retrieveForKeys(productIds: List<String>): List<Product> {
+        // Make individual calls concurrently
+        return coroutineScope {
+            productIds.map { id ->
+                async { ProductService.getProduct(id) }
+            }.awaitAll()
+        }
+    }
+    
+    override fun normalize(productId: String, response: List<Product>): Product {
+        return response.first { it.id == productId }
+    }
+}
+
+// Strategy 3: Chunked requests (respect API rate limits)
+class InventoryBySkuTile(mosaic: Mosaic) : MultiTile<Inventory, Map<String, Inventory>>(mosaic) {
+    override suspend fun retrieveForKeys(skus: List<String>): Map<String, Inventory> {
+        // API only allows 10 items per request
+        return skus.chunked(10).map { chunk ->
+            InventoryService.getInventory(chunk)
+        }.reduce { acc, map -> acc + map }
+    }
+    
+    override fun normalize(sku: String, response: Map<String, Inventory>): Inventory = response.getValue(sku)
+}
+
+// Consumer code - batching is completely abstracted:
+val prices1 = mosaic.getTile<PricingBySkuTile>().getByKeys(listOf("SKU1", "SKU2"))
+val prices2 = mosaic.getTile<PricingBySkuTile>().getByKeys(listOf("SKU2", "SKU3"))
+// SKU2 is only fetched ONCE - automatically deduplicated!
+```
+
+## 🧪 **Testing: The Game Changer**
+
+**Testing complex APIs is hard. Mosaic makes it trivial.**
+
+In traditional backends, testing requires intricate mocking of repositories, services, and data flow. With Mosaic, you mock individual tiles and test compositions in complete isolation.
+
+```kotlin
+// Test a complex 3-level composition by mocking just the dependencies
 @Test
-fun `should test single tile`() = runTestMosaicTest {
+fun `order page composes correctly`() = runBlocking {
     val testMosaic = TestMosaicBuilder()
-        .withMockTile(TestSingleTile::class, "test-data")
+        .withMockTile(OrderSummaryTile::class, mockSummary)
+        .withMockTile(LogisticsTile::class, mockLogistics)
         .build()
-
-    registry.register(TestSingleTile::class) { testMosaic.getMockTiles()[TestSingleTile::class] as TestSingleTile }
-    testMosaic.assertEquals(tileClass = TestSingleTile::class, expected = "test-data")
+    
+    // Test the composition logic without any external dependencies
+    testMosaic.assertEquals(
+        tileClass = OrderPageTile::class,
+        expected = OrderPage(mockSummary, mockLogistics)
+    )
 }
 
-// Test MultiTile with failure
+// Test error propagation through the composition chain
 @Test
-fun `should test error handling`() = runTestMosaicTest {
+fun `handles service failures gracefully`() = runBlocking {
     val testMosaic = TestMosaicBuilder()
-        .withFailedTile(TestMultiTile::class, RuntimeException("error"))
+        .withMockTile(OrderTile::class, mockOrder)
+        .withFailedTile(CustomerTile::class, CustomerServiceException("Service down"))
+        .withMockTile(LineItemsTile::class, mockLineItems)
         .build()
+    
+    // Verify the error bubbles up correctly
+    testMosaic.assertThrows(
+        tileClass = OrderSummaryTile::class,
+        expectedException = CustomerServiceException::class.java
+    )
+}
 
-    registry.register(TestMultiTile::class) { testMosaic.getMockTiles()[TestMultiTile::class] as TestMultiTile }
-    testMosaic.assertThrows(tileClass = TestMultiTile::class, keys = listOf("key1"), expectedException = RuntimeException::class.java)
+// Test performance characteristics and timeouts
+@Test  
+fun `handles slow external services`() = runBlocking {
+    val testMosaic = TestMosaicBuilder()
+        .withDelayedTile(ExternalApiTile::class, mockData, delayMs = 500)
+        .build()
+    
+    val startTime = System.currentTimeMillis()
+    testMosaic.assertEquals(ExternalApiTile::class, mockData)
+    val elapsed = System.currentTimeMillis() - startTime
+    
+    assertTrue(elapsed >= 500, "Should respect external service latency")
 }
 ```
 
-For detailed testing documentation, see [mosaic-test/README.md](mosaic-test/README.md).
+**Why this matters:** In a traditional API with 20+ services, you'd need to mock databases, HTTP clients, message queues, and coordinate complex test data. With Mosaic, you mock 2-3 tiles and test your composition logic in isolation.
 
-## 🔍 **Code Quality**
+## 🌐 **Framework Integration**
 
-This project uses **ktlint** and **detekt** to maintain high code quality standards.
+### **Spring Boot**
 
-### **ktlint** - Kotlin Linter
-Enforces Kotlin coding conventions and formatting rules.
+```kotlin
+@Configuration
+class MosaicConfig {
+    @Bean
+    fun mosaicRegistry(): MosaicRegistry {
+        val registry = MosaicRegistry()
+        // Auto-registers all tiles via KSP-generated code
+        registry.registerGeneratedTiles()
+        return registry
+    }
+}
 
-```bash
-# Check code formatting
-./gradlew ktlintCheck
-
-# Auto-fix formatting issues
-./gradlew ktlintFormat
+@RestController
+class OrderController(private val registry: MosaicRegistry) {
+    @GetMapping("/orders/{id}")
+    fun getOrder(@PathVariable id: String): OrderPage = runBlocking {
+        val mosaic = Mosaic(registry, OrderRequest(id))
+        mosaic.getTile<OrderPageTile>().get()
+    }
+    
+    @GetMapping("/orders/{id}/total")
+    fun getOrderTotal(@PathVariable id: String): Double = runBlocking {
+        val mosaic = Mosaic(registry, OrderRequest(id))
+        mosaic.getTile<OrderTotalTile>().get()
+    }
+}
 ```
 
-### **detekt** - Static Code Analysis
-Performs static code analysis to detect potential bugs, code smells, and complexity issues.
+### **Core Components**
 
-```bash
-# Run static analysis
-./gradlew detekt
+**SingleTile**: Caches a single value per request
+```kotlin
+abstract class SingleTile<T>(mosaic: Mosaic) : Tile(mosaic) {
+    abstract suspend fun retrieve(): T
+    suspend fun get(): T  // Returns cached value or calls retrieve()
+}
 ```
 
-### **Configuration**
-- **ktlint**: Configured via Gradle plugins with project-wide settings
-- **detekt**: Uses repository configuration to enforce best practices
-- **EditorConfig**: `.editorconfig` ensures consistent formatting across editors
-
-### **CI/CD Integration**
-The project includes GitHub Actions workflows that automatically run code quality checks on:
-- Pull requests to `main` and `develop` branches
-- Pushes to `main` and `develop` branches
-
-Reports are generated and stored as artifacts for review.
-
-## 💡 **Benefits**
-
-1. **Efficient**: Eliminates redundant data fetching through intelligent caching
-2. **Concurrent**: Handles multiple simultaneous requests gracefully
-3. **Type Safe**: Compile-time guarantees for tile types and interactions
-4. **Composable**: Natural function-like composition of data retrieval logic
-5. **Extensible**: Easy to add new tile types and request properties
-6. **Testable**: Comprehensive testing support with dependency mocking
-7. **Production Ready**: Handles errors, edge cases, and performance optimization
+**MultiTile**: Caches multiple values with batch fetching
+```kotlin
+abstract class MultiTile<T, R>(mosaic: Mosaic) : Tile(mosaic) {
+    abstract suspend fun retrieveForKeys(keys: List<String>): R
+    abstract fun normalize(key: String, response: R): T
+    suspend fun getByKeys(keys: List<String>): Map<String, T>
+}
+```
 
 ## 🎯 **Perfect For**
 
-- **High-performance APIs** requiring efficient data access
-- **Complex backend orchestration** with multiple data sources
-- **Microservices** that need to compose data from various services
-- **GraphQL resolvers** that benefit from intelligent caching
-- **Real-time applications** requiring concurrent data access
-- **Any system** where you want to think in terms of responses rather than queries
+- **🚀 High-performance APIs** requiring efficient data access
+- **🔄 Complex backend orchestration** with multiple data sources  
+- **🏗️ Microservices** that need to compose data from various services
+- **📊 GraphQL resolvers** that benefit from intelligent caching
+- **⚡ Real-time applications** requiring concurrent data access
+- **🎨 Any system** where you want to think in terms of responses rather than queries
 
-Mosaic transforms the way you build backend systems by making data composition as natural as function composition, while providing enterprise-grade performance and reliability.
+## 🌟 **Key Benefits**
+
+- **🎯 Response-First**: Think from the response up, not database down
+- **⚡ Zero Duplication**: Intelligent caching eliminates redundant fetches
+- **🔄 Automatic Concurrency**: Parallel execution without complexity
+- **🧩 Type Safety**: Compile-time guarantees for all dependencies
+- **🧪 Natural Testability**: Mock any tile, test in isolation
+- **📦 Production Ready**: Handles errors, edge cases, and performance optimization
+
+Mosaic transforms backend development by making data composition as natural as function composition, with enterprise-grade performance and reliability.
 
 ## 📄 **License**
 
