@@ -22,10 +22,3 @@ jobs:
 
     - name: Build project (compilation only)
       run: ./gradlew assemble --no-daemon
-      # This runs compilation only:
-      # - compileKotlin (main source compilation)
-      # - jar (artifact generation)
-      # - assemble (all output artifacts)
-      # NO tests, NO style checks, NO quality checks
-
-

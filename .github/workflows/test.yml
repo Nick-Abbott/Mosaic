@@ -22,11 +22,6 @@ jobs:
 
     - name: Run tests
       run: ./gradlew test --no-daemon
-      # This runs tests only:
-      # - compileKotlin (compilation dependency)
-      # - compileTestKotlin (test compilation)
-      # - test (unit tests with coverage)
-      # - koverHtmlReport (coverage report generation)
-      # NO style checks (ktlint/detekt), NO koverVerify
 
-
+    - name: Verify examples
+      run: ./gradlew test --no-daemon -p examples

@@ -22,12 +22,9 @@ jobs:
 
     - name: Run comprehensive PR validation
       run: ./gradlew check --no-daemon
-      # This runs the most comprehensive validation including:
-      # - Compilation (compileKotlin, compileJava)
-      # - Tests (test with coverage - koverHtmlReport, koverVerify)
-      # - Code quality (ktlintCheck, detekt)
-      # - Coverage verification (koverCachedVerify)
-      # - All verification tasks across all projects
+
+    - name: Verify examples
+      run: ./gradlew check --no-daemon -p examples
 
     - name: Generate XML coverage report (for debugging)
       if: failure()
