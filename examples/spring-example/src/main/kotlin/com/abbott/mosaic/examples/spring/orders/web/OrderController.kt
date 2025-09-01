@@ -2,10 +2,10 @@ package com.abbott.mosaic.examples.spring.orders.web
 
 import com.abbott.mosaic.Mosaic
 import com.abbott.mosaic.MosaicRegistry
-import com.abbott.mosaic.examples.spring.orders.OrderRequest
-import com.abbott.mosaic.examples.spring.orders.model.OrderPage
-import com.abbott.mosaic.examples.spring.orders.tile.OrderPageTile
-import com.abbott.mosaic.examples.spring.orders.tile.OrderTotalTile
+import com.abbott.mosaic.examples.library.OrderRequest
+import com.abbott.mosaic.examples.library.model.OrderPage
+import com.abbott.mosaic.examples.library.tile.OrderPageTile
+import com.abbott.mosaic.examples.library.tile.OrderTotalTile
 import kotlinx.coroutines.runBlocking
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable

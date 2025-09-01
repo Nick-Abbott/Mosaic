@@ -1,12 +1,10 @@
 plugins {
-  id("kotlin.convention") apply false
-  id("quality.convention") apply false
-  id("testing.convention") apply false
+  alias(libs.plugins.kotlin.jvm) apply false
+  alias(libs.plugins.ksp) apply false
 }
 
-subprojects {
-  apply(plugin = "kotlin.convention")
-  apply(plugin = "quality.convention")
-  apply(plugin = "testing.convention")
+allprojects {
+  repositories {
+    mavenCentral()
+  }
 }
-

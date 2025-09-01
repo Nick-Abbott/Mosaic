@@ -9,6 +9,6 @@ pluginManagement {
 
 include("mosaic-core")
 include("mosaic-test")
-include("mosaic-build")
-include("mosaic-metadata")
-include("examples:spring-example")
+include("mosaic-build-plugin")
+include("mosaic-build-ksp")
+include("mosaic-catalog-ksp")

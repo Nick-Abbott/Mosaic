@@ -1,6 +1,6 @@
 package com.abbott.mosaic.examples.spring.orders
 
-import com.abbott.mosaic.examples.spring.orders.tile.OrderNotFoundException
+import com.abbott.mosaic.examples.library.exception.OrderNotFoundException
 import com.abbott.mosaic.examples.spring.orders.web.OrderController
 import com.abbott.mosaic.examples.spring.orders.web.OrderExceptionHandler
 import org.junit.jupiter.api.Assertions.assertEquals

@@ -25,7 +25,9 @@ import com.abbott.mosaic.MultiTile
 import com.abbott.mosaic.SingleTile
 import com.abbott.mosaic.Tile
 import io.mockk.coEvery
+import io.mockk.every
 import io.mockk.mockkClass
+import io.mockk.spyk
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlin.jvm.JvmName
@@ -36,7 +38,7 @@ import kotlin.reflect.KClass
  * Provides a fluent API for setting up test scenarios.
  */
 class TestMosaicBuilder {
-  private val internalRegistry = MosaicRegistry()
+  private val internalRegistry = spyk(MosaicRegistry())
   private var request: MosaicRequest = MockMosaicRequest()
   private val mockTiles = mutableMapOf<KClass<*>, Tile>()
 
@@ -160,11 +162,13 @@ class TestMosaicBuilder {
    * Builds and returns a TestMosaic instance.
    */
   fun build(): TestMosaic {
-    runCatching {
-      Class
-        .forName("com.abbott.mosaic.generated.GeneratedMosaicRegistryKt")
-        .getMethod("registerGeneratedTiles", MosaicRegistry::class.java)
-        .invoke(null, internalRegistry)
+    val mosaic = Mosaic(internalRegistry, request)
+    every { internalRegistry.getInstance(any<KClass<out Tile>>(), any<Mosaic>()) } answers {
+      runCatching { callOriginal() }.getOrElse {
+        val clazz = firstArg<KClass<*>>().java
+        val ctor = clazz.declaredConstructors.get(0)
+        ctor.newInstance(mosaic) as Tile
+      }
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -172,7 +176,6 @@ class TestMosaicBuilder {
       internalRegistry.register(clazz as KClass<Tile>) { tile }
     }
 
-    val mosaic = Mosaic(internalRegistry, request)
     return TestMosaic(mosaic, mockTiles)
   }
 

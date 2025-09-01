@@ -51,8 +51,7 @@ style:
   FunctionOnlyReturningConstant:
     active: true
   ReturnCount:
-    active: true
-    excludeGuardClauses: true
+    active: false
 
 complexity:
   active: true

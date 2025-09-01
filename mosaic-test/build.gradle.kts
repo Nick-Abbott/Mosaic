@@ -1,3 +1,6 @@
+group = "com.abbott.mosaic"
+version = "1.0.0"
+
 plugins {
   id("kotlin.convention")
   id("quality.convention")
