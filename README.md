@@ -239,7 +239,7 @@ val tax = mosaic.getTile<TaxCalculatorTile>().get()      // Uses cached LineItem
 
 ## 🔧 **Batch Operations with MultiTile**
 
-MultiTile abstracts batching strategy from consumers. **Key insight: if you request the same key multiple times, even in different lists, Mosaic automatically deduplicates and only calls `retrieveForKeys` with uncached keys.**
+MultiTile abstracts batching strategy from consumers. **Key insight: if you request the same key multiple times, even in different lists, Mosaic automatically deduplicates and only fetches uncached keys.**
 
 ```kotlin
 // Strategy 1: Large batch operations (efficient for bulk APIs)
@@ -283,7 +283,7 @@ class InventoryBySkuTile(mosaic: Mosaic) : MultiTile<Inventory, Map<String, Inve
 // Consumer code - batching is completely abstracted:
 val prices1 = mosaic.getTile<PricingBySkuTile>().getByKeys(listOf("SKU1", "SKU2"))
 val prices2 = mosaic.getTile<PricingBySkuTile>().getByKeys(listOf("SKU2", "SKU3"))
-// Mosaic only calls retrieveForKeys(["SKU1", "SKU3"]) - SKU2 is deduplicated!
+// SKU2 is only fetched ONCE - automatically deduplicated!
 ```
 
 ## 🧪 **Testing: The Game Changer**
@@ -396,6 +396,38 @@ fun Application.module() {
             val total = mosaic.getTile<OrderTotalTile>().get()
             call.respond(mapOf("total" to total))
         }
+    }
+}
+```
+
+### **Micronaut**
+
+```kotlin
+@Factory
+class MosaicConfiguration {
+    @Bean
+    @Singleton
+    fun mosaicRegistry(): MosaicRegistry {
+        val registry = MosaicRegistry()
+        registry.registerGeneratedTiles()
+        return registry
+    }
+}
+
+@Controller("/orders")
+class OrderController(private val registry: MosaicRegistry) {
+    
+    @Get("/{id}")
+    fun getOrder(@PathVariable id: String): OrderPage = runBlocking {
+        val mosaic = Mosaic(registry, OrderRequest(id))
+        mosaic.getTile<OrderPageTile>().get()
+    }
+    
+    @Get("/{id}/total")
+    fun getOrderTotal(@PathVariable id: String): Map<String, Double> = runBlocking {
+        val mosaic = Mosaic(registry, OrderRequest(id))
+        val total = mosaic.getTile<OrderTotalTile>().get()
+        mapOf("total" to total)
     }
 }
 ```

@@ -140,7 +140,7 @@ class UserProfileTile(mosaic: Mosaic) : SingleTile<UserProfile>(mosaic) {
 
 #### examples/
 - Demonstrates real-world usage patterns
-- Spring Boot integration example available
+- Spring Boot, Ktor, and Micronaut integration examples available
 - Tile library for reuse between different examples
 - Good reference for best practices
 - Is a separate gradle project. Gradle commands on examples must be run using `-p examples` flag
