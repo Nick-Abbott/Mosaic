@@ -17,5 +17,6 @@ pluginManagement {
 }
 
 include("spring-example")
+include("ktor-example")
 include("tile-library")
 includeBuild("..")

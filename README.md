@@ -32,11 +32,11 @@ plugins {
 }
 
 dependencies {
-    implementation("com.abbott.mosaic:mosaic-core:1.0.0")      // Core tile system and registry
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")  // Coroutines support
-    testImplementation("com.abbott.mosaic:mosaic-test:1.0.0")  // Testing utilities and mocks
-    testImplementation(kotlin("test"))                         // Kotlin test framework
-    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")  // JUnit 5
+    implementation("com.abbott.mosaic:mosaic-core:1.0.0")               // Core tile system and registry
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")     // Coroutines support
+    testImplementation("com.abbott.mosaic:mosaic-test:1.0.0")           // Testing utilities and mocks
+    testImplementation(kotlin("test"))                                  // Kotlin test framework
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")       // JUnit 5
 }
 ```
 
@@ -44,16 +44,16 @@ dependencies {
 // For tile libraries
 plugins {
     kotlin("jvm")
-    id("com.google.devtools.ksp") version "2.2.0-1.0.13"  // Kotlin Symbol Processing
+    id("com.google.devtools.ksp")                           // Kotlin Symbol Processing
 }
 
 dependencies {
-    implementation("com.abbott.mosaic:mosaic-core:1.0.0")           // Core tile system
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")      // Coroutines support
-    ksp("com.abbott.mosaic:mosaic-catalog-ksp:1.0.0")              // Generates tile catalogs
-    testImplementation("com.abbott.mosaic:mosaic-test:1.0.0")      // Testing framework
-    testImplementation(kotlin("test"))                             // Kotlin test framework
-    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")  // JUnit 5
+    implementation("com.abbott.mosaic:mosaic-core:1.0.0")               // Core tile system
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")     // Coroutines support
+    ksp("com.abbott.mosaic:mosaic-catalog-ksp:1.0.0")                   // Generates tile catalogs
+    testImplementation("com.abbott.mosaic:mosaic-test:1.0.0")           // Testing framework
+    testImplementation(kotlin("test"))                                  // Kotlin test framework
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")       // JUnit 5
 }
 ```
 
@@ -239,14 +239,14 @@ val tax = mosaic.getTile<TaxCalculatorTile>().get()      // Uses cached LineItem
 
 ## 🔧 **Batch Operations with MultiTile**
 
-MultiTile abstracts batching strategy from consumers. **Key insight: if you request the same key multiple times, even in different lists, Mosaic automatically deduplicates and only fetches uncached keys.**
+MultiTile abstracts batching strategy from consumers. **Key insight: if you request the same key multiple times, even in different lists, Mosaic automatically deduplicates and only calls `retrieveForKeys` with uncached keys.**
 
 ```kotlin
 // Strategy 1: Large batch operations (efficient for bulk APIs)
 class PricingBySkuTile(mosaic: Mosaic) : MultiTile<Price, Map<String, Price>>(mosaic) {
     override suspend fun retrieveForKeys(skus: List<String>): Map<String, Price> {
-        // Fetch all prices in one batch call - efficient for APIs that support bulk operations
-        return PricingService.getPrices(skus)
+        // Single bulk API call - efficient for services that support batch operations
+        return PricingService.getBulkPrices(skus)
     }
     
     override fun normalize(sku: String, response: Map<String, Price>): Price = response.getValue(sku)
@@ -255,7 +255,7 @@ class PricingBySkuTile(mosaic: Mosaic) : MultiTile<Price, Map<String, Price>>(mo
 // Strategy 2: Individual requests (for APIs without batch support)
 class ProductByIdTile(mosaic: Mosaic) : MultiTile<Product, List<Product>>(mosaic) {
     override suspend fun retrieveForKeys(productIds: List<String>): List<Product> {
-        // Make individual calls concurrently
+        // Make individual calls concurrently when no batch API exists
         return coroutineScope {
             productIds.map { id ->
                 async { ProductService.getProduct(id) }
@@ -271,7 +271,7 @@ class ProductByIdTile(mosaic: Mosaic) : MultiTile<Product, List<Product>>(mosaic
 // Strategy 3: Chunked requests (respect API rate limits)
 class InventoryBySkuTile(mosaic: Mosaic) : MultiTile<Inventory, Map<String, Inventory>>(mosaic) {
     override suspend fun retrieveForKeys(skus: List<String>): Map<String, Inventory> {
-        // API only allows 10 items per request
+        // API only allows 10 items per request - chunk to respect limits
         return skus.chunked(10).map { chunk ->
             InventoryService.getInventory(chunk)
         }.reduce { acc, map -> acc + map }
@@ -283,7 +283,7 @@ class InventoryBySkuTile(mosaic: Mosaic) : MultiTile<Inventory, Map<String, Inve
 // Consumer code - batching is completely abstracted:
 val prices1 = mosaic.getTile<PricingBySkuTile>().getByKeys(listOf("SKU1", "SKU2"))
 val prices2 = mosaic.getTile<PricingBySkuTile>().getByKeys(listOf("SKU2", "SKU3"))
-// SKU2 is only fetched ONCE - automatically deduplicated!
+// Mosaic only calls retrieveForKeys(["SKU1", "SKU3"]) - SKU2 is deduplicated!
 ```
 
 ## 🧪 **Testing: The Game Changer**
@@ -369,6 +369,33 @@ class OrderController(private val registry: MosaicRegistry) {
     fun getOrderTotal(@PathVariable id: String): Double = runBlocking {
         val mosaic = Mosaic(registry, OrderRequest(id))
         mosaic.getTile<OrderTotalTile>().get()
+    }
+}
+```
+
+### **Ktor**
+
+```kotlin
+fun Application.module() {
+    install(ContentNegotiation) { json() }
+    
+    val registry = MosaicRegistry()
+    registry.registerGeneratedTiles()
+    
+    routing {
+        get("/orders/{id}") {
+            val orderId = call.parameters["id"] ?: error("Missing order ID")
+            val mosaic = Mosaic(registry, OrderRequest(orderId))
+            val orderPage = mosaic.getTile<OrderPageTile>().get()
+            call.respond(orderPage)
+        }
+        
+        get("/orders/{id}/total") {
+            val orderId = call.parameters["id"] ?: error("Missing order ID")
+            val mosaic = Mosaic(registry, OrderRequest(orderId))
+            val total = mosaic.getTile<OrderTotalTile>().get()
+            call.respond(mapOf("total" to total))
+        }
     }
 }
 ```
