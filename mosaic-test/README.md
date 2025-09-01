@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/Nick-Abbott/Mosaic/workflows/Test%20Badge/badge.svg)](https://github.com/Nick-Abbott/Mosaic/actions?query=workflow%3A%22Test+Badge%22)
 [![Build](https://github.com/Nick-Abbott/Mosaic/workflows/Build%20Badge/badge.svg)](https://github.com/Nick-Abbott/Mosaic/actions?query=workflow%3A%22Build+Badge%22)
-[![Kotlin](https://img.shields.io/badge/kotlin-1.9.0-blue.svg)](https://kotlinlang.org)
+[![Kotlin](https://img.shields.io/badge/kotlin-2.2.0-blue.svg)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 A comprehensive testing framework for the Mosaic backend orchestration system. This module provides utilities, assertions, and testing patterns specifically designed for testing Tile implementations with excellent code coverage.
@@ -19,7 +19,7 @@ The `mosaic-test` module is designed to make testing Tile implementations as eas
 ## 🏗️ Module Structure
 
 ```
-packages/mosaic-test/
+mosaic-test/
 ├── src/main/kotlin/com/abbott/mosaic/test/
 │   ├── TestMosaic.kt              # Main test wrapper with assertion methods
 │   ├── TestMosaicBuilder.kt       # Fluent builder for creating test scenarios
@@ -45,9 +45,9 @@ This module depends on:
 
 ## 🚀 Usage
 
-When the `mosaic-build` Gradle plugin is applied, the test builder automatically registers all real
-`Tile` implementations before applying mocks. If you choose to register tiles manually, you can still
-do so by calling `MosaicRegistry.register` yourself.
+When the mosaic build plugin (`com.abbott.mosaic.build`) is applied, the test builder automatically
+registers all real `Tile` implementations before applying mocks. If you choose to register tiles
+manually, you can still do so by calling `MosaicRegistry.register` yourself.
 
 ### Basic Tile Testing
 
@@ -159,7 +159,7 @@ Coverage thresholds are enforced in the build:
 - Branch coverage: 80% minimum
 - Instruction coverage: 90% minimum
 
-Run `./gradlew -p packages :mosaic-test:koverHtmlReport` to generate detailed coverage reports.
+Run `./gradlew :mosaic-test:koverHtmlReport` to generate detailed coverage reports.
 
 ## 🛠️ Development
 
@@ -174,16 +174,16 @@ Run `./gradlew -p packages :mosaic-test:koverHtmlReport` to generate detailed co
 
 ```bash
 # Run all tests
-./gradlew -p packages :mosaic-test:test
+./gradlew :mosaic-test:test
 
 # Run with coverage verification
-./gradlew -p packages :mosaic-test:koverVerify
+./gradlew :mosaic-test:koverVerify
 
 # Run specific test class
-./gradlew -p packages :mosaic-test:test --tests "com.abbott.mosaic.test.TestMosaicBuilderTest"
+./gradlew :mosaic-test:test --tests "com.abbott.mosaic.test.TestMosaicBuilderTest"
 
 # Generate coverage reports
-./gradlew -p packages :mosaic-test:koverHtmlReport
+./gradlew :mosaic-test:koverHtmlReport
 ```
 
 ### Code Quality

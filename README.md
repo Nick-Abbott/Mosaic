@@ -40,29 +40,26 @@ This project uses a **multi-module Gradle structure** to organize code into focu
 
 ```
 Mosaic/
-├── packages/
-│   ├── build.gradle.kts    # Root build configuration and publishing setup
-│   ├── settings.gradle.kts # Module definitions
-│   ├── config/             # Static analysis configs
-│   ├── mosaic-core/        # Core Mosaic framework
-│   ├── mosaic-test/        # Testing framework
-│   └── mosaic-build/       # Gradle build plugin
-├── examples/               # Standalone example projects (includes Spring Boot sample with parallel tile aggregation)
-│   ├── build.gradle.kts
-│   └── settings.gradle.kts
-└── MODULE_TEMPLATE.md      # Guide for adding new modules
+├── mosaic-core/          # Core framework
+├── mosaic-test/          # Testing framework
+├── mosaic-build-plugin/  # Gradle build plugin
+├── mosaic-build-ksp/     # KSP plugin to generate tile registration code
+├── mosaic-catalog-ksp/   # KSP plugin to generate tile catalogs for tile libraries
+├── examples/             # Example implementations
+├── buildSrc/             # Gradle convention plugins
+├── build.gradle.kts      # Root build configuration
+└── settings.gradle.kts   # Gradle settings
 ```
 
 ### **Modules**
 
-- **`mosaic-core`**: The main Mosaic framework with tile system, registry, and core functionality
-- **`mosaic-test`**: Comprehensive testing framework with utilities, assertions, and mock behaviors for testing Tile implementations
-- **`mosaic-build`**: Gradle plugin that automates Mosaic build configuration
-- **Future modules**: API, CLI, web components, utils, etc.
-
-### **Adding New Modules**
-
-See [MODULE_TEMPLATE.md](MODULE_TEMPLATE.md) for detailed instructions on adding new modules to the project.
+- **`mosaic-core`** – Core Mosaic framework with tile system, registry, and core functionality
+- **`mosaic-test`** – Comprehensive testing utilities and assertions for Tile implementations
+- **`mosaic-build-plugin`** – Gradle plugin that wires KSP processors and merges tile catalogs
+- **`mosaic-build-ksp`** – KSP plugin that generates tile registration code
+- **`mosaic-catalog-ksp`** – KSP plugin that generates tile catalogs for tile libraries
+- **`examples`** – Standalone example projects demonstrating Mosaic in real applications
+- **`buildSrc`** – Gradle convention plugins shared across modules
 
 ## 🧩 **Core Components**
 
@@ -208,10 +205,10 @@ fun `should compose complex response`() = runTest {
 
 ```bash
 # Build all modules
-./gradlew -p packages build
+./gradlew build
 
 # Build specific module
-./gradlew -p packages :mosaic-core:build
+./gradlew :mosaic-core:build
 ```
 
 ## 🧪 **Testing**
@@ -227,17 +224,17 @@ The project includes a comprehensive testing framework in the `mosaic-test` modu
 
 ```bash
 # Test all modules
-./gradlew -p packages test
+./gradlew test
 
 # Test specific module
-./gradlew -p packages :mosaic-core:test
-./gradlew -p packages :mosaic-test:test
+./gradlew :mosaic-core:test
+./gradlew :mosaic-test:test
 
 # Test with coverage verification
-./gradlew -p packages :mosaic-test:koverVerify
+./gradlew :mosaic-test:koverVerify
 
 # Generate coverage reports
-./gradlew -p packages :mosaic-test:koverHtmlReport
+./gradlew :mosaic-test:koverHtmlReport
 ```
 
 ### **Testing Examples**
@@ -277,10 +274,10 @@ Enforces Kotlin coding conventions and formatting rules.
 
 ```bash
 # Check code formatting
-./gradlew -p packages ktlintCheck
+./gradlew ktlintCheck
 
 # Auto-fix formatting issues
-./gradlew -p packages ktlintFormat
+./gradlew ktlintFormat
 ```
 
 ### **detekt** - Static Code Analysis
@@ -288,15 +285,12 @@ Performs static code analysis to detect potential bugs, code smells, and complex
 
 ```bash
 # Run static analysis
-./gradlew -p packages detekt
-
-# Run with auto-correction
-./gradlew -p packages detektMain
+./gradlew detekt
 ```
 
 ### **Configuration**
-- **ktlint**: Configured in `packages/build.gradle.kts` with version 1.0.1
-- **detekt**: Configured in `packages/config/detekt/detekt.yml` with comprehensive rule sets
+- **ktlint**: Configured via Gradle plugins with project-wide settings
+- **detekt**: Uses repository configuration to enforce best practices
 - **EditorConfig**: `.editorconfig` ensures consistent formatting across editors
 
 ### **CI/CD Integration**
@@ -305,96 +299,6 @@ The project includes GitHub Actions workflows that automatically run code qualit
 - Pushes to `main` and `develop` branches
 
 Reports are generated and stored as artifacts for review.
-
-## 🚀 **Gradle Lifecycle & Convenience Tasks**
-
-The project includes an optimized Gradle lifecycle with intelligent task dependencies and convenient shortcuts.
-
-### **Core Verification Tasks**
-
-```bash
-# Run all code style and quality checks
-./gradlew -p packages styleCheck
-
-# Run tests and verify coverage thresholds
-./gradlew -p packages coverageCheck
-
-# Run all verifications (style, quality, coverage)
-./gradlew -p packages verifyAll
-
-# Run the standard Gradle check (includes all verifications)
-./gradlew -p packages check
-```
-
-### **Convenience Tasks**
-
-```bash
-# Complete build with verification
-./gradlew -p packages fullBuild
-
-# Generate all reports (tests, coverage, style checks)
-./gradlew -p packages generateReports
-
-# Auto-fix code style issues where possible
-./gradlew -p packages fixCodeStyle
-```
-
-### **Task Dependencies**
-
-The lifecycle is organized with intelligent dependencies:
-
-- **`test`** → automatically generates HTML coverage report
-- **`styleCheck`** → runs ktlint and detekt
-- **`coverageCheck`** → runs tests and verifies coverage thresholds
-- **`verifyAll`** → runs style checks and coverage verification
-- **`check`** → includes all verifications
-- **`fullBuild`** → clean, build, test, and verify everything
-
-### **Task Groups**
-
-- **`verification`**: Code quality and testing tasks
-- **`build`**: Build and compilation tasks  
-- **`reporting`**: Report generation tasks
-
-## 📊 **Code Coverage**
-
-This project uses **Kover** for code coverage analysis, providing comprehensive insights into test coverage without affecting Kotlin compilation.
-
-### **Running Coverage Analysis**
-
-```bash
-# Generate coverage reports
-./gradlew -p packages koverHtmlReport
-
-# Generate XML report (useful for CI/CD)
-./gradlew -p packages koverXmlReport
-
-# Verify coverage meets minimum thresholds
-./gradlew -p packages koverVerify
-
-# Run all verification including coverage
-./gradlew -p packages verifyAll
-```
-
-### **Coverage Configuration**
-
-- **Minimum Thresholds**: 80% line and branch coverage
-- **Coverage Scope**: All classes in `com.abbott.mosaic.*` packages
-- **Exclusions**: Test classes and generated code are excluded
-- **Reports**: HTML and XML formats available
-
-### **Coverage Reports**
-
-After running coverage analysis, reports are available at:
-- **HTML Report**: `build/reports/kover/html/index.html`
-- **XML Report**: `build/reports/kover/xml/report.xml`
-
-### **CI/CD Integration**
-
-Coverage verification is automatically included in the build process:
-- Coverage reports are generated during CI builds
-- Coverage thresholds are enforced to maintain quality standards
-- Coverage data is available for trend analysis
 
 ## 💡 **Benefits**
 
