@@ -15,15 +15,15 @@ class ServicesTest {
   fun `services return expected data`() {
     val order = OrderService.getOrder("order-1")
     val expectedOrder =
-        Order(
-            id = "order-1",
-            customerId = "customer-1",
-            items =
-                listOf(
-                    OrderLineItem("product-1", "sku-1", 2),
-                    OrderLineItem("product-2", "sku-2", 1),
-                ),
-        )
+      Order(
+        id = "order-1",
+        customerId = "customer-1",
+        items =
+          listOf(
+            OrderLineItem("product-1", "sku-1", 2),
+            OrderLineItem("product-2", "sku-2", 1),
+          ),
+      )
     assertEquals(expectedOrder, order)
 
     val customer = CustomerService.getCustomer("customer-1")
