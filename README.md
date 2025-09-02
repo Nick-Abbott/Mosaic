@@ -26,34 +26,34 @@ Add Mosaic to your Gradle project:
 ```kotlin
 // For applications using tiles
 plugins {
-    kotlin("jvm")
-    id("com.google.devtools.ksp")
-    id("com.abbott.mosaic.build") version "1.0.0"  // Auto-registers tiles and applies KSP
+  kotlin("jvm")
+  id("com.google.devtools.ksp")
+  id("com.abbott.mosaic.build") version "1.0.0"  // Auto-registers tiles and applies KSP
 }
 
 dependencies {
-    implementation("com.abbott.mosaic:mosaic-core:1.0.0")               // Core tile system and registry
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")     // Coroutines support
-    testImplementation("com.abbott.mosaic:mosaic-test:1.0.0")           // Testing utilities and mocks
-    testImplementation(kotlin("test"))                                  // Kotlin test framework
-    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")       // JUnit 5
+  implementation("com.abbott.mosaic:mosaic-core:1.0.0")               // Core tile system and registry
+  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")     // Coroutines support
+  testImplementation("com.abbott.mosaic:mosaic-test:1.0.0")           // Testing utilities and mocks
+  testImplementation(kotlin("test"))                                  // Kotlin test framework
+  testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")       // JUnit 5
 }
 ```
 
 ```kotlin
 // For tile libraries
 plugins {
-    kotlin("jvm")
-    id("com.google.devtools.ksp")                           // Kotlin Symbol Processing
+  kotlin("jvm")
+  id("com.google.devtools.ksp")                           // Kotlin Symbol Processing
 }
 
 dependencies {
-    implementation("com.abbott.mosaic:mosaic-core:1.0.0")               // Core tile system
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")     // Coroutines support
-    ksp("com.abbott.mosaic:mosaic-catalog-ksp:1.0.0")                   // Generates tile catalogs
-    testImplementation("com.abbott.mosaic:mosaic-test:1.0.0")           // Testing framework
-    testImplementation(kotlin("test"))                                  // Kotlin test framework
-    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")       // JUnit 5
+  implementation("com.abbott.mosaic:mosaic-core:1.0.0")               // Core tile system
+  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")     // Coroutines support
+  ksp("com.abbott.mosaic:mosaic-catalog-ksp:1.0.0")                   // Generates tile catalogs
+  testImplementation("com.abbott.mosaic:mosaic-test:1.0.0")           // Testing framework
+  testImplementation(kotlin("test"))                                  // Kotlin test framework
+  testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")       // JUnit 5
 }
 ```
 
@@ -62,40 +62,40 @@ dependencies {
 ```kotlin
 // A simple tile that fetches and caches data
 class CustomerTile(mosaic: Mosaic) : SingleTile<Customer>(mosaic) {
-    override suspend fun retrieve(): Customer {
-        val customerId = (mosaic.request as OrderRequest).customerId
-        return CustomerService.fetchCustomer(customerId)
-    }
+  override suspend fun retrieve(): Customer {
+    val customerId = (mosaic.request as OrderRequest).customerId
+    return CustomerService.fetchCustomer(customerId)
+  }
 }
 
 // Parallel composition: These tiles run concurrently
 class OrderSummaryTile(mosaic: Mosaic) : SingleTile<OrderSummary>(mosaic) {
-    override suspend fun retrieve(): OrderSummary = coroutineScope {
-        // These run in parallel automatically!
-        val orderDeferred = async { mosaic.getTile<OrderTile>().get() }
-        val customerDeferred = async { mosaic.getTile<CustomerTile>().get() }
-        val lineItemsDeferred = async { mosaic.getTile<LineItemsTile>().get() }
-        
-        OrderSummary(
-            order = orderDeferred.await(),
-            customer = customerDeferred.await(),
-            lineItems = lineItemsDeferred.await()
-        )
-    }
+  override suspend fun retrieve(): OrderSummary = coroutineScope {
+    // These run in parallel automatically!
+    val orderDeferred = async { mosaic.getTile<OrderTile>().get() }
+    val customerDeferred = async { mosaic.getTile<CustomerTile>().get() }
+    val lineItemsDeferred = async { mosaic.getTile<LineItemsTile>().get() }
+    
+    OrderSummary(
+      order = orderDeferred.await(),
+      customer = customerDeferred.await(),
+      lineItems = lineItemsDeferred.await()
+    )
+  }
 }
 
 // Sequential composition: Choose tiles based on previous results
 class PaymentProcessorTile(mosaic: Mosaic) : SingleTile<PaymentProcessor>(mosaic) {
-    override suspend fun retrieve(): PaymentProcessor {
-        val customer = mosaic.getTile<CustomerTile>().get()
-        
-        // Choose processor based on customer tier
-        return when (customer.tier) {
-            CustomerTier.PREMIUM -> mosaic.getTile<PremiumProcessorTile>().get()
-            CustomerTier.BUSINESS -> mosaic.getTile<BusinessProcessorTile>().get()
-            else -> mosaic.getTile<StandardProcessorTile>().get()
-        }
+  override suspend fun retrieve(): PaymentProcessor {
+    val customer = mosaic.getTile<CustomerTile>().get()
+    
+    // Choose processor based on customer tier
+    return when (customer.tier) {
+      CustomerTier.PREMIUM -> mosaic.getTile<PremiumProcessorTile>().get()
+      CustomerTier.BUSINESS -> mosaic.getTile<BusinessProcessorTile>().get()
+      else -> mosaic.getTile<StandardProcessorTile>().get()
     }
+  }
 }
 ```
 
@@ -122,30 +122,30 @@ val logistics = calculateLogistics(order, customer, enrichedItems)
 ```kotlin
 // Declarative: tiles retrieve their own dependencies - no data passing!
 class OrderPageTile(mosaic: Mosaic) : SingleTile<OrderPage>(mosaic) {
-    override suspend fun retrieve(): OrderPage = coroutineScope {
-        val summaryDeferred = async { mosaic.getTile<OrderSummaryTile>().get() }
-        val logisticsDeferred = async { mosaic.getTile<LogisticsTile>().get() }
-        
-        OrderPage(
-            summary = summaryDeferred.await(),
-            logistics = logisticsDeferred.await()
-        )
-    }
+  override suspend fun retrieve(): OrderPage = coroutineScope {
+    val summaryDeferred = async { mosaic.getTile<OrderSummaryTile>().get() }
+    val logisticsDeferred = async { mosaic.getTile<LogisticsTile>().get() }
+    
+    OrderPage(
+      summary = summaryDeferred.await(),
+      logistics = logisticsDeferred.await()
+    )
+  }
 }
 
 // Each tile knows how to get what it needs - no coupling!
 class OrderSummaryTile(mosaic: Mosaic) : SingleTile<OrderSummary>(mosaic) {
-    override suspend fun retrieve(): OrderSummary = coroutineScope {
-        val orderDeferred = async { mosaic.getTile<OrderTile>().get() }
-        val customerDeferred = async { mosaic.getTile<CustomerTile>().get() }
-        val lineItemsDeferred = async { mosaic.getTile<LineItemsTile>().get() }
-        
-        OrderSummary(
-            order = orderDeferred.await(),
-            customer = customerDeferred.await(),
-            lineItems = lineItemsDeferred.await()
-        )
-    }
+  override suspend fun retrieve(): OrderSummary = coroutineScope {
+    val orderDeferred = async { mosaic.getTile<OrderTile>().get() }
+    val customerDeferred = async { mosaic.getTile<CustomerTile>().get() }
+    val lineItemsDeferred = async { mosaic.getTile<LineItemsTile>().get() }
+    
+    OrderSummary(
+      order = orderDeferred.await(),
+      customer = customerDeferred.await(),
+      lineItems = lineItemsDeferred.await()
+    )
+  }
 }
 ```
 
@@ -156,46 +156,46 @@ Mosaic shines when composing tiles multiple levels deep. Each tile focuses on on
 ```kotlin
 // Level 1: Entry point tile
 class OrderPageTile(mosaic: Mosaic) : SingleTile<OrderPage>(mosaic) {
-    override suspend fun retrieve(): OrderPage = coroutineScope {
-        // Parallel execution of two major components
-        val summaryDeferred = async { mosaic.getTile<OrderSummaryTile>().get() }
-        val logisticsDeferred = async { mosaic.getTile<LogisticsTile>().get() }
-        
-        OrderPage(summaryDeferred.await(), logisticsDeferred.await())
-    }
+  override suspend fun retrieve(): OrderPage = coroutineScope {
+    // Parallel execution of two major components
+    val summaryDeferred = async { mosaic.getTile<OrderSummaryTile>().get() }
+    val logisticsDeferred = async { mosaic.getTile<LogisticsTile>().get() }
+    
+    OrderPage(summaryDeferred.await(), logisticsDeferred.await())
+  }
 }
 
 // Level 2: Summary aggregates order data
 class OrderSummaryTile(mosaic: Mosaic) : SingleTile<OrderSummary>(mosaic) {
-    override suspend fun retrieve(): OrderSummary = coroutineScope {
-        // These three tiles run in parallel
-        val orderDeferred = async { mosaic.getTile<OrderTile>().get() }
-        val customerDeferred = async { mosaic.getTile<CustomerTile>().get() }
-        val lineItemsDeferred = async { mosaic.getTile<LineItemsTile>().get() }
-        
-        OrderSummary(
-            order = orderDeferred.await(),
-            customer = customerDeferred.await(),
-            lineItems = lineItemsDeferred.await()
-        )
-    }
+  override suspend fun retrieve(): OrderSummary = coroutineScope {
+    // These three tiles run in parallel
+    val orderDeferred = async { mosaic.getTile<OrderTile>().get() }
+    val customerDeferred = async { mosaic.getTile<CustomerTile>().get() }
+    val lineItemsDeferred = async { mosaic.getTile<LineItemsTile>().get() }
+    
+    OrderSummary(
+      order = orderDeferred.await(),
+      customer = customerDeferred.await(),
+      lineItems = lineItemsDeferred.await()
+    )
+  }
 }
 
 // Level 3: Line items enriches with product and pricing data
 class LineItemsTile(mosaic: Mosaic) : SingleTile<List<LineItemDetail>>(mosaic) {
-    override suspend fun retrieve(): List<LineItemDetail> {
-        val order = mosaic.getTile<OrderTile>().get()
-        
-        // Batch fetch products and prices in parallel
-        val (products, prices) = coroutineScope {
-            val productsDeferred = async { 
-                mosaic.getTile<ProductsByIdTile>().getByKeys(order.productIds) 
-            }
-            val pricesDeferred = async { 
-                mosaic.getTile<PricingBySkuTile>().getByKeys(order.skus) 
-            }
-            productsDeferred.await() to pricesDeferred.await()
-        }
+  override suspend fun retrieve(): List<LineItemDetail> {
+    val order = mosaic.getTile<OrderTile>().get()
+    
+    // Batch fetch products and prices in parallel
+    val (products, prices) = coroutineScope {
+      val productsDeferred = async { 
+        mosaic.getTile<ProductsByIdTile>().getByKeys(order.productIds) 
+      }
+      val pricesDeferred = async { 
+        mosaic.getTile<PricingBySkuTile>().getByKeys(order.skus) 
+      }
+      productsDeferred.await() to pricesDeferred.await()
+    }
         
         return order.items.map { item ->
             LineItemDetail(
@@ -359,10 +359,10 @@ class MosaicConfig {
 
 @RestController
 class OrderController(private val registry: MosaicRegistry) {
-    @GetMapping("/orders/{id}")
-    fun getOrder(@PathVariable id: String): OrderPage = runBlocking {
-        val mosaic = Mosaic(registry, OrderRequest(id))
-        mosaic.getTile<OrderPageTile>().get()
+  @GetMapping("/orders/{id}")
+  fun getOrder(@PathVariable id: String): OrderPage = runBlocking {
+    val mosaic = Mosaic(registry, OrderRequest(id))
+    mosaic.getTile<OrderPageTile>().get()
     }
     
     @GetMapping("/orders/{id}/total")

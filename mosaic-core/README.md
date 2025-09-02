@@ -17,18 +17,18 @@ Caches a single value per request context:
 
 ```kotlin
 abstract class SingleTile<T>(mosaic: Mosaic) : Tile(mosaic) {
-    abstract suspend fun retrieve(): T
-    suspend fun get(): T  // Returns cached value or calls retrieve()
+  abstract suspend fun retrieve(): T
+  suspend fun get(): T  // Returns cached value or calls retrieve()
 }
 ```
 
 **Usage:**
 ```kotlin
 class CustomerTile(mosaic: Mosaic) : SingleTile<Customer>(mosaic) {
-    override suspend fun retrieve(): Customer {
-        val customerId = (mosaic.request as OrderRequest).customerId
-        return CustomerService.fetchCustomer(customerId)
-    }
+  override suspend fun retrieve(): Customer {
+    val customerId = (mosaic.request as OrderRequest).customerId
+    return CustomerService.fetchCustomer(customerId)
+  }
 }
 ```
 
@@ -38,21 +38,21 @@ Caches multiple values with batch fetching optimization:
 
 ```kotlin
 abstract class MultiTile<T, R>(mosaic: Mosaic) : Tile(mosaic) {
-    abstract suspend fun retrieveForKeys(keys: List<String>): R
-    abstract fun normalize(key: String, response: R): T
-    suspend fun getByKeys(keys: List<String>): Map<String, T>
+  abstract suspend fun retrieveForKeys(keys: List<String>): R
+  abstract fun normalize(key: String, response: R): T
+  suspend fun getByKeys(keys: List<String>): Map<String, T>
 }
 ```
 
 **Usage:**
 ```kotlin
 class PricingBySkuTile(mosaic: Mosaic) : MultiTile<Price, Map<String, Price>>(mosaic) {
-    override suspend fun retrieveForKeys(skus: List<String>): Map<String, Price> {
-        return PricingService.getBulkPrices(skus)
-    }
-    
-    override fun normalize(sku: String, response: Map<String, Price>): Price = 
-        response.getValue(sku)
+  override suspend fun retrieveForKeys(skus: List<String>): Map<String, Price> {
+    return PricingService.getBulkPrices(skus)
+  }
+  
+  override fun normalize(sku: String, response: Map<String, Price>): Price = 
+    response.getValue(sku)
 }
 ```
 
@@ -62,8 +62,8 @@ Dependency injection container for tiles:
 
 ```kotlin
 class MosaicRegistry {
-    fun <T : Tile> registerTile(tileClass: KClass<T>)
-    fun <T : Tile> getTile(tileClass: KClass<T>, mosaic: Mosaic): T
+  fun <T : Tile> registerTile(tileClass: KClass<T>)
+  fun <T : Tile> getTile(tileClass: KClass<T>, mosaic: Mosaic): T
 }
 ```
 
@@ -82,11 +82,11 @@ Main orchestration class that manages tile lifecycle and caching:
 
 ```kotlin
 class Mosaic(
-    private val registry: MosaicRegistry,
-    val request: MosaicRequest
+  private val registry: MosaicRegistry,
+  val request: MosaicRequest
 ) {
-    suspend fun <T : SingleTile<*>> getTile(tileClass: KClass<T>): T
-    suspend fun <T : MultiTile<*, *>> getTile(tileClass: KClass<T>): T
+  suspend fun <T : SingleTile<*>> getTile(tileClass: KClass<T>): T
+  suspend fun <T : MultiTile<*, *>> getTile(tileClass: KClass<T>): T
 }
 ```
 
@@ -124,34 +124,34 @@ val prices = mosaic.getTile<PricingBySkuTile>().getByKeys(listOf("SKU1", "SKU2")
 ### **Parallel Composition**
 ```kotlin
 class OrderSummaryTile(mosaic: Mosaic) : SingleTile<OrderSummary>(mosaic) {
-    override suspend fun retrieve(): OrderSummary = coroutineScope {
-        // These three tiles run concurrently
-        val orderDeferred = async { mosaic.getTile<OrderTile>().get() }
-        val customerDeferred = async { mosaic.getTile<CustomerTile>().get() }
-        val lineItemsDeferred = async { mosaic.getTile<LineItemsTile>().get() }
-        
-        OrderSummary(
-            order = orderDeferred.await(),
-            customer = customerDeferred.await(),
-            lineItems = lineItemsDeferred.await()
-        )
-    }
+  override suspend fun retrieve(): OrderSummary = coroutineScope {
+    // These three tiles run concurrently
+    val orderDeferred = async { mosaic.getTile<OrderTile>().get() }
+    val customerDeferred = async { mosaic.getTile<CustomerTile>().get() }
+    val lineItemsDeferred = async { mosaic.getTile<LineItemsTile>().get() }
+    
+    OrderSummary(
+      order = orderDeferred.await(),
+      customer = customerDeferred.await(),
+      lineItems = lineItemsDeferred.await()
+    )
+  }
 }
 ```
 
 ### **Sequential Composition**
 ```kotlin
 class PaymentProcessorTile(mosaic: Mosaic) : SingleTile<PaymentProcessor>(mosaic) {
-    override suspend fun retrieve(): PaymentProcessor {
-        val customer = mosaic.getTile<CustomerTile>().get()
-        
-        // Choose processor based on customer data
-        return when (customer.tier) {
-            CustomerTier.PREMIUM -> mosaic.getTile<PremiumProcessorTile>().get()
-            CustomerTier.BUSINESS -> mosaic.getTile<BusinessProcessorTile>().get()
-            else -> mosaic.getTile<StandardProcessorTile>().get()
-        }
+  override suspend fun retrieve(): PaymentProcessor {
+    val customer = mosaic.getTile<CustomerTile>().get()
+    
+    // Choose processor based on customer data
+    return when (customer.tier) {
+      CustomerTier.PREMIUM -> mosaic.getTile<PremiumProcessorTile>().get()
+      CustomerTier.BUSINESS -> mosaic.getTile<BusinessProcessorTile>().get()
+      else -> mosaic.getTile<StandardProcessorTile>().get()
     }
+  }
 }
 ```
 
