@@ -16,22 +16,27 @@
 
 package com.abbott.mosaic
 
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.reflect.KClass
 
 class Mosaic(
   private val registry: MosaicRegistry,
   val request: MosaicRequest,
 ) {
-  private val tileCache = mutableMapOf<KClass<*>, Tile>()
+  private val tileCache = ConcurrentHashMap<KClass<*>, Tile>()
+  private val lock = Any()
 
   fun <T : Tile> getTile(tileClass: KClass<T>): T {
-    return tileCache[tileClass]?.let { cachedTile ->
+    @Suppress("UNCHECKED_CAST")
+    tileCache[tileClass]?.let { return it as T }
+
+    synchronized(lock) {
       @Suppress("UNCHECKED_CAST")
-      cachedTile as T
-    } ?: run {
+      tileCache[tileClass]?.let { return it as T }
+
       val newTile = registry.getInstance(tileClass, this)
       tileCache[tileClass] = newTile
-      newTile
+      return newTile
     }
   }
 

@@ -18,25 +18,28 @@ package com.abbott.mosaic
 
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.ConcurrentHashMap
 
 sealed class Tile(protected val mosaic: Mosaic)
 
 abstract class SingleTile<T>(mosaic: Mosaic) : Tile(mosaic) {
   private var retrieveDeferred: Deferred<T>? = null
+  private val mutex = Mutex()
 
   suspend fun get(): T {
-    val deferred = retrieveDeferred
-    if (deferred != null) {
-      return deferred.await()
-    }
+    // Fast path - check without lock
+    retrieveDeferred?.let { return it.await() }
 
-    return kotlinx.coroutines.coroutineScope {
-      val newDeferred =
-        async {
-          retrieve()
-        }
-      retrieveDeferred = newDeferred
-      newDeferred.await()
+    // Slow path - acquire lock and double-check
+    mutex.withLock {
+      retrieveDeferred?.let { return it.await() }
+
+      // Create and store deferred
+      retrieveDeferred = coroutineScope { async { retrieve() } }
+      return retrieveDeferred!!.await()
     }
   }
 
@@ -44,53 +47,32 @@ abstract class SingleTile<T>(mosaic: Mosaic) : Tile(mosaic) {
 }
 
 abstract class MultiTile<SingleType, MultiType>(mosaic: Mosaic) : Tile(mosaic) {
-  private val cache = mutableMapOf<String, Deferred<SingleType>>()
+  private val cache = ConcurrentHashMap<String, Deferred<SingleType>>()
+  private val mutex = Mutex()
 
   suspend fun getByKeys(keys: List<String>): Map<String, SingleType> {
-    return kotlinx.coroutines.coroutineScope {
-      val missingKeys = mutableListOf<String>()
-      val existingDeferreds = mutableMapOf<String, Deferred<SingleType>>()
-
-      // Check cache for existing deferreds
-      for (key in keys) {
-        val deferred = cache[key]
-        if (deferred != null) {
-          existingDeferreds[key] = deferred
-        } else {
-          missingKeys.add(key)
-        }
-      }
-
-      // Create deferreds for missing keys and start retrieval immediately
-      val missingDeferreds = mutableMapOf<String, Deferred<SingleType>>()
-      if (missingKeys.isNotEmpty()) {
-        val batchResponse = retrieveForKeys(missingKeys)
-
-        for (key in missingKeys) {
-          val deferred =
-            async {
-              normalize(key, batchResponse)
-            }
-          cache[key] = deferred
-          missingDeferreds[key] = deferred
-        }
-      }
-
-      // Await all results in parallel
-      val result = mutableMapOf<String, SingleType>()
-
-      // Await existing deferreds
-      existingDeferreds.forEach { (key, deferred) ->
-        result[key] = deferred.await()
-      }
-
-      // Await missing deferreds
-      missingDeferreds.forEach { (key, deferred) ->
-        result[key] = deferred.await()
-      }
-
-      result
+    // Fast path - all keys are in cache
+    if (keys.all(cache::containsKey)) {
+      return keys.associateWith { cache[it]!!.await() }
     }
+
+    // Slow path - acquire lock and double-check
+    mutex.withLock {
+      val missingKeys = keys.filterNot { cache.containsKey(it) }
+
+      // Double check
+      if (missingKeys.isEmpty()) return@withLock
+
+      coroutineScope {
+        // Create deferreds for missing keys and start retrieval immediately
+        val newKeysResponseDeferred = async { retrieveForKeys(missingKeys) }
+        missingKeys.forEach {
+          cache[it] = async { normalize(it, newKeysResponseDeferred.await()) }
+        }
+      }
+    }
+
+    return keys.associateWith { cache[it]!!.await() }
   }
 
   suspend fun getByKeys(vararg keys: String): Map<String, SingleType> {

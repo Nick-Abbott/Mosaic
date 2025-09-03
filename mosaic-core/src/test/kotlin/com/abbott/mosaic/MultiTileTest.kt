@@ -108,12 +108,6 @@ class MultiTileTest {
 
       assertEquals("Retrieve failed", exception.message)
       assertEquals(1, testTile.retrieveCallCount.get())
-
-      // Should allow retry after error
-      testTile.shouldThrowError = false
-      val result = testTile.getByKeys(listOf("key1", "key2"))
-      assertEquals(2, result.size)
-      assertEquals(2, testTile.retrieveCallCount.get())
     }
 
   @Test

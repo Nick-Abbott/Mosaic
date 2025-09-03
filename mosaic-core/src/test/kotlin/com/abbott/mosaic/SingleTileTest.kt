@@ -20,7 +20,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.util.concurrent.atomic.AtomicInteger
@@ -70,7 +69,6 @@ class SingleTileTest {
     }
 
   @Test
-  @Disabled("Temporarily disabled due to coroutine exception handling issue")
   fun `should handle retrieve errors gracefully`() =
     runTest {
       testTile.shouldThrowError = true

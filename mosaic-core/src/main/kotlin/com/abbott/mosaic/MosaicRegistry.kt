@@ -34,7 +34,10 @@ class MosaicRegistry {
   ): T {
     val constructor =
       constructors[tileClass]
-        ?: throw IllegalArgumentException("No constructor registered for ${tileClass.simpleName}")
+        ?: throw IllegalArgumentException(
+          "No constructor registered for ${tileClass.simpleName}. " +
+            "Did you forget to register your tiles with mosaic-build-plugin?",
+        )
 
     @Suppress("UNCHECKED_CAST")
     return constructor(mosaic) as T
