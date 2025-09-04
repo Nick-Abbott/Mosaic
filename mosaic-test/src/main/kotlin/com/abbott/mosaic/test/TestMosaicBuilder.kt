@@ -201,17 +201,15 @@ class TestMosaicBuilder {
     delay: Long,
     custom: (suspend () -> R)?,
   ) {
-    coEvery { mock.get() } answers {
-      runBlocking {
-        when (behavior) {
-          MockBehavior.SUCCESS -> returnData!!
-          MockBehavior.ERROR -> throw (throwable ?: RuntimeException("Mock error"))
-          MockBehavior.DELAY -> {
-            delay(delay)
-            returnData!!
-          }
-          MockBehavior.CUSTOM -> custom!!.invoke()
+    coEvery { mock.get() } coAnswers {
+      when (behavior) {
+        MockBehavior.SUCCESS -> returnData!!
+        MockBehavior.ERROR -> throw (throwable ?: RuntimeException("Mock error"))
+        MockBehavior.DELAY -> {
+          delay(delay)
+          returnData!!
         }
+        MockBehavior.CUSTOM -> custom!!.invoke()
       }
     }
   }
