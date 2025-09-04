@@ -5,11 +5,11 @@ plugins {
 }
 
 dependencies {
-  implementation("com.abbott.mosaic:mosaic-core:1.0.0")
+  implementation("com.buildmosaic.core:mosaic-core:1.0.0")
   implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
-  ksp("com.abbott.mosaic:mosaic-catalog-ksp:1.0.0")
+  ksp("com.buildmosaic.catalog.ksp:mosaic-catalog-ksp:1.0.0")
   implementation(libs.kotlinx.coroutines.core)
-  testImplementation("com.abbott.mosaic:mosaic-test:1.0.0")
+  testImplementation("com.buildmosaic.test:mosaic-test:1.0.0")
   testImplementation(kotlin("test"))
   testImplementation(libs.junit.jupiter)
 }

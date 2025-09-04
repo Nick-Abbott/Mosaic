@@ -1,17 +1,17 @@
 plugins {
   kotlin("jvm")
   id("com.google.devtools.ksp")
-  id("com.abbott.mosaic.build")
+  id("com.buildmosaic.gradle")
   id("org.jetbrains.kotlin.plugin.spring") version "2.2.10"
   application
 }
 
 dependencies {
-  implementation("com.abbott.mosaic:mosaic-core:1.0.0")
+  implementation("com.buildmosaic.core:mosaic-core:1.0.0")
   implementation(project(":tile-library"))
   implementation("org.springframework.boot:spring-boot-starter-web:3.2.5")
   implementation(libs.kotlinx.coroutines.core)
-  testImplementation("com.abbott.mosaic:mosaic-test:1.0.0")
+  testImplementation("com.buildmosaic.test:mosaic-test:1.0.0")
   testImplementation(kotlin("test"))
   testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
 }
@@ -31,5 +31,5 @@ tasks.withType<Test> {
 }
 
 application {
-  mainClass.set("com.abbott.mosaic.examples.spring.orders.SpringExampleApplicationKt")
+  mainClass.set("com.buildmosaic.spring.orders.SpringExampleApplicationKt")
 }
