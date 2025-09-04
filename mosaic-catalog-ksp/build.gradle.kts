@@ -1,4 +1,4 @@
-group = "com.abbott.mosaic"
+group = "com.buildmosaic.catalog.ksp"
 version = "1.0.0"
 
 plugins {

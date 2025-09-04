@@ -2,12 +2,12 @@ plugins {
   kotlin("jvm")
   kotlin("plugin.serialization") version "2.2.10"
   id("com.google.devtools.ksp")
-  id("com.abbott.mosaic.build")
+  id("com.buildmosaic.gradle")
   application
 }
 
 dependencies {
-  implementation("com.abbott.mosaic:mosaic-core:1.0.0")
+  implementation("com.buildmosaic.core:mosaic-core:1.0.0")
   implementation(project(":tile-library"))
   implementation("io.ktor:ktor-server-core:2.3.12")
   implementation("io.ktor:ktor-server-netty:2.3.12")
@@ -16,7 +16,7 @@ dependencies {
   implementation("io.ktor:ktor-server-status-pages:2.3.12")
   implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
   implementation(libs.kotlinx.coroutines.core)
-  testImplementation("com.abbott.mosaic:mosaic-test:1.0.0")
+  testImplementation("com.buildmosaic.test:mosaic-test:1.0.0")
   testImplementation("io.ktor:ktor-server-tests:2.3.12")
   testImplementation("io.ktor:ktor-client-content-negotiation:2.3.12")
   testImplementation(kotlin("test"))
@@ -38,5 +38,5 @@ tasks.withType<Test> {
 }
 
 application {
-  mainClass.set("com.abbott.mosaic.examples.ktor.orders.KtorExampleApplicationKt")
+  mainClass.set("com.buildmosaic.ktor.orders.KtorExampleApplicationKt")
 }

@@ -1,4 +1,4 @@
-group = "com.abbott.mosaic"
+group = "com.buildmosaic.gradle"
 version = "1.0.0"
 
 plugins {
@@ -21,8 +21,8 @@ dependencies {
 gradlePlugin {
   plugins {
     create("mosaicConsumer") {
-      id = "com.abbott.mosaic.build"
-      implementationClass = "com.abbott.mosaic.build.plugin.MosaicConsumerPlugin"
+      id = "com.buildmosaic.gradle"
+      implementationClass = "com.buildmosaic.gradle.plugin.MosaicConsumerPlugin"
       displayName = "Mosaic Consumer Plugin"
       description = "Merges META-INF/mosaic catalogs + wires KSP aggregator"
     }

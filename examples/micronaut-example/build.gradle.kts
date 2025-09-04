@@ -2,12 +2,12 @@ plugins {
   kotlin("jvm")
   kotlin("plugin.serialization") version "2.2.10"
   id("com.google.devtools.ksp")
-  id("com.abbott.mosaic.build")
+  id("com.buildmosaic.gradle")
   id("io.micronaut.application") version "4.5.4"
 }
 
 dependencies {
-  implementation("com.abbott.mosaic:mosaic-core:1.0.0")
+  implementation("com.buildmosaic.core:mosaic-core:1.0.0")
   implementation(project(":tile-library"))
 
   // Micronaut dependencies
@@ -20,7 +20,7 @@ dependencies {
   implementation("jakarta.inject:jakarta.inject-api:2.0.1")
 
   // Testing
-  testImplementation("com.abbott.mosaic:mosaic-test:1.0.0")
+  testImplementation("com.buildmosaic.test:mosaic-test:1.0.0")
   testImplementation("io.micronaut.test:micronaut-test-junit5")
   testImplementation("io.micronaut:micronaut-http-client")
   testImplementation(kotlin("test"))
@@ -43,10 +43,10 @@ micronaut {
   testRuntime("junit5")
   processing {
     incremental(true)
-    annotations("com.abbott.mosaic.examples.micronaut.*")
+    annotations("com.buildmosaic.micronaut.*")
   }
 }
 
 application {
-  mainClass.set("com.abbott.mosaic.examples.micronaut.orders.MicronautExampleApplicationKt")
+  mainClass.set("com.buildmosaic.micronaut.orders.MicronautExampleApplicationKt")
 }
