@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-@file:Suppress("LargeClass")
-
 package com.buildmosaic.test
 
 import com.buildmosaic.core.Mosaic
@@ -29,7 +27,6 @@ import io.mockk.every
 import io.mockk.mockkClass
 import io.mockk.spyk
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
 import kotlin.jvm.JvmName
 import kotlin.reflect.KClass
 
@@ -37,6 +34,7 @@ import kotlin.reflect.KClass
  * Builder for creating test mosaics with mocked tiles.
  * Provides a fluent API for setting up test scenarios.
  */
+@Suppress("LargeClass")
 class TestMosaicBuilder {
   private val internalRegistry = spyk(MosaicRegistry())
   private var request: MosaicRequest = MockMosaicRequest()
@@ -51,9 +49,6 @@ class TestMosaicBuilder {
     mockTiles[tileClass] = mock
     return this
   }
-
-  inline fun <R, reified T : SingleTile<R>> withMockTile(response: R): TestMosaicBuilder =
-    withMockTile(T::class, response)
 
   fun <R, T : SingleTile<R>> withFailedTile(
     tileClass: KClass<T>,
@@ -74,11 +69,6 @@ class TestMosaicBuilder {
     return this
   }
 
-  inline fun <R, reified T : SingleTile<R>> withDelayedTile(
-    response: R,
-    delayMs: Long,
-  ): TestMosaicBuilder = withDelayedTile(T::class, response, delayMs)
-
   fun <R, T : SingleTile<R>> withCustomTile(
     tileClass: KClass<T>,
     provider: suspend () -> R,
@@ -88,8 +78,6 @@ class TestMosaicBuilder {
     return this
   }
 
-  inline fun <R, reified T : SingleTile<R>> withCustomTile(noinline provider: suspend () -> R): TestMosaicBuilder =
-    withCustomTile(T::class, provider)
   // endregion
 
   // region MultiTile builders (String keys)
@@ -102,10 +90,6 @@ class TestMosaicBuilder {
     mockTiles[tileClass] = mock
     return this
   }
-
-  @JvmName("withMockMultiTile")
-  inline fun <S, reified T : MultiTile<S, *>> withMockTile(response: Map<String, S>): TestMosaicBuilder =
-    withMockTile(T::class, response)
 
   @JvmName("withFailedMultiTile")
   fun <S, T : MultiTile<S, *>> withFailedTile(
@@ -128,12 +112,6 @@ class TestMosaicBuilder {
     return this
   }
 
-  @JvmName("withDelayedMultiTile")
-  inline fun <S, reified T : MultiTile<S, *>> withDelayedTile(
-    response: Map<String, S>,
-    delayMs: Long,
-  ): TestMosaicBuilder = withDelayedTile(T::class, response, delayMs)
-
   @JvmName("withCustomMultiTile")
   fun <S, T : MultiTile<S, *>> withCustomTile(
     tileClass: KClass<T>,
@@ -144,10 +122,6 @@ class TestMosaicBuilder {
     return this
   }
 
-  @JvmName("withCustomMultiTile")
-  inline fun <S, reified T : MultiTile<S, *>> withCustomTile(
-    noinline provider: suspend (List<String>) -> Map<String, S>,
-  ): TestMosaicBuilder = withCustomTile(T::class, provider)
   // endregion
 
   /**
@@ -176,7 +150,7 @@ class TestMosaicBuilder {
       internalRegistry.register(clazz as KClass<Tile>) { tile }
     }
 
-    return TestMosaic(mosaic, mockTiles)
+    return TestMosaic(mosaic)
   }
 
   private fun <R, T : SingleTile<R>> createSingleTileMock(
@@ -204,7 +178,7 @@ class TestMosaicBuilder {
     coEvery { mock.get() } coAnswers {
       when (behavior) {
         MockBehavior.SUCCESS -> returnData!!
-        MockBehavior.ERROR -> throw (throwable ?: RuntimeException("Mock error"))
+        MockBehavior.ERROR -> throw throwable!!
         MockBehavior.DELAY -> {
           delay(delay)
           returnData!!
@@ -236,18 +210,16 @@ class TestMosaicBuilder {
     delay: Long,
     custom: (suspend (List<String>) -> Map<String, S>)?,
   ) {
-    coEvery { mock.getByKeys(any<List<String>>()) } answers {
+    coEvery { mock.getByKeys(any<List<String>>()) } coAnswers {
       val keys = firstArg<List<String>>()
-      runBlocking {
-        when (behavior) {
-          MockBehavior.SUCCESS -> returnData!!.filterKeys { it in keys }
-          MockBehavior.ERROR -> throw (throwable ?: RuntimeException("Mock error"))
-          MockBehavior.DELAY -> {
-            delay(delay)
-            returnData!!.filterKeys { it in keys }
-          }
-          MockBehavior.CUSTOM -> custom!!.invoke(keys)
+      when (behavior) {
+        MockBehavior.SUCCESS -> returnData!!.filterKeys { it in keys }
+        MockBehavior.ERROR -> throw throwable!!
+        MockBehavior.DELAY -> {
+          delay(delay)
+          returnData!!.filterKeys { it in keys }
         }
+        MockBehavior.CUSTOM -> custom!!.invoke(keys)
       }
     }
   }

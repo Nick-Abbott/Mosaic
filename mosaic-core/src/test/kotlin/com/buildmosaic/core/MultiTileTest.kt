@@ -72,28 +72,13 @@ class MultiTileTest {
     }
 
   @Test
-  fun `should handle concurrent calls efficiently`() =
-    runTest {
-      val result1 = testTile.getByKeys(listOf("key1", "key2"))
-      val result2 = testTile.getByKeys(listOf("key2", "key3"))
-      val result3 = testTile.getByKeys(listOf("key1", "key3"))
-
-      assertEquals(2, result1.size)
-      assertEquals(2, result2.size)
-      assertEquals(2, result3.size)
-
-      // Should only make 2 retrieve calls (one for each unique batch)
-      assertTrue(testTile.retrieveCallCount.get() <= 2)
-    }
-
-  @Test
   fun `should handle overlapping keys in concurrent calls`() =
     runTest {
-      val result1 = testTile.getByKeys(listOf("key1", "key2"))
-      val result2 = testTile.getByKeys(listOf("key1", "key2")) // Same keys
+      testTile.getByKeys(listOf("key1", "key2"))
+      testTile.getByKeys(listOf("key1", "key3"))
+      testTile.getByKeys(listOf("key2", "key3"))
 
-      assertEquals(result1, result2)
-      assertEquals(1, testTile.retrieveCallCount.get()) // Only one call for same keys
+      assertEquals(2, testTile.retrieveCallCount.get())
     }
 
   @Test

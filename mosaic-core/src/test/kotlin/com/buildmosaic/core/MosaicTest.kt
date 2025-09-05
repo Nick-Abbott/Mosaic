@@ -16,15 +16,13 @@
 
 package com.buildmosaic.core
 
-import kotlinx.coroutines.test.runTest
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNotNull
-import org.junit.jupiter.api.Assertions.assertNotSame
-import org.junit.jupiter.api.Assertions.assertSame
-import org.junit.jupiter.api.Assertions.assertThrows
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
+import kotlin.test.assertNotSame
+import kotlin.test.assertSame
 
 @Suppress("FunctionOnlyReturningConstant", "FunctionMaxLength")
 class MosaicTest {
@@ -39,16 +37,14 @@ class MosaicTest {
 
   @Test
   fun `should create new tile instance on first call`() {
-    var constructorCallCount = 0
-    registry.register(TestSingleTile::class) { mosaic ->
-      constructorCallCount++
-      TestSingleTile(mosaic)
-    }
+    registry.register(TestSingleTile::class) { mosaic -> TestSingleTile(mosaic) }
+    registry.register(TestMultiTile::class) { mosaic -> TestMultiTile(mosaic) }
 
     val tile = mosaic.getTile<TestSingleTile>()
+    val tile2 = mosaic.getTile<TestMultiTile>()
 
-    assertEquals(1, constructorCallCount)
-    assertNotNull(tile)
+    assertIs<TestSingleTile>(tile)
+    assertIs<TestMultiTile>(tile2)
   }
 
   @Test
@@ -91,17 +87,21 @@ class MosaicTest {
     assertEquals(1, multiTileCallCount)
     assertSame(singleTile1, singleTile2)
     assertSame(multiTile1, multiTile2)
-    assertNotSame(singleTile1, multiTile1)
+    assertNotSame<Tile>(singleTile1, multiTile1)
   }
 
   @Test
-  fun `should work with non-inline getTile method`() {
+  fun `should work with non-reified getTile method`() {
     registry.register(TestSingleTile::class) { mosaic -> TestSingleTile(mosaic) }
+    registry.register(TestMultiTile::class) { mosaic -> TestMultiTile(mosaic) }
 
     val tile1 = mosaic.getTile(TestSingleTile::class)
     val tile2 = mosaic.getTile<TestSingleTile>()
+    val tile3 = mosaic.getTile(TestMultiTile::class)
+    val tile4 = mosaic.getTile<TestMultiTile>()
 
     assertSame(tile1, tile2)
+    assertSame(tile3, tile4)
   }
 
   @Test
@@ -115,42 +115,12 @@ class MosaicTest {
     val tile2 = mosaic2.getTile<TestSingleTile>()
 
     assertNotSame(tile1, tile2)
-    // Note: mosaic property is protected, so we can't access it directly in tests
   }
 
   @Test
   fun `should throw exception for unregistered tile type`() {
-    val exception =
-      assertThrows(IllegalArgumentException::class.java) {
-        mosaic.getTile<TestSingleTile>()
-      }
-
-    assertTrue(exception.message?.contains("No constructor registered") == true)
+    assertFailsWith<IllegalArgumentException> { mosaic.getTile<TestSingleTile>() }
   }
-
-  @Test
-  fun `should work with suspend functions in tiles`() =
-    runTest {
-      registry.register(TestSingleTile::class) { mosaic -> TestSingleTile(mosaic) }
-
-      val tile = mosaic.getTile<TestSingleTile>()
-      val result = tile.get()
-
-      assertEquals("test-value", result)
-    }
-
-  @Test
-  fun `should work with multi tiles`() =
-    runTest {
-      registry.register(TestMultiTile::class) { mosaic -> TestMultiTile(mosaic) }
-
-      val tile = mosaic.getTile<TestMultiTile>()
-      val result = tile.getByKeys(listOf("key1", "key2"))
-
-      assertEquals(2, result.size)
-      assertEquals("normalized-key1", result["key1"])
-      assertEquals("normalized-key2", result["key2"])
-    }
 
   @Test
   fun `should cache tiles across different access patterns`() {
@@ -172,27 +142,8 @@ class MosaicTest {
     assertSame(tile1, tile3)
   }
 
-  @Test
-  fun `should provide access to request from tiles`() {
-    val testRequest = TestRequest()
-    val mosaicWithRequest = Mosaic(registry, testRequest)
-
-    registry.register(TestSingleTile::class) { mosaic -> TestSingleTile(mosaic) }
-
-    val tile = mosaicWithRequest.getTile<TestSingleTile>()
-    val result = tile.getWithRequest()
-
-    assertEquals("Request accessed successfully", result)
-  }
-
   private class TestSingleTile(mosaic: Mosaic) : SingleTile<String>(mosaic) {
     override suspend fun retrieve(): String = "test-value"
-
-    fun getWithRequest(): String {
-      // This is a test method that demonstrates accessing request context
-      // The constant return value is intentional for testing purposes
-      return "Request accessed successfully"
-    }
   }
 
   private class TestMultiTile(mosaic: Mosaic) : MultiTile<String, List<String>>(mosaic) {

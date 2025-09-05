@@ -56,19 +56,6 @@ class SingleTileTest {
     }
 
   @Test
-  fun `should handle concurrent calls efficiently`() =
-    runTest {
-      val result1 = testTile.get()
-      val result2 = testTile.get()
-      val result3 = testTile.get()
-
-      assertEquals("test-value", result1)
-      assertEquals("test-value", result2)
-      assertEquals("test-value", result3)
-      assertEquals(1, testTile.retrieveCallCount.get())
-    }
-
-  @Test
   fun `should handle retrieve errors gracefully`() =
     runTest {
       testTile.shouldThrowError = true

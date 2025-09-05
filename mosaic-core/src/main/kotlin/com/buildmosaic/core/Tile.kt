@@ -53,26 +53,35 @@ abstract class MultiTile<SingleType, MultiType>(mosaic: Mosaic) : Tile(mosaic) {
   suspend fun getByKeys(keys: List<String>): Map<String, SingleType> {
     // Fast path - all keys are in cache
     if (keys.all(cache::containsKey)) {
-      return keys.associateWith { cache[it]!!.await() }
+      return keys.associate { it to cache[it]!!.await() }
     }
 
     // Slow path - acquire lock and double-check
-    mutex.withLock {
+    return mutex.withLock {
       val missingKeys = keys.filterNot { cache.containsKey(it) }
 
       // Double check
-      if (missingKeys.isEmpty()) return@withLock
-
-      coroutineScope {
-        // Create deferreds for missing keys and start retrieval immediately
-        val newKeysResponseDeferred = async { retrieveForKeys(missingKeys) }
-        missingKeys.forEach {
-          cache[it] = async { normalize(it, newKeysResponseDeferred.await()) }
-        }
+      if (missingKeys.isEmpty()) {
+        return@withLock keys.associate { it to cache[it]!!.await() }
       }
-    }
 
-    return keys.associateWith { cache[it]!!.await() }
+      // Start retrieval for all missing keys
+      val responseDeferred = coroutineScope { async { retrieveForKeys(missingKeys) } }
+
+      // Create deferreds for all missing keys immediately
+      missingKeys.forEach { key ->
+        cache[key] =
+          coroutineScope {
+            async {
+              val response = responseDeferred.await()
+              normalize(key, response)
+            }
+          }
+      }
+
+      // Wait for all results and return
+      keys.associate { it to cache[it]!!.await() }
+    }
   }
 
   suspend fun getByKeys(vararg keys: String): Map<String, SingleType> {

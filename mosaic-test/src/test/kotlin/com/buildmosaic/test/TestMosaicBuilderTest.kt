@@ -14,96 +14,125 @@
  * limitations under the License.
  */
 
-@file:Suppress("LargeClass")
-
 package com.buildmosaic.test
 
 import com.buildmosaic.core.MosaicRequest
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Test
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.measureTime
 
-class TestMosaicBuilderTest : BaseTestMosaicTest() {
+@Suppress("LargeClass")
+class TestMosaicBuilderTest {
   private val builder = TestMosaicBuilder()
 
   @Test
-  fun `builds mosaic with mock single tile`() =
-    runTestMosaicTest {
-      val testMosaic = builder.withMockTile(TestSingleTile::class, "data").build()
-      testMosaic.assertEquals(tileClass = TestSingleTile::class, expected = "data")
+  fun `builds a test mosaic`() =
+    runTest {
+      assertIs<TestMosaic>(builder.build())
     }
 
   @Test
-  fun `failed single tile throws`() =
-    runTestMosaicTest {
+  fun `registers successful mock tiles`() =
+    runTest {
+      val singleTileData = "data"
+      val multiTileData = mapOf("a" to "A")
+      val testMosaic =
+        builder
+          .withMockTile(TestSingleTile::class, singleTileData)
+          .withMockTile(TestMultiTile::class, multiTileData)
+          .build()
+      testMosaic.assertEquals(TestSingleTile::class, singleTileData)
+      testMosaic.assertEquals(TestMultiTile::class, multiTileData.keys.toList(), multiTileData)
+    }
+
+  @Test
+  fun `registers failed mock tiles`() =
+    runTest {
       val testMosaic =
         builder
           .withFailedTile(TestSingleTile::class, IllegalStateException("boom"))
+          .withFailedTile(TestMultiTile::class, IllegalStateException("boom"))
           .build()
-      testMosaic.assertThrows(tileClass = TestSingleTile::class, expectedException = IllegalStateException::class.java)
+      testMosaic.assertThrows(TestSingleTile::class, IllegalStateException::class)
+      testMosaic.assertThrows(TestMultiTile::class, keys = listOf("a"), IllegalStateException::class)
     }
 
   @Test
-  fun `delayed single tile returns data`() =
-    runTestMosaicTest {
-      val testMosaic = builder.withDelayedTile(TestSingleTile::class, "delay", 10).build()
-      testMosaic.assertEquals(tileClass = TestSingleTile::class, expected = "delay")
-    }
+  fun `registers delayed mock tiles`() =
+    runTest {
+      val singleDelay = 50L
+      val singleData = "delay"
+      val multiDelay = singleDelay + 100L
+      val multiData = mapOf("a" to "A")
 
-  @Test
-  fun `custom single tile uses lambda`() =
-    runTestMosaicTest {
-      val testMosaic = builder.withCustomTile(TestSingleTile::class) { "custom" }.build()
-      testMosaic.assertEquals(tileClass = TestSingleTile::class, expected = "custom")
-    }
-
-  @Test
-  fun `builds mosaic with mock multi tile`() =
-    runTestMosaicTest {
-      val data = mapOf("a" to "A", "b" to "B")
-      val testMosaic = builder.withMockTile(TestMultiTile::class, data).build()
-      testMosaic.assertEquals(tileClass = TestMultiTile::class, keys = listOf("a"), expected = mapOf("a" to "A"))
-    }
-
-  @Test
-  fun `failed multi tile throws`() =
-    runTestMosaicTest {
       val testMosaic =
         builder
-          .withFailedTile(TestMultiTile::class, IllegalStateException("fail"))
+          .withDelayedTile(TestSingleTile::class, singleData, singleDelay)
+          .withDelayedTile(TestMultiTile::class, multiData, multiDelay)
           .build()
-      testMosaic.assertThrows(
-        tileClass = TestMultiTile::class,
-        keys = listOf("a"),
-        expectedException = IllegalStateException::class.java,
-      )
+
+      var singleResult: String? = null
+      var multiResult: Map<String, String>? = null
+      launch {
+        val workDuration =
+          testScheduler.timeSource.measureTime {
+            singleResult = testMosaic.getTile<TestSingleTile>().get()
+            multiResult = testMosaic.getTile<TestMultiTile>().getByKeys(multiData.keys.toList())
+          }
+        assertEquals((singleDelay + multiDelay).milliseconds, workDuration)
+      }
+
+      testScheduler.runCurrent()
+      testScheduler.advanceTimeBy(10.milliseconds)
+      assertNull(singleResult)
+      assertNull(multiResult)
+
+      testScheduler.advanceTimeBy(singleDelay.milliseconds)
+      assertEquals(singleData, singleResult)
+      assertNull(multiResult)
+
+      testScheduler.advanceTimeBy(multiDelay.milliseconds)
+      assertEquals(singleData, singleResult)
+      assertEquals(multiData, multiResult)
+
+      testScheduler.advanceUntilIdle()
     }
 
   @Test
-  fun `delayed multi tile returns data`() =
-    runTestMosaicTest {
-      val data = mapOf("a" to "A")
-      val testMosaic = builder.withDelayedTile(TestMultiTile::class, data, 10).build()
-      testMosaic.assertEquals(tileClass = TestMultiTile::class, keys = listOf("a"), expected = data)
-    }
+  fun `registers custom mock tiles`() =
+    runTest {
+      val customSingleFunc = { "custom" }
+      val customMultiFunc = { keys: List<String> -> keys.associateWith { it.uppercase() } }
+      val inputList = listOf("a")
 
-  @Test
-  fun `custom multi tile uses lambda`() =
-    runTestMosaicTest {
       val testMosaic =
         builder
-          .withCustomTile(TestMultiTile::class) { keys -> keys.associateWith { it.uppercase() } }
+          .withCustomTile(TestSingleTile::class, customSingleFunc)
+          .withCustomTile(TestMultiTile::class, customMultiFunc)
           .build()
-      testMosaic.assertEquals(
-        tileClass = TestMultiTile::class,
-        keys = listOf("a"),
-        expected = mapOf("a" to "A"),
-      )
+
+      testMosaic.assertEquals(TestSingleTile::class, customSingleFunc())
+      testMosaic.assertEquals(TestMultiTile::class, inputList, customMultiFunc(inputList))
     }
 
   @Test
-  fun `allows custom request`() {
-    val customRequest = object : MosaicRequest {}
-    val testMosaic = builder.withRequest(customRequest).build()
-    assertEquals(customRequest, testMosaic.request)
-  }
+  fun `allows custom request`() =
+    runTest {
+      val customRequest = object : MosaicRequest {}
+      val testMosaic = builder.withRequest(customRequest).build()
+      assertEquals(customRequest, testMosaic.request)
+    }
+
+  @Test
+  fun `registers tiles that are not mocked`() =
+    runTest {
+      val testMosaic = builder.build()
+      assertIs<TestSingleTile>(testMosaic.getTile(TestSingleTile::class))
+      assertIs<TestMultiTile>(testMosaic.getTile(TestMultiTile::class))
+    }
 }

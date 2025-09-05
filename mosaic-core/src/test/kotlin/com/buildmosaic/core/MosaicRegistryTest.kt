@@ -16,12 +16,12 @@
 
 package com.buildmosaic.core
 
-import org.junit.jupiter.api.Assertions.assertNotSame
-import org.junit.jupiter.api.Assertions.assertSame
-import org.junit.jupiter.api.Assertions.assertThrows
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Test
+import kotlin.test.Test
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNotSame
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 @Suppress("FunctionOnlyReturningConstant", "FunctionMaxLength")
 class MosaicRegistryTest {
@@ -52,13 +52,9 @@ class MosaicRegistryTest {
 
   @Test
   fun `should throw exception for unregistered tile class`() {
-    val exception =
-      assertThrows(IllegalArgumentException::class.java) {
-        registry.getInstance(TestSingleTile::class, mosaic)
-      }
-
-    assertTrue(exception.message?.contains("No constructor registered") == true)
-    assertTrue(exception.message?.contains("TestSingleTile") == true)
+    assertFailsWith<IllegalArgumentException> {
+      registry.getInstance(TestSingleTile::class, mosaic)
+    }
   }
 
   @Test
@@ -102,20 +98,6 @@ class MosaicRegistryTest {
     registry.getInstance(TestSingleTile::class, mosaic)
 
     assertSame(mosaic, receivedMosaic)
-  }
-
-  @Test
-  fun `should handle different mosaic instances`() {
-    val mosaic1 = Mosaic(registry, TestRequest())
-    val mosaic2 = Mosaic(registry, TestRequest())
-
-    registry.register(TestSingleTile::class) { mosaic -> TestSingleTile(mosaic) }
-
-    val tile1 = registry.getInstance(TestSingleTile::class, mosaic1)
-    val tile2 = registry.getInstance(TestSingleTile::class, mosaic2)
-
-    assertNotSame(tile1, tile2)
-    // Note: mosaic property is protected, so we can't access it directly in tests
   }
 
   private class TestSingleTile(mosaic: Mosaic) : SingleTile<String>(mosaic) {

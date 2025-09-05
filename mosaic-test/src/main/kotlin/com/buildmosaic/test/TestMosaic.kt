@@ -21,28 +21,19 @@ import com.buildmosaic.core.MosaicRequest
 import com.buildmosaic.core.MultiTile
 import com.buildmosaic.core.SingleTile
 import com.buildmosaic.core.Tile
-import kotlinx.coroutines.runBlocking
-import org.junit.jupiter.api.Assertions
-import org.junit.jupiter.api.assertThrows
 import kotlin.reflect.KClass
+import kotlin.test.assertEquals as testAssertEquals
+import kotlin.test.assertFailsWith as testAssertFailsWith
 
 /**
  * Test wrapper around Mosaic that provides assertion methods for testing tiles.
  * Maintains context about mocked tiles for verification.
  */
-class TestMosaic(
-  private val mosaic: Mosaic,
-  private val mockTiles: Map<KClass<*>, Tile>,
-) {
+class TestMosaic(private val mosaic: Mosaic) {
   /**
    * Gets the underlying Mosaic instance.
    */
   val request: MosaicRequest get() = mosaic.request
-
-  /**
-   * Gets the mocked tiles for verification purposes.
-   */
-  fun getMockTiles(): Map<KClass<*>, Tile> = mockTiles
 
   // Delegate to the underlying mosaic
   fun <T : Tile> getTile(tileClass: KClass<T>): T = mosaic.getTile(tileClass)
@@ -55,11 +46,7 @@ class TestMosaic(
   ) {
     val tile = getTile(tileClass)
     val actual = tile.get()
-    Assertions.assertEquals(expected, actual)
-  }
-
-  suspend inline fun <reified T : SingleTile<R>, R> assertEquals(expected: R) {
-    assertEquals(T::class, expected)
+    testAssertEquals(expected, actual)
   }
 
   suspend fun <R> assertEquals(
@@ -69,14 +56,7 @@ class TestMosaic(
   ) {
     val tile = getTile(tileClass)
     val actual = tile.get()
-    Assertions.assertEquals(expected, actual, message)
-  }
-
-  suspend inline fun <reified T : SingleTile<R>, R> assertEquals(
-    expected: R,
-    message: String,
-  ) {
-    assertEquals(T::class, expected, message)
+    testAssertEquals(expected, actual, message)
   }
 
   suspend fun <R> assertEquals(
@@ -86,118 +66,53 @@ class TestMosaic(
   ) {
     val tile = getTile(tileClass)
     val actual = tile.getByKeys(keys)
-    Assertions.assertEquals(expected, actual)
-  }
-
-  suspend inline fun <reified T : MultiTile<R, *>, R> assertEquals(
-    keys: List<String>,
-    expected: Map<String, R>,
-  ) {
-    val tile = getTile(T::class)
-    Assertions.assertEquals(expected, tile.getByKeys(keys))
+    testAssertEquals(expected, actual)
   }
 
   suspend fun <R> assertEquals(
     tileClass: KClass<out MultiTile<R, *>>,
     keys: List<String>,
     expected: Map<String, R>,
-    message: String = "MultiTile result does not match expected value",
+    message: String,
   ) {
     val tile = getTile(tileClass)
     val actual = tile.getByKeys(keys)
-    Assertions.assertEquals(expected, actual, message)
-  }
-
-  suspend inline fun <reified T : MultiTile<R, *>, R> assertEquals(
-    keys: List<String>,
-    expected: Map<String, R>,
-    message: String,
-  ) {
-    val tile = getTile(T::class)
-    Assertions.assertEquals(expected, tile.getByKeys(keys), message)
+    testAssertEquals(expected, actual, message)
   }
 
   suspend fun <T : SingleTile<*>> assertThrows(
     tileClass: KClass<out T>,
-    expectedException: Class<out Throwable>,
+    expectedException: KClass<out Throwable>,
   ) {
     val tile = getTile(tileClass)
-    Assertions.assertThrows(expectedException) {
-      runBlocking {
-        tile.get()
-      }
-    }
-  }
-
-  suspend inline fun <reified T : SingleTile<*>> assertThrows(expectedException: Class<out Throwable>) {
-    assertThrows(T::class, expectedException)
+    testAssertFailsWith(expectedException) { tile.get() }
   }
 
   suspend fun <T : SingleTile<*>> assertThrows(
     tileClass: KClass<out T>,
-    expectedException: Class<out Throwable>,
+    expectedException: KClass<out Throwable>,
     message: String,
   ) {
     val tile = getTile(tileClass)
-    try {
-      runBlocking { tile.get() }
-      Assertions.fail<Nothing>(message)
-    } catch (e: Throwable) {
-      if (!expectedException.isInstance(e)) {
-        Assertions.fail<Nothing>("Expected ${expectedException.simpleName} but got ${e::class.simpleName}: $message")
-      }
-    }
-  }
-
-  suspend inline fun <reified T : SingleTile<*>> assertThrows(
-    expectedException: Class<out Throwable>,
-    message: String,
-  ) {
-    assertThrows(T::class, expectedException, message)
+    testAssertFailsWith(expectedException, message) { tile.get() }
   }
 
   suspend fun <T : MultiTile<R, *>, R> assertThrows(
     tileClass: KClass<out T>,
     keys: List<String>,
-    expectedException: Class<out Throwable>,
+    expectedException: KClass<out Throwable>,
   ) {
     val tile = getTile(tileClass)
-    Assertions.assertThrows(expectedException) {
-      runBlocking {
-        tile.getByKeys(keys)
-      }
-    }
-  }
-
-  suspend inline fun <reified T : MultiTile<R, *>, R> assertThrows(
-    keys: List<String>,
-    expectedException: Class<out Throwable>,
-  ) {
-    assertThrows(T::class, keys, expectedException)
+    testAssertFailsWith(expectedException) { tile.getByKeys(keys) }
   }
 
   suspend fun <T : MultiTile<R, *>, R> assertThrows(
     tileClass: KClass<out T>,
     keys: List<String>,
-    expectedException: Class<out Throwable>,
+    expectedException: KClass<out Throwable>,
     message: String,
   ) {
     val tile = getTile(tileClass)
-    try {
-      runBlocking { tile.getByKeys(keys) }
-      Assertions.fail<Nothing>(message)
-    } catch (e: Throwable) {
-      if (!expectedException.isInstance(e)) {
-        Assertions.fail<Nothing>("Expected ${expectedException.simpleName} but got ${e::class.simpleName}: $message")
-      }
-    }
-  }
-
-  suspend inline fun <reified T : MultiTile<R, *>, R> assertThrows(
-    keys: List<String>,
-    expectedException: Class<out Throwable>,
-    message: String,
-  ) {
-    assertThrows(T::class, keys, expectedException, message)
+    testAssertFailsWith(expectedException, message) { tile.getByKeys(keys) }
   }
 }

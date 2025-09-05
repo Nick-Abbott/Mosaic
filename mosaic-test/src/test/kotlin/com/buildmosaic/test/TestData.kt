@@ -21,6 +21,11 @@ import com.buildmosaic.core.MultiTile
 import com.buildmosaic.core.SingleTile
 
 /**
+ * Sample custom exception for testing.
+ */
+class TestException : Exception("My Test exception")
+
+/**
  * Sample SingleTile implementation for testing.
  */
 class TestSingleTile(mosaic: Mosaic) : SingleTile<String>(mosaic) {
@@ -34,7 +39,7 @@ class TestSingleTile(mosaic: Mosaic) : SingleTile<String>(mosaic) {
  */
 class TestErrorSingleTile(mosaic: Mosaic) : SingleTile<String>(mosaic) {
   override suspend fun retrieve(): String {
-    throw RuntimeException("Test error")
+    throw TestException()
   }
 }
 
@@ -59,7 +64,7 @@ class TestMultiTile(mosaic: Mosaic) : MultiTile<String, Map<String, String>>(mos
  */
 class TestErrorMultiTile(mosaic: Mosaic) : MultiTile<String, Map<String, String>>(mosaic) {
   override suspend fun retrieveForKeys(keys: List<String>): Map<String, String> {
-    throw RuntimeException("Test error")
+    throw TestException()
   }
 
   override fun normalize(

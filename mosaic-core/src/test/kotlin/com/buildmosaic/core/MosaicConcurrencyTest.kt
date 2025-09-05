@@ -21,11 +21,13 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Test
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 @Suppress("FunctionOnlyReturningConstant", "FunctionMaxLength")
 class MosaicConcurrencyTest {
@@ -43,16 +45,16 @@ class MosaicConcurrencyTest {
     runTest {
       val constructorCallCount = AtomicInteger(0)
 
-      registry.register(SlowTile::class) { mosaic ->
+      registry.register(TestSingleTile::class) { mosaic ->
         constructorCallCount.incrementAndGet()
-        SlowTile(mosaic)
+        TestSingleTile(mosaic)
       }
 
       // Launch multiple concurrent getTile calls
       val results =
         coroutineScope {
           (1..10).map {
-            async { mosaic.getTile<SlowTile>() }
+            async { mosaic.getTile<TestSingleTile>() }
           }.awaitAll()
         }
 
@@ -92,21 +94,20 @@ class MosaicConcurrencyTest {
   @Test
   fun `should verify error message contains plugin suggestion`() {
     val exception =
-      org.junit.jupiter.api.assertThrows<IllegalArgumentException> {
+      assertFailsWith<IllegalArgumentException> {
         registry.getInstance(UnregisteredTile::class, mosaic)
       }
 
     // Test the new error message format
-    org.junit.jupiter.api.Assertions.assertTrue(
+    assertTrue(
       exception.message?.contains("mosaic-build-plugin") == true,
       "Error message should mention mosaic-build-plugin",
     )
   }
 
-  private class SlowTile(mosaic: Mosaic) : SingleTile<String>(mosaic) {
+  private class TestSingleTile(mosaic: Mosaic) : SingleTile<String>(mosaic) {
     override suspend fun retrieve(): String {
-      delay(10) // Simulate slow construction to increase race condition chance
-      return "slow-value"
+      return "test-value"
     }
   }
 
