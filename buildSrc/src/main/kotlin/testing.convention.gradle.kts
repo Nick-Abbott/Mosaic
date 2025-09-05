@@ -7,7 +7,6 @@ plugins {
 }
 
 tasks.withType<Test> {
-  useJUnitPlatform()
   finalizedBy("koverHtmlReport")
 }
 

@@ -19,9 +19,9 @@ dependencies {
   implementation("jakarta.inject:jakarta.inject-api:2.0.1")
 
   // Testing
-  testImplementation("io.micronaut.test:micronaut-test-junit5")
   testImplementation("io.micronaut:micronaut-http-client")
-  testImplementation(kotlin("test"))
+  testImplementation("io.micronaut.test:micronaut-test-junit5")
+  testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine")
 }
 
 kotlin {

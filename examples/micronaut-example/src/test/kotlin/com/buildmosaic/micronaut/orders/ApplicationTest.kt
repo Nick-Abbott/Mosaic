@@ -8,9 +8,9 @@ import io.micronaut.http.client.annotation.Client
 import io.micronaut.http.client.exceptions.HttpClientResponseException
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest
 import jakarta.inject.Inject
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 
 @MicronautTest
 class ApplicationTest {
@@ -47,7 +47,7 @@ class ApplicationTest {
   @Test
   fun `get missing order returns 404`() {
     val response =
-      assertFailsWith<HttpClientResponseException> {
+      assertThrows<HttpClientResponseException> {
         client.toBlocking().exchange(
           HttpRequest.GET<Any>("/orders/missing"),
           Map::class.java,

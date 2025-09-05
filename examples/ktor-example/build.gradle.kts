@@ -24,10 +24,6 @@ kotlin {
   jvmToolchain(21)
 }
 
-tasks.withType<Test> {
-  useJUnitPlatform()
-}
-
 application {
   mainClass.set("com.buildmosaic.ktor.orders.KtorExampleApplicationKt")
 }
