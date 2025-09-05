@@ -35,7 +35,7 @@ dependencies {
   implementation("com.buildmosaic.core:mosaic-core:0.1.0")               // Core tile system and registry
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")     // Coroutines support
   testImplementation("com.buildmosaic.test:mosaic-test:0.1.0")           // Testing utilities and mocks
-  testImplementation(kotlin("test"))                                  // Kotlin test framework
+  testImplementation(kotlin("test"))                                  // Kotlin test framework (Micronaut example uses JUnit 5)
 }
 ```
 
