@@ -3,7 +3,7 @@ package com.buildmosaic.library.tile
 import com.buildmosaic.library.model.Price
 import com.buildmosaic.test.TestMosaicBuilder
 import kotlinx.coroutines.runBlocking
-import org.junit.jupiter.api.Test
+import kotlin.test.Test
 
 class PricingBySkuTileTest {
   @Test
@@ -27,6 +27,6 @@ class PricingBySkuTileTest {
         TestMosaicBuilder()
           .withFailedTile(PricingBySkuTile::class, RuntimeException("boom"))
           .build()
-      testMosaic.assertThrows(PricingBySkuTile::class, keys, RuntimeException::class.java)
+      testMosaic.assertThrows(PricingBySkuTile::class, keys, RuntimeException::class)
     }
 }

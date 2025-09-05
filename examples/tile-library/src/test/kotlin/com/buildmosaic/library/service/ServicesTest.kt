@@ -7,8 +7,8 @@ import com.buildmosaic.library.model.OrderLineItem
 import com.buildmosaic.library.model.Price
 import com.buildmosaic.library.model.Product
 import com.buildmosaic.library.model.Quote
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
 
 class ServicesTest {
   @Test

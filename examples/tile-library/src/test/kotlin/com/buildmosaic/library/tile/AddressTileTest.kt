@@ -4,7 +4,7 @@ import com.buildmosaic.library.OrderRequest
 import com.buildmosaic.library.model.Address
 import com.buildmosaic.test.TestMosaicBuilder
 import kotlinx.coroutines.runBlocking
-import org.junit.jupiter.api.Test
+import kotlin.test.Test
 
 class AddressTileTest {
   @Test
@@ -23,6 +23,6 @@ class AddressTileTest {
         TestMosaicBuilder()
           .withFailedTile(AddressTile::class, RuntimeException("boom"))
           .build()
-      testMosaic.assertThrows(AddressTile::class, RuntimeException::class.java)
+      testMosaic.assertThrows(AddressTile::class, RuntimeException::class)
     }
 }

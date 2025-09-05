@@ -34,8 +34,20 @@ class MosaicConsumerPlugin : Plugin<Project> {
     project.tasks.named("compileKotlin").configure { dependsOn(mergeTask) }
     project.tasks.withType(KspTask::class.java).configureEach { dependsOn(mergeTask) }
 
+    // Apply the BOM
+    project.dependencies.add(
+      "implementation",
+      project.dependencies.platform(
+        "com.buildmosaic:mosaic-bom:0.1.0",
+      ),
+    )
+
     // Add KSP dependency
-    project.dependencies.add("ksp", "com.buildmosaic.build.ksp:mosaic-build-ksp")
+    project.dependencies.add("ksp", "com.buildmosaic:mosaic-build-ksp")
+
+    // Apply mosaic dependencies
+    project.dependencies.add("implementation", "com.buildmosaic:mosaic-core")
+    project.dependencies.add("testImplementation", "com.buildmosaic:mosaic-test")
 
     // Configure KSP
     project.afterEvaluate {

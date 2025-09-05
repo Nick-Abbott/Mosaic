@@ -1,11 +1,19 @@
-group = "com.buildmosaic.gradle"
-version = "1.0.0"
+group = "com.buildmosaic"
+version = project.property("mosaic.version") as String
 
 plugins {
   id("kotlin.convention")
   id("quality.convention")
   `kotlin-dsl`
   `java-gradle-plugin`
+}
+
+// Create a properties file with the version
+tasks.processResources {
+  val pluginVersion = project.property("mosaic.version") as String
+  filesMatching("mosaic-plugin.properties") {
+    expand("version" to pluginVersion)
+  }
 }
 
 dependencies {

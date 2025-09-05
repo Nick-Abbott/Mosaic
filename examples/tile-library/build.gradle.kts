@@ -5,23 +5,28 @@ plugins {
 }
 
 dependencies {
-  implementation("com.buildmosaic.core:mosaic-core:1.0.0")
+  // BOM File
+  platform("com.buildmosaic:mosaic-bom:0.1.0")
+
+  // Mosaic Core
+  implementation("com.buildmosaic:mosaic-core")
+
+  // KotlinX Serialization
   implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
-  ksp("com.buildmosaic.catalog.ksp:mosaic-catalog-ksp:1.0.0")
+
+  // Mosaic Catalog KSP
+  ksp("com.buildmosaic:mosaic-catalog-ksp")
+
+  // Coroutines
   implementation(libs.kotlinx.coroutines.core)
-  testImplementation("com.buildmosaic.test:mosaic-test:1.0.0")
+
+  // Mosaic Test
+  testImplementation("com.buildmosaic:mosaic-test")
   testImplementation(kotlin("test"))
-  testImplementation(libs.junit.jupiter)
 }
 
 kotlin {
   jvmToolchain(21)
-}
-
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-  compilerOptions {
-    jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
-  }
 }
 
 tasks.withType<Test> {

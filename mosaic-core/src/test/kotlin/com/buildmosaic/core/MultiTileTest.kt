@@ -17,11 +17,11 @@
 package com.buildmosaic.core
 
 import kotlinx.coroutines.test.runTest
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.assertThrows
+import kotlin.test.Test
+import kotlin.test.assertThrows
 import java.util.concurrent.atomic.AtomicInteger
 
 @Suppress("FunctionOnlyReturningConstant", "FunctionMaxLength")

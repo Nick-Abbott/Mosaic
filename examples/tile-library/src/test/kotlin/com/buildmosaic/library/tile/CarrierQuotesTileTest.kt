@@ -4,7 +4,7 @@ import com.buildmosaic.library.model.Address
 import com.buildmosaic.library.model.Quote
 import com.buildmosaic.test.TestMosaicBuilder
 import kotlinx.coroutines.runBlocking
-import org.junit.jupiter.api.Test
+import kotlin.test.Test
 
 class CarrierQuotesTileTest {
   @Test
@@ -29,6 +29,6 @@ class CarrierQuotesTileTest {
         TestMosaicBuilder()
           .withFailedTile(AddressTile::class, RuntimeException("boom"))
           .build()
-      testMosaic.assertThrows(CarrierQuotesTile::class, carriers, RuntimeException::class.java)
+      testMosaic.assertThrows(CarrierQuotesTile::class, carriers, RuntimeException::class)
     }
 }

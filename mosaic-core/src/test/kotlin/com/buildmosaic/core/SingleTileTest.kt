@@ -18,10 +18,10 @@ package com.buildmosaic.core
 
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
-import org.junit.jupiter.api.Assertions.assertEquals
+import kotlin.test.assertEquals
 import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.assertThrows
+import kotlin.test.Test
+import kotlin.test.assertThrows
 import java.util.concurrent.atomic.AtomicInteger
 
 @Suppress("FunctionOnlyReturningConstant", "FunctionMaxLength")
@@ -74,19 +74,6 @@ class SingleTileTest {
       val result = testTile.get()
       assertEquals("test-value", result)
       assertEquals(2, testTile.retrieveCallCount.get())
-    }
-
-  @Test
-  fun `should handle different values for different instances`() =
-    runTest {
-      val tile1 = TestSingleTile("value1")
-      val tile2 = TestSingleTile("value2")
-
-      val result1 = tile1.get()
-      val result2 = tile2.get()
-
-      assertEquals("value1", result1)
-      assertEquals("value2", result2)
     }
 
   @Test

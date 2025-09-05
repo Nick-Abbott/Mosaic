@@ -6,7 +6,7 @@ import com.buildmosaic.library.model.Order
 import com.buildmosaic.library.model.OrderLineItem
 import com.buildmosaic.test.TestMosaicBuilder
 import kotlinx.coroutines.runBlocking
-import org.junit.jupiter.api.Test
+import kotlin.test.Test
 
 class OrderTileTest {
   @Test
@@ -30,6 +30,6 @@ class OrderTileTest {
   fun `order tile throws custom exception when missing`() =
     runBlocking {
       val testMosaic = TestMosaicBuilder().withRequest(OrderRequest("missing")).build()
-      testMosaic.assertThrows(OrderTile::class, OrderNotFoundException::class.java)
+      testMosaic.assertThrows(OrderTile::class, OrderNotFoundException::class)
     }
 }

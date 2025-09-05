@@ -3,11 +3,11 @@ package com.buildmosaic.spring.orders
 import com.buildmosaic.library.exception.OrderNotFoundException
 import com.buildmosaic.spring.orders.web.OrderController
 import com.buildmosaic.spring.orders.web.OrderExceptionHandler
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNotNull
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.assertThrows
 import org.springframework.http.HttpStatus
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 
 class ApplicationTest {
   @Test
@@ -36,7 +36,7 @@ class ApplicationTest {
   fun `order controller throws when missing`() {
     val registry = MosaicConfig().mosaicRegistry()
     val controller = OrderController(registry)
-    assertThrows<OrderNotFoundException> { controller.getOrder("missing") }
+    assertFailsWith<OrderNotFoundException> { controller.getOrder("missing") }
   }
 
   @Test

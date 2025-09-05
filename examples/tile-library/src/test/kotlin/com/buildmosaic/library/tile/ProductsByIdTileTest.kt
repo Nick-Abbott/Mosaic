@@ -3,7 +3,7 @@ package com.buildmosaic.library.tile
 import com.buildmosaic.library.model.Product
 import com.buildmosaic.test.TestMosaicBuilder
 import kotlinx.coroutines.runBlocking
-import org.junit.jupiter.api.Test
+import kotlin.test.Test
 
 class ProductsByIdTileTest {
   @Test
@@ -27,6 +27,6 @@ class ProductsByIdTileTest {
         TestMosaicBuilder()
           .withFailedTile(ProductsByIdTile::class, RuntimeException("boom"))
           .build()
-      testMosaic.assertThrows(ProductsByIdTile::class, keys, RuntimeException::class.java)
+      testMosaic.assertThrows(ProductsByIdTile::class, keys, RuntimeException::class)
     }
 }

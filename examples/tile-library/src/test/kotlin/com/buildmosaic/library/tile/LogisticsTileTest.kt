@@ -5,7 +5,7 @@ import com.buildmosaic.library.model.Logistics
 import com.buildmosaic.library.model.Quote
 import com.buildmosaic.test.TestMosaicBuilder
 import kotlinx.coroutines.runBlocking
-import org.junit.jupiter.api.Test
+import kotlin.test.Test
 
 class LogisticsTileTest {
   @Test
@@ -36,6 +36,6 @@ class LogisticsTileTest {
           .withMockTile(AddressTile::class, address)
           .withFailedTile(CarrierQuotesTile::class, RuntimeException("boom"))
           .build()
-      testMosaic.assertThrows(LogisticsTile::class, RuntimeException::class.java)
+      testMosaic.assertThrows(LogisticsTile::class, RuntimeException::class)
     }
 }

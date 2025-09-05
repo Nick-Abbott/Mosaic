@@ -4,7 +4,7 @@ import com.buildmosaic.library.model.Customer
 import com.buildmosaic.library.model.Order
 import com.buildmosaic.test.TestMosaicBuilder
 import kotlinx.coroutines.runBlocking
-import org.junit.jupiter.api.Test
+import kotlin.test.Test
 
 class CustomerTileTest {
   @Test
@@ -23,6 +23,6 @@ class CustomerTileTest {
         TestMosaicBuilder()
           .withFailedTile(OrderTile::class, RuntimeException("boom"))
           .build()
-      testMosaic.assertThrows(CustomerTile::class, RuntimeException::class.java)
+      testMosaic.assertThrows(CustomerTile::class, RuntimeException::class)
     }
 }

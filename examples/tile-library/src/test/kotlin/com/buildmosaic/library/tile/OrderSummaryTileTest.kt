@@ -8,7 +8,7 @@ import com.buildmosaic.library.model.Price
 import com.buildmosaic.library.model.Product
 import com.buildmosaic.test.TestMosaicBuilder
 import kotlinx.coroutines.runBlocking
-import org.junit.jupiter.api.Test
+import kotlin.test.Test
 
 class OrderSummaryTileTest {
   @Test
@@ -35,6 +35,6 @@ class OrderSummaryTileTest {
         TestMosaicBuilder()
           .withFailedTile(OrderTile::class, RuntimeException("boom"))
           .build()
-      testMosaic.assertThrows(OrderSummaryTile::class, RuntimeException::class.java)
+      testMosaic.assertThrows(OrderSummaryTile::class, RuntimeException::class)
     }
 }

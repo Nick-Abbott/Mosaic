@@ -28,13 +28,13 @@ Add Mosaic to your Gradle project:
 plugins {
   kotlin("jvm")
   id("com.google.devtools.ksp")
-  id("com.buildmosaic.gradle") version "1.0.0"  // Auto-registers tiles and applies KSP
+  id("com.buildmosaic.gradle") version "0.1.0"  // Auto-registers tiles and applies KSP
 }
 
 dependencies {
-  implementation("com.buildmosaic.core:mosaic-core:1.0.0")               // Core tile system and registry
+  implementation("com.buildmosaic.core:mosaic-core:0.1.0")               // Core tile system and registry
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")     // Coroutines support
-  testImplementation("com.buildmosaic.test:mosaic-test:1.0.0")           // Testing utilities and mocks
+  testImplementation("com.buildmosaic.test:mosaic-test:0.1.0")           // Testing utilities and mocks
   testImplementation(kotlin("test"))                                  // Kotlin test framework
   testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")       // JUnit 5
 }
@@ -48,10 +48,10 @@ plugins {
 }
 
 dependencies {
-  implementation("com.buildmosaic.core:mosaic-core:1.0.0")               // Core tile system
+  implementation("com.buildmosaic.core:mosaic-core:0.1.0")               // Core tile system
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")     // Coroutines support
-  ksp("com.buildmosaic.catalog.ksp:mosaic-catalog-ksp:1.0.0")                   // Generates tile catalogs
-  testImplementation("com.buildmosaic.test:mosaic-test:1.0.0")           // Testing framework
+  ksp("com.buildmosaic.catalog.ksp:mosaic-catalog-ksp:0.1.0")                   // Generates tile catalogs
+  testImplementation("com.buildmosaic.test:mosaic-test:0.1.0")           // Testing framework
   testImplementation(kotlin("test"))                                  // Kotlin test framework
   testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")       // JUnit 5
 }

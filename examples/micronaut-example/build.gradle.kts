@@ -2,12 +2,11 @@ plugins {
   kotlin("jvm")
   kotlin("plugin.serialization") version "2.2.10"
   id("com.google.devtools.ksp")
-  id("com.buildmosaic.gradle")
+  id("com.buildmosaic.gradle") version "0.1.0"
   id("io.micronaut.application") version "4.5.4"
 }
 
 dependencies {
-  implementation("com.buildmosaic.core:mosaic-core:1.0.0")
   implementation(project(":tile-library"))
 
   // Micronaut dependencies
@@ -20,21 +19,13 @@ dependencies {
   implementation("jakarta.inject:jakarta.inject-api:2.0.1")
 
   // Testing
-  testImplementation("com.buildmosaic.test:mosaic-test:1.0.0")
   testImplementation("io.micronaut.test:micronaut-test-junit5")
   testImplementation("io.micronaut:micronaut-http-client")
   testImplementation(kotlin("test"))
-  testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
 }
 
 kotlin {
   jvmToolchain(21)
-}
-
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-  compilerOptions {
-    jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
-  }
 }
 
 micronaut {

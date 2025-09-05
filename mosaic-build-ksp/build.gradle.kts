@@ -1,5 +1,5 @@
-group = "com.buildmosaic.build.ksp"
-version = "1.0.0"
+group = "com.buildmosaic"
+version = project.property("mosaic.version") as String
 
 plugins {
   id("kotlin.convention")

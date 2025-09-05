@@ -8,7 +8,7 @@ import com.buildmosaic.library.model.OrderPage
 import com.buildmosaic.library.model.OrderSummary
 import com.buildmosaic.test.TestMosaicBuilder
 import kotlinx.coroutines.runBlocking
-import org.junit.jupiter.api.Test
+import kotlin.test.Test
 
 class OrderPageTileTest {
   @Test
@@ -44,6 +44,6 @@ class OrderPageTileTest {
           .withMockTile(OrderSummaryTile::class, summary)
           .withFailedTile(LogisticsTile::class, RuntimeException("boom"))
           .build()
-      testMosaic.assertThrows(OrderPageTile::class, RuntimeException::class.java)
+      testMosaic.assertThrows(OrderPageTile::class, RuntimeException::class)
     }
 }
