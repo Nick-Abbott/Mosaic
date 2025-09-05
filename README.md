@@ -36,7 +36,6 @@ dependencies {
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")     // Coroutines support
   testImplementation("com.buildmosaic.test:mosaic-test:0.1.0")           // Testing utilities and mocks
   testImplementation(kotlin("test"))                                  // Kotlin test framework
-  testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")       // JUnit 5
 }
 ```
 
@@ -53,7 +52,6 @@ dependencies {
   ksp("com.buildmosaic.catalog.ksp:mosaic-catalog-ksp:0.1.0")                   // Generates tile catalogs
   testImplementation("com.buildmosaic.test:mosaic-test:0.1.0")           // Testing framework
   testImplementation(kotlin("test"))                                  // Kotlin test framework
-  testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")       // JUnit 5
 }
 ```
 

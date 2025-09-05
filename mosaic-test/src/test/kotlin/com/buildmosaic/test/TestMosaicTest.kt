@@ -20,7 +20,7 @@ import com.buildmosaic.core.Mosaic
 import com.buildmosaic.core.MosaicRegistry
 import com.buildmosaic.core.MosaicRequest
 import kotlinx.coroutines.test.runTest
-import org.junit.jupiter.api.BeforeEach
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -38,7 +38,7 @@ class TestMosaicTest {
   private lateinit var request: MosaicRequest
   private lateinit var testMosaic: TestMosaic
 
-  @BeforeEach
+  @BeforeTest
   fun setUp() {
     registry = MosaicRegistry()
     request = MockMosaicRequest()

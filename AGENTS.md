@@ -54,7 +54,7 @@ Mosaic/
 - **Language**: Kotlin 2.2.0
 - **Build System**: Gradle with Kotlin DSL
 - **Concurrency**: Kotlin Coroutines with `Deferred` for caching
-- **Testing**: JUnit 5, Kotlin Test, Kover for coverage
+- **Testing**: Kotlin Test with Kover for coverage (Micronaut example uses JUnit 5)
 - **Code Quality**: ktlint (formatting), detekt (static analysis)
 
 ### Development Patterns

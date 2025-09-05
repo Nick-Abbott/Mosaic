@@ -17,18 +17,18 @@
 package com.buildmosaic.core
 
 import kotlinx.coroutines.test.runTest
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
-import org.junit.jupiter.api.BeforeEach
-import kotlin.test.Test
-import kotlin.test.assertThrows
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 @Suppress("FunctionOnlyReturningConstant", "FunctionMaxLength")
 class MultiTileTest {
   private lateinit var testTile: TestMultiTile
 
-  @BeforeEach
+  @BeforeTest
   fun setUp() {
     testTile = TestMultiTile()
   }
@@ -87,7 +87,7 @@ class MultiTileTest {
       testTile.shouldThrowError = true
 
       val exception =
-        assertThrows<RuntimeException> {
+        assertFailsWith<RuntimeException> {
           testTile.getByKeys(listOf("key1", "key2"))
         }
 

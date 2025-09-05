@@ -18,17 +18,17 @@ package com.buildmosaic.core
 
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
-import kotlin.test.assertEquals
-import org.junit.jupiter.api.BeforeEach
-import kotlin.test.Test
-import kotlin.test.assertThrows
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 @Suppress("FunctionOnlyReturningConstant", "FunctionMaxLength")
 class SingleTileTest {
   private lateinit var testTile: TestSingleTile
 
-  @BeforeEach
+  @BeforeTest
   fun setUp() {
     testTile = TestSingleTile()
   }
@@ -62,7 +62,7 @@ class SingleTileTest {
 
       // The exception should be thrown when calling get()
       val exception =
-        assertThrows<RuntimeException> {
+        assertFailsWith<RuntimeException> {
           testTile.get()
         }
 
