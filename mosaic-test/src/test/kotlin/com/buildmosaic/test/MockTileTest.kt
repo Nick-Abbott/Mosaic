@@ -22,7 +22,7 @@ import com.buildmosaic.core.SingleTile
 import com.buildmosaic.core.Tile
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
-import org.junit.jupiter.api.BeforeEach
+import kotlin.test.BeforeTest
 
 /**
  * Base class for mock tile testing with common utilities.
@@ -30,7 +30,7 @@ import org.junit.jupiter.api.BeforeEach
 abstract class MockTileTest {
   protected lateinit var mosaic: Mosaic
 
-  @BeforeEach
+  @BeforeTest
   fun setUp() {
     mosaic = mockk<Mosaic>()
   }

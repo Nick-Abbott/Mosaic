@@ -21,8 +21,8 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
-import org.junit.jupiter.api.BeforeEach
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -34,7 +34,7 @@ class MosaicConcurrencyTest {
   private lateinit var registry: MosaicRegistry
   private lateinit var mosaic: Mosaic
 
-  @BeforeEach
+  @BeforeTest
   fun setUp() {
     registry = MosaicRegistry()
     mosaic = Mosaic(registry, TestRequest())
