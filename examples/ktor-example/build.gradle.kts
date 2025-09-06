@@ -2,7 +2,7 @@ plugins {
   kotlin("jvm")
   kotlin("plugin.serialization") version "2.2.10"
   id("com.google.devtools.ksp")
-  id("com.buildmosaic.gradle") version "0.1.0"
+  id("org.buildmosaic.gradle") version "0.1.0"
   application
 }
 
@@ -29,5 +29,5 @@ tasks.withType<Test> {
 }
 
 application {
-  mainClass.set("com.buildmosaic.ktor.orders.KtorExampleApplicationKt")
+  mainClass.set("org.buildmosaic.ktor.orders.KtorExampleApplicationKt")
 }

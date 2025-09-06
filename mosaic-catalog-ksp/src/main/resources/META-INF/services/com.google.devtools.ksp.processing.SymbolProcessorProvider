@@ -1,1 +1,1 @@
-com.buildmosaic.catalog.ksp.CatalogProcessorProvider
+org.buildmosaic.catalog.ksp.CatalogProcessorProvider

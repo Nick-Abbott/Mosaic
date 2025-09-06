@@ -15,7 +15,7 @@ Mosaic-test provides a fluent testing API that makes testing tile compositions s
 
 ```kotlin
 dependencies {
-  testImplementation("com.buildmosaic:mosaic-test:0.1.0")
+  testImplementation("org.buildmosaic:mosaic-test:0.1.0")
 }
 ```
 

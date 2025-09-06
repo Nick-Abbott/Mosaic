@@ -16,19 +16,19 @@ plugins {
 
 dependencies {
     // Import the BOM (replace VERSION with the desired version)
-    implementation(platform("com.buildmosaic:mosaic-bom:VERSION"))
+    implementation(platform("org.buildmosaic:mosaic-bom:VERSION"))
     
     // Add Mosaic dependencies without version numbers
-    implementation("com.buildmosaic:mosaic-core")
-    testImplementation("com.buildmosaic:mosaic-test")
+    implementation("org.buildmosaic:mosaic-core")
+    testImplementation("org.buildmosaic:mosaic-test")
     
     // For KSP support
-    ksp("com.buildmosaic:mosaic-catalog-ksp")
+    ksp("org.buildmosaic:mosaic-catalog-ksp")
 }
 
 // If you're using the Mosaic Gradle plugin
 plugins {
-    id("com.buildmosaic.mosaic-build-plugin") version "VERSION"
+    id("org.buildmosaic.mosaic-build-plugin") version "VERSION"
 }
 ```
 
@@ -44,19 +44,19 @@ plugins {
 
 dependencies {
     // Import the BOM
-    implementation platform('com.buildmosaic:mosaic-bom:VERSION')
+    implementation platform('org.buildmosaic:mosaic-bom:VERSION')
     
     // Add Mosaic dependencies without version numbers
-    implementation 'com.buildmosaic:mosaic-core'
-    testImplementation 'com.buildmosaic:mosaic-test'
+    implementation 'org.buildmosaic:mosaic-core'
+    testImplementation 'org.buildmosaic:mosaic-test'
     
     // For KSP support
-    ksp 'com.buildmosaic:mosaic-catalog-ksp'
+    ksp 'org.buildmosaic:mosaic-catalog-ksp'
 }
 
 // If you're using the Mosaic Gradle plugin
 plugins {
-    id 'com.buildmosaic.mosaic-build-plugin' version 'VERSION'
+    id 'org.buildmosaic.mosaic-build-plugin' version 'VERSION'
 }
 ```
 
@@ -67,7 +67,7 @@ plugins {
     <dependencyManagement>
         <dependencies>
             <dependency>
-                <groupId>com.buildmosaic</groupId>
+                <groupId>org.buildmosaic</groupId>
                 <artifactId>mosaic-bom</artifactId>
                 <version>VERSION</version>
                 <type>pom</type>
@@ -78,11 +78,11 @@ plugins {
     
     <dependencies>
         <dependency>
-            <groupId>com.buildmosaic</groupId>
+            <groupId>org.buildmosaic</groupId>
             <artifactId>mosaic-core</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.buildmosaic</groupId>
+            <groupId>org.buildmosaic</groupId>
             <artifactId>mosaic-test</artifactId>
             <scope>test</scope>
         </dependency>
@@ -101,7 +101,7 @@ plugins {
                 </configuration>
                 <dependencies>
                     <dependency>
-                        <groupId>com.buildmosaic</groupId>
+                        <groupId>org.buildmosaic</groupId>
                         <artifactId>mosaic-catalog-ksp</artifactId>
                         <version>${mosaic.version}</version>
                     </dependency>
