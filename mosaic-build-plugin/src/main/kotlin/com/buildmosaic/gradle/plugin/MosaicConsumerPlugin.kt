@@ -38,7 +38,7 @@ class MosaicConsumerPlugin : Plugin<Project> {
     project.dependencies.add(
       "implementation",
       project.dependencies.platform(
-        "com.buildmosaic:mosaic-bom:0.1.0",
+        "com.buildmosaic:mosaic-bom:$MOSAIC_VERSION",
       ),
     )
 
