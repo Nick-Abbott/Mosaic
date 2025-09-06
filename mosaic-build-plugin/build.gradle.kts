@@ -1,4 +1,4 @@
-group = "com.buildmosaic"
+group = "org.buildmosaic"
 version = project.property("mosaic.version") as String
 
 plugins {
@@ -18,12 +18,12 @@ val generateVersionFile =
 
     doLast {
       val versionFile =
-        outputDir.get().file("com/buildmosaic/gradle/plugin/MosaicVersion.kt").asFile
+        outputDir.get().file("org/buildmosaic/gradle/plugin/MosaicVersion.kt").asFile
       versionFile.parentFile.mkdirs()
       versionFile.writeText(
         (
           """
-          package com.buildmosaic.gradle.plugin
+          package org.buildmosaic.gradle.plugin
 
           internal const val MOSAIC_VERSION: String = "$version"
           """.trimIndent() + "\n"
@@ -51,8 +51,8 @@ dependencies {
 gradlePlugin {
   plugins {
     create("mosaicConsumer") {
-      id = "com.buildmosaic.gradle"
-      implementationClass = "com.buildmosaic.gradle.plugin.MosaicConsumerPlugin"
+      id = "org.buildmosaic.gradle"
+      implementationClass = "org.buildmosaic.gradle.plugin.MosaicConsumerPlugin"
       displayName = "Mosaic Consumer Plugin"
       description = "Merges META-INF/mosaic catalogs + wires KSP aggregator"
     }

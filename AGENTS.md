@@ -87,7 +87,7 @@ class UserProfileTile(mosaic: Mosaic) : SingleTile<UserProfile>(mosaic) {
 - Use meaningful tile names ending with "Tile"
 - Prefer composition over inheritance
 - Use suspend functions for async operations
-- Follow the existing package structure (`com.buildmosaic.*`)
+- Follow the existing package structure (`org.buildmosaic.*`)
 
 ### Testing Best Practices
 - Use the `mosaic-test` framework for testing tiles

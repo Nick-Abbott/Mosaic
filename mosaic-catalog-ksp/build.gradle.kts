@@ -1,4 +1,4 @@
-group = "com.buildmosaic"
+group = "org.buildmosaic"
 version = project.property("mosaic.version") as String
 
 plugins {

@@ -2,7 +2,7 @@ plugins {
   kotlin("jvm")
   kotlin("plugin.serialization") version "2.2.10"
   id("com.google.devtools.ksp")
-  id("com.buildmosaic.gradle") version "0.1.0"
+  id("org.buildmosaic.gradle") version "0.1.0"
   id("io.micronaut.application") version "4.5.4"
 }
 
@@ -34,10 +34,10 @@ micronaut {
   testRuntime("junit5")
   processing {
     incremental(true)
-    annotations("com.buildmosaic.micronaut.*")
+    annotations("org.buildmosaic.micronaut.*")
   }
 }
 
 application {
-  mainClass.set("com.buildmosaic.micronaut.orders.MicronautExampleApplicationKt")
+  mainClass.set("org.buildmosaic.micronaut.orders.MicronautExampleApplicationKt")
 }
