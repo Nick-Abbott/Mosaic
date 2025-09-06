@@ -5,6 +5,7 @@ plugins {
   id("kotlin.convention")
   id("quality.convention")
   id("testing.convention")
+  id("library.convention")
 }
 
 tasks.withType<Test> {
@@ -28,5 +29,4 @@ dependencies {
 
   // Mocking and assertion libraries
   implementation(libs.mockk)
-  implementation(libs.assertj)
 }

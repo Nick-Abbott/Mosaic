@@ -19,9 +19,24 @@ package org.buildmosaic.test
 import org.buildmosaic.core.MosaicRequest
 
 /**
- * Default implementation of MosaicRequest for testing purposes.
- * Provides a simple request that can be used when no specific request data is needed.
+ * A test implementation of [MosaicRequest] for use in unit and integration tests.
+ *
+ * This class provides a simple [MosaicRequest] implementation that can be used when testing
+ * [Tile] implementations that don't require specific request data. For more complex test
+ * scenarios, you can extend this class or implement [MosaicRequest] directly.
+ *
+ * ### Example Usage
+ * ```kotlin
+ * // Create a test request
+ * val request = MockMosaicRequest()
+ *
+ * // Use in a test
+ * val testMosaic = TestMosaicBuilder()
+ *   .withRequest(request)
+ *   .build()
+ * ```
+ *
+ * @see MosaicRequest
+ * @see TestMosaicBuilder
  */
-class MockMosaicRequest : MosaicRequest {
-  // Simple implementation for testing
-}
+class MockMosaicRequest : MosaicRequest

@@ -17,15 +17,26 @@
 package org.buildmosaic.core
 
 /**
- * Interface for request-specific data that tiles can access.
- * This allows tiles to access request context, headers, parameters, etc.
+ * Interface representing request-specific data that can be accessed by [Tile] implementations.
  *
- * Extend this interface to add request-specific methods and properties.
- * Examples:
- * - headers: Map<String, String>
- * - parameters: Map<String, String>
- * - context: Any
- * - userId: String?
- * - etc.
+ * [MosaicRequest] serves as a container for request-scoped data such as:
+ * - HTTP headers and parameters
+ * - Authentication/authorization context
+ * - Request metadata
+ * - User session information
+ *
+ * Implement this interface to provide request context to your tiles. Common implementations might include:
+ *
+ * ```kotlin
+ * class HttpMosaicRequest(
+ *   val headers: Map<String, String>,
+ *   val parameters: Map<String, String>,
+ *   val userId: String?,
+ *   val session: HttpSession
+ * ) : MosaicRequest
+ * ```
+ *
+ * @see Mosaic The main entry point that provides access to the current request
+ * @see Tile The interface for tiles that can access request data
  */
 interface MosaicRequest

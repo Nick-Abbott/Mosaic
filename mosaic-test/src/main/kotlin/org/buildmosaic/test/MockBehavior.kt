@@ -17,18 +17,64 @@
 package org.buildmosaic.test
 
 /**
- * Internal behaviors used by [TestMosaicBuilder] when constructing mocks.
+ * Defines the possible behaviors for mock tiles in test scenarios.
+ *
+ * This enum is used by [TestMosaicBuilder] to configure how mock tiles should behave during testing.
  */
 internal enum class MockBehavior {
-  /** Mock returns the specified data successfully */
+  /**
+   * The mock will return the specified data successfully.
+   *
+   * Example:
+   * ```kotlin
+   * TestMosaicBuilder()
+   *   .withMockTile<MyTile>(MockBehavior.SUCCESS) { "test data" }
+   *   .build()
+   * ```
+   */
   SUCCESS,
 
-  /** Mock throws the provided [Throwable] */
+  /**
+   * The mock will throw the provided [Throwable] when called.
+   *
+   * Example:
+   * ```kotlin
+   * TestMosaicBuilder()
+   *   .withMockTile<MyTile>(MockBehavior.ERROR) { RuntimeException("Test error") }
+   *   .build()
+   * ```
+   */
   ERROR,
 
-  /** Mock delays for a configured duration before returning data */
+  /**
+   * The mock will delay for a configured duration before returning data.
+   *
+   * Example:
+   * ```kotlin
+   * TestMosaicBuilder()
+   *   .withMockTile<MyTile>(MockBehavior.DELAY) {
+   *     delay(100) // 100ms delay
+   *     "delayed data"
+   *   }
+   *   .build()
+   * ```
+   */
   DELAY,
 
-  /** Mock executes the provided custom lambda */
+  /**
+   * The mock will execute the provided custom lambda when called.
+   *
+   * This allows for complex mock behavior that doesn't fit the other categories.
+   *
+   * Example:
+   * ```kotlin
+   * TestMosaicBuilder()
+   *   .withMockTile<MyTile>(MockBehavior.CUSTOM) {
+   *     // Custom logic here
+   *     if (condition) "result1" else "result2"
+   *   }
+   *   .build()
+   * ```
+   */
   CUSTOM,
 }
