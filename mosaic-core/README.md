@@ -9,6 +9,16 @@
 
 Mosaic-core provides the fundamental building blocks for creating type-safe, cacheable, and composable data access patterns through tiles.
 
+## 🚀 **Quick Start**
+
+### **Installation**
+
+```kotlin
+dependencies {
+  implementation("org.buildmosaic:mosaic-core:0.1.0")
+}
+```
+
 ## 🧩 **Core Components**
 
 ### **SingleTile**

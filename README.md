@@ -26,32 +26,28 @@ Add Mosaic to your Gradle project:
 ```kotlin
 // For applications using tiles
 plugins {
-  kotlin("jvm")
-  id("com.google.devtools.ksp")
-  id("org.buildmosaic.consumer") version "0.1.0"  // Auto-registers tiles and applies KSP
+  kotlin("jvm")                                                    // Kotlin JVM plugin
+  id("com.google.devtools.ksp")                                    // Kotlin Symbol Processing
+  id("org.buildmosaic.consumer") version "0.1.0"                   // Applies mosaic dependencies and KSP processors
 }
 
 dependencies {
-  implementation("org.buildmosaic.core:mosaic-core:0.1.0")               // Core tile system and registry
-  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")     // Coroutines support
-  testImplementation("org.buildmosaic.test:mosaic-test:0.1.0")           // Testing utilities and mocks
-  testImplementation(kotlin("test"))                                  // Kotlin test framework
+  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")  // Recommended for advanced coroutine usage
+  testImplementation(kotlin("test"))                               // Kotlin test framework
 }
 ```
 
 ```kotlin
 // For tile libraries
 plugins {
-  kotlin("jvm")
-  id("com.google.devtools.ksp")                           // Kotlin Symbol Processing
+  kotlin("jvm")                                                    // Kotlin JVM plugin
+  id("com.google.devtools.ksp")                                    // Kotlin Symbol Processing
+  id("org.buildmosaic.catalog") version "0.1.0"                    // Applies mosaic dependencies and KSP processors
 }
 
 dependencies {
-  implementation("org.buildmosaic.core:mosaic-core:0.1.0")               // Core tile system
-  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")     // Coroutines support
-  ksp("org.buildmosaic.consumer.ksp:mosaic-consumer-ksp:0.1.0")                   // Generates tile catalogs
-  testImplementation("org.buildmosaic.test:mosaic-test:0.1.0")           // Testing framework
-  testImplementation(kotlin("test"))                                  // Kotlin test framework
+  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")  // Recommended for advanced coroutine usage
+  testImplementation(kotlin("test"))                               // Kotlin test framework
 }
 ```
 

@@ -48,21 +48,5 @@ class MosaicConsumerPlugin : Plugin<Project> {
     // Apply mosaic dependencies
     project.dependencies.add("implementation", "org.buildmosaic:mosaic-core")
     project.dependencies.add("testImplementation", "org.buildmosaic:mosaic-test")
-
-    // Configure KSP
-    project.afterEvaluate {
-      try {
-        val kspExtension = project.extensions.findByName("ksp")
-        if (kspExtension != null) {
-          val argMethod =
-            kspExtension.javaClass
-              .getMethod("arg", String::class.java, String::class.java)
-          argMethod.invoke(kspExtension, "mosaic.tileBase", "org.buildmosaic.core.Tile")
-          argMethod.invoke(kspExtension, "mosaic.callLibraryRegistry", "true")
-        }
-      } catch (e: ReflectiveOperationException) {
-        project.logger.warn("Could not configure KSP: ${e.message}")
-      }
-    }
   }
 }
