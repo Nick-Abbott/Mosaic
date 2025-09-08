@@ -2,7 +2,7 @@ plugins {
   `java-library`
   id("org.jetbrains.dokka")
   id("org.jetbrains.dokka-javadoc")
-  id("com.vanniktech.maven.publish")
+  id("publish.convention")
 }
 
 dokka {

@@ -1,3 +1,5 @@
+description = "Bill of Materials for Mosaic"
+
 plugins {
     `java-platform`
     id("com.vanniktech.maven.publish")

@@ -1,3 +1,5 @@
+description = "KSP processor to build Mosaic tile catalogs for tile libraries"
+
 plugins {
   id("ksp-processor.convention")
 }

@@ -1,5 +1,7 @@
 import org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension
 
+description = "Gradle plugin for building Mosaic tile libraries"
+
 plugins {
   id("gradle-plugin.convention")
 }
@@ -23,7 +25,7 @@ val generateVersionFile =
 
           internal const val MOSAIC_VERSION: String = "$version"
           """.trimIndent() + "\n"
-          ),
+        ),
       )
     }
   }

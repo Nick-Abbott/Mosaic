@@ -1,3 +1,5 @@
+description = "The core tile composition library for Mosaic"
+
 plugins {
   id("kotlin.convention")
   id("quality.convention")

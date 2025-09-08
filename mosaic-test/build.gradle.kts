@@ -1,3 +1,5 @@
+description = "A testing framework for tile isolation in Mosaic"
+
 plugins {
   id("kotlin.convention")
   id("quality.convention")

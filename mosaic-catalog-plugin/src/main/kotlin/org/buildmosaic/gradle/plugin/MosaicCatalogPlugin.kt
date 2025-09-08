@@ -1,9 +1,7 @@
 package org.buildmosaic.gradle.plugin
 
-import com.google.devtools.ksp.gradle.KspTask
 import org.gradle.api.Plugin
 import org.gradle.api.Project
-import org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension
 
 /**
  * A Gradle plugin that configures a project to be a Mosaic tile library.

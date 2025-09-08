@@ -1,5 +1,7 @@
 import org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension
 
+description = "Gradle plugin adding mosaic support to a consumer project"
+
 plugins {
   id("gradle-plugin.convention")
 }
