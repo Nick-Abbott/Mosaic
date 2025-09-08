@@ -1,11 +1,7 @@
-group = "org.buildmosaic"
-version = project.property("mosaic.version") as String
+import org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension
 
 plugins {
-  id("kotlin.convention")
-  id("quality.convention")
-  `kotlin-dsl`
-  `java-gradle-plugin`
+  id("gradle-plugin.convention")
 }
 
 // Generate a Kotlin file containing the Mosaic version so the plugin can
@@ -32,7 +28,7 @@ val generateVersionFile =
     }
   }
 
-extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension> {
+extensions.configure<KotlinProjectExtension> {
   sourceSets.getByName("main").kotlin.srcDir(generateVersionFile)
 }
 
@@ -51,10 +47,10 @@ dependencies {
 gradlePlugin {
   plugins {
     create("mosaicConsumer") {
-      id = "org.buildmosaic.gradle"
+      id = "org.buildmosaic.consumer"
       implementationClass = "org.buildmosaic.gradle.plugin.MosaicConsumerPlugin"
       displayName = "Mosaic Consumer Plugin"
-      description = "Merges META-INF/mosaic catalogs + wires KSP aggregator"
+      description = "Adds mosaic support to a consumer project"
     }
   }
 }

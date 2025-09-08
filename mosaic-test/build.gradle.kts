@@ -1,6 +1,3 @@
-group = "org.buildmosaic"
-version = project.property("mosaic.version") as String
-
 plugins {
   id("kotlin.convention")
   id("quality.convention")

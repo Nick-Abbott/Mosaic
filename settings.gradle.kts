@@ -9,7 +9,7 @@ pluginManagement {
 
 include("mosaic-core")
 include("mosaic-test")
-include("mosaic-build-plugin")
-include("mosaic-build-ksp")
+include("mosaic-consumer-plugin")
+include("mosaic-consumer-ksp")
 include("mosaic-catalog-ksp")
 include("mosaic-bom")

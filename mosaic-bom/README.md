@@ -28,7 +28,7 @@ dependencies {
 
 // If you're using the Mosaic Gradle plugin
 plugins {
-    id("org.buildmosaic.mosaic-build-plugin") version "VERSION"
+    id("org.buildmosaic.mosaic-consumer-plugin") version "VERSION"
 }
 ```
 
@@ -56,7 +56,7 @@ dependencies {
 
 // If you're using the Mosaic Gradle plugin
 plugins {
-    id 'org.buildmosaic.mosaic-build-plugin' version 'VERSION'
+    id 'org.buildmosaic.mosaic-consumer-plugin' version 'VERSION'
 }
 ```
 
@@ -126,8 +126,8 @@ The BOM includes the following Mosaic artifacts:
 - `mosaic-core`: Core Mosaic functionality
 - `mosaic-test`: Testing utilities for Mosaic
 - `mosaic-catalog-ksp`: KSP processor for Mosaic catalogs
-- `mosaic-build-ksp`: KSP integration for Mosaic
-- `mosaic-build-plugin`: Gradle plugin for Mosaic
+- `mosaic-consumer-ksp`: KSP integration for Mosaic
+- `mosaic-consumer-plugin`: Gradle plugin for Mosaic
 
 ## Versioning
 

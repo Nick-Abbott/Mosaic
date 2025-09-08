@@ -180,5 +180,5 @@ val prices2 = mosaic.getTile<PricingBySkuTile>().getByKeys(listOf("SKU2", "SKU3"
 ## 🔗 **Related Modules**
 
 - **[mosaic-test](../mosaic-test/README.md)**: Testing framework for tiles
-- **[mosaic-build-plugin](../mosaic-build-plugin/)**: Gradle plugin for automatic tile registration
+- **[mosaic-consumer-plugin](../mosaic-consumer-plugin/)**: Gradle plugin for automatic tile registration
 - **[mosaic-catalog-ksp](../mosaic-catalog-ksp/)**: KSP processor for tile catalog generation

@@ -67,7 +67,7 @@ class MosaicRegistry {
       constructors[tileClass]
         ?: throw IllegalArgumentException(
           "No constructor registered for ${tileClass.simpleName}. " +
-            "Did you forget to register your tiles with mosaic-build-plugin?",
+            "Did you forget to register your tiles with mosaic-consumer-plugin?",
         )
 
     @Suppress("UNCHECKED_CAST")

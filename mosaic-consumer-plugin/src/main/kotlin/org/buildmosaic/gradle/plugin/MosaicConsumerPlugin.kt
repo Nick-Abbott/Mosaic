@@ -43,7 +43,7 @@ class MosaicConsumerPlugin : Plugin<Project> {
     )
 
     // Add KSP dependency
-    project.dependencies.add("ksp", "org.buildmosaic:mosaic-build-ksp")
+    project.dependencies.add("ksp", "org.buildmosaic:mosaic-consumer-ksp")
 
     // Apply mosaic dependencies
     project.dependencies.add("implementation", "org.buildmosaic:mosaic-core")

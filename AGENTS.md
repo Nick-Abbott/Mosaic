@@ -42,8 +42,8 @@ Instead of thinking "what database queries do I need?", developers think "what r
 Mosaic/
 ├── mosaic-core/          # Core framework (SingleTile, MultiTile, Mosaic, Registry)
 ├── mosaic-test/          # Testing framework (TestMosaic, TestMosaicBuilder, etc.)
-├── mosaic-build-plugin/  # Gradle build plugin
-├── mosaic-build-ksp/     # KSP plugin to generate tile registration code
+├── mosaic-consumer-plugin/  # Gradle build plugin for consumers
+├── mosaic-consumer-ksp/   # KSP plugin to generate tile registration code
 ├── mosaic-catalog-ksp/   # KSP plugin to generate tile catalogs for tile libraries
 ├── examples/             # Example implementations
 ├── buildSrc/             # Gradle convention plugins
@@ -94,7 +94,7 @@ class UserProfileTile(mosaic: Mosaic) : SingleTile<UserProfile>(mosaic) {
 - Isolate tiles from their dependent tiles by using `TestMosaicBuilder`
 - Test both success and error scenarios
 - Use `TestMosaicBuilder` helpers (`withMockTile`, `withFailedTile`, etc.) for different test scenarios
-- Build plugin modules (`mosaic-build` and `mosaic-metadata`) do not have unit tests
+- Plugin, KSP, and BOM modules do not have unit tests
 - Aim for 80%+ code coverage for other modules (enforced by Kover)
 
 ### Common Operations

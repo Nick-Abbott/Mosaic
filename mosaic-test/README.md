@@ -191,7 +191,7 @@ testMosaic.assertThrows(
 - **🎯 Type-Safe Assertions**: Compile-time guarantees for test correctness
 - **🔄 Mock Behavior Control**: SUCCESS, ERROR, DELAY behaviors for comprehensive testing
 - **⚡ Coroutine Support**: Full support for testing async tile operations
-- **📊 Automatic Registration**: Works seamlessly with mosaic-build-plugin
+- **📊 Automatic Registration**: Works seamlessly with mosaic-consumer-plugin
 
 ## 🔗 **Related Modules**
 

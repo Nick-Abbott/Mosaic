@@ -100,8 +100,8 @@ class MosaicConcurrencyTest {
 
     // Test the new error message format
     assertTrue(
-      exception.message?.contains("mosaic-build-plugin") == true,
-      "Error message should mention mosaic-build-plugin",
+      exception.message?.contains("mosaic-consumer-plugin") == true,
+      "Error message should mention mosaic-consumer-plugin",
     )
   }
 

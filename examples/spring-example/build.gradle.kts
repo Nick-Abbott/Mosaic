@@ -1,7 +1,7 @@
 plugins {
   kotlin("jvm")
   id("com.google.devtools.ksp")
-  id("org.buildmosaic.gradle") version "0.1.0"
+  id("org.buildmosaic.consumer") version "0.1.0"
   id("org.jetbrains.kotlin.plugin.spring") version "2.2.10"
   application
 }

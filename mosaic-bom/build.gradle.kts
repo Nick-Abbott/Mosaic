@@ -1,9 +1,7 @@
 plugins {
     `java-platform`
+    id("com.vanniktech.maven.publish")
 }
-
-group = "org.buildmosaic"
-version = project.property("mosaic.version") as String
 
 val mosaicVersion = version
 
@@ -21,9 +19,9 @@ dependencies {
         
         // KSP dependencies
         api("org.buildmosaic:mosaic-catalog-ksp:${mosaicVersion}")
-        api("org.buildmosaic:mosaic-build-ksp:${mosaicVersion}")
+        api("org.buildmosaic:mosaic-consumer-ksp:${mosaicVersion}")
         
         // Build plugin (as a platform, not a direct dependency)
-        api("org.buildmosaic:mosaic-build-plugin:${mosaicVersion}")
+        api("org.buildmosaic:mosaic-consumer-plugin:${mosaicVersion}")
     }
 }

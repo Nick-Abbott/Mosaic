@@ -28,7 +28,7 @@ Add Mosaic to your Gradle project:
 plugins {
   kotlin("jvm")
   id("com.google.devtools.ksp")
-  id("org.buildmosaic.gradle") version "0.1.0"  // Auto-registers tiles and applies KSP
+  id("org.buildmosaic.consumer") version "0.1.0"  // Auto-registers tiles and applies KSP
 }
 
 dependencies {
@@ -49,7 +49,7 @@ plugins {
 dependencies {
   implementation("org.buildmosaic.core:mosaic-core:0.1.0")               // Core tile system
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")     // Coroutines support
-  ksp("org.buildmosaic.catalog.ksp:mosaic-catalog-ksp:0.1.0")                   // Generates tile catalogs
+  ksp("org.buildmosaic.consumer.ksp:mosaic-consumer-ksp:0.1.0")                   // Generates tile catalogs
   testImplementation("org.buildmosaic.test:mosaic-test:0.1.0")           // Testing framework
   testImplementation(kotlin("test"))                                  // Kotlin test framework
 }

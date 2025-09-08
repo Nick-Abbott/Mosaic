@@ -9,6 +9,7 @@ repositories {
 
 dependencies {
   implementation(kotlin("gradle-plugin", libs.versions.kotlin.get()))
+  implementation(libs.kotlin.dsl)
   implementation(libs.ktlint.gradle.plugin)
   implementation(libs.detekt.gradle.plugin)
   implementation(libs.kover.gradle.plugin)
