@@ -52,7 +52,14 @@ gradlePlugin {
       id = "org.buildmosaic.consumer"
       implementationClass = "org.buildmosaic.gradle.plugin.MosaicConsumerPlugin"
       displayName = "Mosaic Consumer Plugin"
-      description = "Adds mosaic support to a consumer project"
+      description = project.description
+      tags.set(
+        listOf(
+          "consumer",
+          "ksp",
+          "symbol-processing",
+        ),
+      )
     }
   }
 }

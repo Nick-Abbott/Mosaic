@@ -1,5 +1,6 @@
 plugins {
   id("com.vanniktech.maven.publish")
+  signing
 }
 
 mavenPublishing {
@@ -38,4 +39,10 @@ mavenPublishing {
       developerConnection.set("scm:git:ssh://git@github.com/Nick-Abbott/Mosaic.git")
     }
   }
+}
+
+// Use the GPG command line tool for signing
+signing {
+  useGpgCmd()
+  sign(publishing.publications)
 }

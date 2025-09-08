@@ -52,7 +52,15 @@ gradlePlugin {
       id = "org.buildmosaic.catalog"
       implementationClass = "org.buildmosaic.gradle.plugin.MosaicCatalogPlugin"
       displayName = "Mosaic Catalog Plugin"
-      description = "Plugin for building Mosaic tile libraries"
+      description = project.description
+      tags.set(
+        listOf(
+          "catalog",
+          "library",
+          "ksp",
+          "symbol-processing",
+        ),
+      )
     }
   }
 }
