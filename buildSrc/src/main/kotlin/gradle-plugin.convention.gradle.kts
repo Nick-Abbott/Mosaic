@@ -8,8 +8,8 @@ plugins {
 }
 
 gradlePlugin {
-  website = "https://github.com/Nick-Abbott/Mosaic/${project.name}/"
-  vcsUrl  = "https://github.com/Nick-Abbott/Mosaic/${project.name}/"
+  website = "https://buildmosaic.org/"
+  vcsUrl  = "https://github.com/Nick-Abbott/Mosaic/"
 
   plugins.all {
     tags.set(
