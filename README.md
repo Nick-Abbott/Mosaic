@@ -1,4 +1,8 @@
-# Mosaic Framework
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./.github/images/mosaic-logo-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="./.github/images/mosaic-logo-light.png">
+  <img alt="Mosaic logo" src="./.github/images/mosaic-logo-light.png">
+</picture>
 
 [![Tests](https://github.com/Nick-Abbott/Mosaic/workflows/Test%20Badge/badge.svg)](https://github.com/Nick-Abbott/Mosaic/actions?query=workflow%3A%22Test+Badge%22)
 [![Build](https://github.com/Nick-Abbott/Mosaic/workflows/Build%20Badge/badge.svg)](https://github.com/Nick-Abbott/Mosaic/actions?query=workflow%3A%22Build+Badge%22)
