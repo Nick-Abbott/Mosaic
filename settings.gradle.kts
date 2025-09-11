@@ -8,6 +8,7 @@ pluginManagement {
 }
 
 include("mosaic-core")
+include("mosaic-core-v2")
 include("mosaic-test")
 include("mosaic-consumer-plugin")
 include("mosaic-consumer-ksp")
