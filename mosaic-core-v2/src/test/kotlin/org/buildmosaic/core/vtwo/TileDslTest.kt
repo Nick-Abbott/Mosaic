@@ -1,0 +1,204 @@
+package org.buildmosaic.core.vtwo
+
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.currentTime
+import kotlinx.coroutines.test.runTest
+import kotlin.reflect.KClass
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class TileDslTest {
+  @Test
+  fun singleTileCachesAndInjects() =
+    runTest {
+      class Service {
+        var count = 0
+      }
+      val service = Service()
+      val injector =
+        object : Injector {
+          override fun <T : Any> get(type: KClass<T>): T {
+            @Suppress("UNCHECKED_CAST")
+            return when (type) {
+              Service::class -> service as T
+              else -> error("unknown type $type")
+            }
+          }
+        }
+      val mosaic = Mosaic(MosaicRequest(), injector)
+      val tile =
+        singleTile {
+          val s = inject<Service>()
+          s.count++
+          "result"
+        }
+      val first = mosaic.get(tile)
+      val second = mosaic.get(tile)
+      assertEquals("result", first)
+      assertEquals("result", second)
+      assertEquals(1, service.count)
+    }
+
+  @Test
+  fun singleTileDeduplicatesConcurrentRequests() =
+    runTest {
+      class Service {
+        var calls = 0
+
+        suspend fun fetch(): String {
+          calls++
+          delay(50)
+          return "v"
+        }
+      }
+      val service = Service()
+      val injector =
+        object : Injector {
+          override fun <T : Any> get(type: KClass<T>): T {
+            @Suppress("UNCHECKED_CAST")
+            return when (type) {
+              Service::class -> service as T
+              else -> error("unknown type $type")
+            }
+          }
+        }
+      val mosaic = Mosaic(MosaicRequest(), injector)
+      val tile =
+        singleTile {
+          val svc = inject<Service>()
+          svc.fetch()
+        }
+      val first = async { mosaic.get(tile) }
+      val second = async { mosaic.get(tile) }
+      assertEquals("v", first.await())
+      assertEquals("v", second.await())
+      assertEquals(1, service.calls)
+    }
+
+  @Test
+  fun multiTileBatchesAndCaches() =
+    runTest {
+      class Service {
+        var calls = 0
+
+        suspend fun fetch(ids: Set<String>): Map<String, String> {
+          calls++
+          return ids.associateWith { "v_$it" }
+        }
+      }
+      val service = Service()
+      val injector =
+        object : Injector {
+          override fun <T : Any> get(type: KClass<T>): T {
+            @Suppress("UNCHECKED_CAST")
+            return when (type) {
+              Service::class -> service as T
+              else -> error("unknown type $type")
+            }
+          }
+        }
+      val mosaic = Mosaic(MosaicRequest(), injector)
+      val tile =
+        multiTile<String, String> { ids ->
+          val svc = inject<Service>()
+          svc.fetch(ids)
+        }
+      val first = mosaic.get(tile, listOf("a", "b"))
+      val second = mosaic.get(tile, listOf("b", "c"))
+      val third = mosaic.get(tile, "a")
+      assertEquals("v_a", first["a"])
+      assertEquals("v_b", first["b"])
+      assertEquals("v_b", second["b"])
+      assertEquals("v_c", second["c"])
+      assertEquals("v_a", third["a"])
+      assertEquals(2, service.calls)
+    }
+
+  @Test
+  fun perKeyTileFetchesIndividually() =
+    runTest {
+      class Service {
+        val calls = mutableListOf<String>()
+
+        suspend fun fetch(id: String): String {
+          calls += id
+          return "v_$id"
+        }
+      }
+      val service = Service()
+      val injector =
+        object : Injector {
+          override fun <T : Any> get(type: KClass<T>): T {
+            @Suppress("UNCHECKED_CAST")
+            return when (type) {
+              Service::class -> service as T
+              else -> error("unknown type $type")
+            }
+          }
+        }
+      val mosaic = Mosaic(MosaicRequest(), injector)
+      val tile =
+        perKeyTile<String, String> { id ->
+          val svc = inject<Service>()
+          svc.fetch(id)
+        }
+      val first = mosaic.get(tile, listOf("a", "b"))
+      assertEquals(2, service.calls.size)
+      val second = mosaic.get(tile, listOf("b", "c"))
+      assertEquals(3, service.calls.size)
+      assertEquals(setOf("a", "b", "c"), service.calls.toSet())
+      assertEquals("v_a", first["a"])
+      assertEquals("v_b", first["b"])
+      assertEquals("v_b", second["b"])
+      assertEquals("v_c", second["c"])
+    }
+
+  @Test
+  fun chunkedMultiTileSplitsBatchesInParallel() =
+    runTest {
+      class Service(private val scope: TestScope) {
+        val batches = mutableListOf<List<String>>()
+        val starts = mutableListOf<Long>()
+
+        suspend fun fetch(ids: List<String>): Map<String, String> {
+          batches += ids.toList()
+          starts += scope.currentTime
+          delay(10)
+          return ids.associateWith { "v_$it" }
+        }
+      }
+      val service = Service(this)
+      val injector =
+        object : Injector {
+          override fun <T : Any> get(type: KClass<T>): T {
+            @Suppress("UNCHECKED_CAST")
+            return when (type) {
+              Service::class -> service as T
+              else -> error("unknown type $type")
+            }
+          }
+        }
+      val mosaic = Mosaic(MosaicRequest(), injector)
+      val tile =
+        chunkedMultiTile<String, String>(2) { ids ->
+          val svc = inject<Service>()
+          svc.fetch(ids)
+        }
+      val first = mosaic.get(tile, listOf("a", "b", "c", "d"))
+      assertEquals(listOf(listOf("a", "b"), listOf("c", "d")), service.batches)
+      assertEquals(listOf(0L, 0L), service.starts)
+      val second = mosaic.get(tile, listOf("c", "e"))
+      assertEquals(
+        listOf(listOf("a", "b"), listOf("c", "d"), listOf("e")),
+        service.batches,
+      )
+      assertEquals("v_a", first["a"])
+      assertEquals("v_b", first["b"])
+      assertEquals("v_c", first["c"])
+      assertEquals("v_d", first["d"])
+      assertEquals("v_c", second["c"])
+      assertEquals("v_e", second["e"])
+    }
+}
