@@ -19,24 +19,24 @@ class Mosaic(
   private val mutex = Mutex()
 
   suspend fun <T> get(tile: Tile<T>): T {
+    @Suppress("UNCHECKED_CAST")
     singleCache[tile]?.let { return it.await() as T }
-    return mutex.withLock {
-      singleCache[tile]?.let { return@withLock it.await() as T }
-      val deferred = coroutineScope { async { tile.block(this@Mosaic) } }
-      singleCache[tile] = deferred
-      deferred.await() as T
-    }
+    @Suppress("UNCHECKED_CAST")
+    return singleCache.getOrPut(tile) {
+      coroutineScope { async { tile.block(this@Mosaic) } }
+    }.await() as T
   }
 
-  suspend fun <K, V> get(
+  suspend fun <K : Any, V> get(
     tile: MultiTile<K, V>,
     keys: Collection<K>,
   ): Map<K, V> {
     @Suppress("UNCHECKED_CAST")
-    val cacheForTile =
-      multiCache.computeIfAbsent(tile) { ConcurrentHashMap<Any, Deferred<*>>() }
-        as ConcurrentHashMap<K, Deferred<V>>
+    val cacheForTile = multiCache.getOrPut(tile) {
+      ConcurrentHashMap<Any, Deferred<*>>()
+    } as ConcurrentHashMap<K, Deferred<V>>
     val missingKeys = keys.filterNot { cacheForTile.containsKey(it) }
+
     if (missingKeys.isNotEmpty()) {
       mutex.withLock {
         val stillMissing = missingKeys.filterNot { cacheForTile.containsKey(it) }
@@ -52,10 +52,10 @@ class Mosaic(
     return keys.associateWith { cacheForTile[it]!!.await() }
   }
 
-  suspend fun <K, V> get(
+  suspend fun <K : Any, V> get(
     tile: MultiTile<K, V>,
-    vararg keys: K,
-  ): Map<K, V> = get(tile, keys.toList())
+    key: K,
+  ): V = get(tile, listOf(key))[key]!!
 
   inline fun <reified T : Any> inject(): T = injector.get()
 }

@@ -4,7 +4,7 @@ import org.buildmosaic.core.vtwo.Injector
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.reflect.KClass
 
-class MockInjector : Injector {
+internal class MockInjector : Injector {
   private val registry = ConcurrentHashMap<KClass<out Any>, Any>()
 
   public fun <T : Any> register(

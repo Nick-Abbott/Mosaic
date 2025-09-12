@@ -16,7 +16,9 @@
 
 package org.buildmosaic.test.vtwo
 
+import io.mockk.ConstantMatcher
 import io.mockk.coEvery
+import io.mockk.every
 import io.mockk.slot
 import io.mockk.spyk
 import kotlinx.coroutines.delay
@@ -24,6 +26,8 @@ import org.buildmosaic.core.vtwo.Mosaic
 import org.buildmosaic.core.vtwo.MosaicRequest
 import org.buildmosaic.core.vtwo.MultiTile
 import org.buildmosaic.core.vtwo.Tile
+import org.buildmosaic.core.vtwo.multiTile
+import org.buildmosaic.core.vtwo.singleTile
 import kotlin.jvm.JvmName
 import kotlin.reflect.KClass
 
@@ -31,7 +35,7 @@ import kotlin.reflect.KClass
  * A builder for creating [TestMosaic] instances with mocked [Tile] implementations.
  *
  * This class provides a fluent API for setting up test scenarios by configuring mock tiles
- * with various behaviors. It supports both [SingleTile] and [MultiTile] mocks with
+ * with various behaviors. It supports both [Tile] and [MultiTile] mocks with
  * different behaviors like success, failure, delays, and custom logic.
  *
  * ### Basic Usage
@@ -57,14 +61,14 @@ import kotlin.reflect.KClass
 @Suppress("LargeClass")
 class TestMosaicBuilder {
   private val injector = MockInjector()
-  private var request: MosaicRequest = MosaicRequest()
+  private val mosaic = spyk(Mosaic(MosaicRequest(), injector))
 
   /**
-   * Adds a mock [SingleTile] that returns the specified response.
+   * Adds a mock [Tile] that returns the specified response.
    *
    * @param V The type of data the tile returns
    * @param tile The [Tile] to mock
-   * @param response The response to return when the tile's [SingleTile.get] is called
+   * @param response The response to return when the tile is retrieved
    * @return This builder for method chaining
    *
    * ```kotlin
@@ -77,16 +81,16 @@ class TestMosaicBuilder {
     tile: Tile<V>,
     response: V,
   ): TestMosaicBuilder {
-    val spy = spyk(tile, recordPrivateCalls = true)
-    coEvery { spy["block"](any()) } coAnswers { response }
+    val newTile = singleTile { response }
+    coEvery { mosaic.get(tile) } coAnswers { mosaic.get(newTile) }
     return this
   }
 
   /**
-   * Adds a mock [SingleTile] that fails with the specified exception.
+   * Adds a mock [Tile] that fails with the specified exception.
    *
    * @param tile The [Tile] to mock
-   * @param throwable The exception to throw when the tile's [SingleTile.get] is called
+   * @param throwable The exception to throw when the tile is retrieved
    * @return This builder for method chaining
    *
    * ```kotlin
@@ -99,13 +103,13 @@ class TestMosaicBuilder {
     tile: Tile<*>,
     throwable: Throwable,
   ): TestMosaicBuilder {
-    val spy = spyk(tile, recordPrivateCalls = true)
-    coEvery { spy["block"](any()) } coAnswers { throw throwable }
+    val newTile = singleTile<Any> { throw throwable }
+    coEvery { mosaic.get(tile) } coAnswers { mosaic.get(newTile) }
     return this
   }
 
   /**
-   * Adds a mock [SingleTile] that delays before returning the response.
+   * Adds a mock [Tile] that delays before returning the response.
    *
    * @param V The type of data the tile returns
    * @param tile The [Tile] to mock
@@ -124,16 +128,17 @@ class TestMosaicBuilder {
     response: V,
     delayMs: Long,
   ): TestMosaicBuilder {
-    val spy = spyk(tile, recordPrivateCalls = true)
-    coEvery { spy["block"](any()) } coAnswers {
-      delay(delayMs)
-      response
-    }
+    val newTile =
+      singleTile {
+        delay(delayMs)
+        response
+      }
+    coEvery { mosaic.get(tile) } coAnswers { mosaic.get(newTile) }
     return this
   }
 
   /**
-   * Adds a mock [SingleTile] with custom behavior.
+   * Adds a mock [Tile] with custom behavior.
    *
    * @param V The type of data the tile returns
    * @param tile The [Tile] to mock
@@ -153,9 +158,8 @@ class TestMosaicBuilder {
     tile: Tile<V>,
     provider: suspend Mosaic.() -> V,
   ): TestMosaicBuilder {
-    val spy = spyk(tile, recordPrivateCalls = true)
-    val inputMosaic = slot<Mosaic>()
-    coEvery { spy["block"](capture(inputMosaic)) } coAnswers { provider(inputMosaic.captured) }
+    val newTile = singleTile(provider)
+    coEvery { mosaic.get(tile) } coAnswers { mosaic.get(newTile) }
     return this
   }
 
@@ -178,15 +182,18 @@ class TestMosaicBuilder {
    * ```
    */
   @JvmName("withMockMultiTile")
-  fun <K, V> withMockTile(
+  fun <K : Any, V> withMockTile(
     tile: MultiTile<K, V>,
     response: Map<K, V>,
   ): TestMosaicBuilder {
-    val spy = spyk(tile, recordPrivateCalls = true)
-    val keys = slot<Set<K>>()
-    coEvery { spy["block"](any(), capture(keys)) } coAnswers {
-      response.filterKeys { it in keys.captured }
-    }
+    val newTile = multiTile<K, V> { response }
+    val keys = slot<Collection<K>>()
+    coEvery { mosaic.get(tile, capture(keys)) } coAnswers { mosaic.get(newTile, keys.captured) }
+
+    @Suppress("UNCHECKED_CAST")
+    coEvery {
+      mosaic.get(tile, key = match(ConstantMatcher(true)) as K)
+    } coAnswers { mosaic.get(newTile, secondArg<Any>() as K) }
     return this
   }
 
@@ -205,12 +212,18 @@ class TestMosaicBuilder {
    * ```
    */
   @JvmName("withFailedMultiTile")
-  fun <K> withFailedTile(
+  fun <K : Any> withFailedTile(
     tile: MultiTile<K, *>,
     throwable: Throwable,
   ): TestMosaicBuilder {
-    val spy = spyk(tile, recordPrivateCalls = true)
-    coEvery { spy["block"](any(), any<Set<K>>()) } coAnswers { throw throwable }
+    val newTile = multiTile<K, Any> { throw throwable }
+    val keys = slot<Collection<K>>()
+    coEvery { mosaic.get(tile, capture(keys)) } coAnswers { mosaic.get(newTile, keys.captured) }
+
+    @Suppress("UNCHECKED_CAST")
+    coEvery {
+      mosaic.get(tile, key = match(ConstantMatcher(true)) as K)
+    } coAnswers { mosaic.get(newTile, secondArg<Any>() as K) }
     return this
   }
 
@@ -231,16 +244,22 @@ class TestMosaicBuilder {
    * ```
    */
   @JvmName("withDelayedMultiTile")
-  fun <K, V> withDelayedTile(
+  fun <K : Any, V> withDelayedTile(
     tile: MultiTile<K, V>,
     response: Map<K, V>,
     delayMs: Long,
   ): TestMosaicBuilder {
-    val spy = spyk(tile, recordPrivateCalls = true)
+    val newTile = multiTile<K, V> { response }
     val keys = slot<Set<K>>()
-    coEvery { spy["block"](any(), capture(keys)) } coAnswers {
+    coEvery { mosaic.get(tile, capture(keys)) } coAnswers {
       delay(delayMs)
-      response.filterKeys { it in keys.captured }
+      mosaic.get(newTile, keys.captured)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    coEvery { mosaic.get(tile, key = match(ConstantMatcher(true)) as K) } coAnswers {
+      delay(delayMs)
+      mosaic.get(newTile, secondArg<Any>() as K)
     }
     return this
   }
@@ -267,35 +286,37 @@ class TestMosaicBuilder {
    * ```
    */
   @JvmName("withCustomMultiTile")
-  fun <K, V> withCustomTile(
+  fun <K : Any, V> withCustomTile(
     tile: MultiTile<K, V>,
     provider: suspend Mosaic.(Set<K>) -> Map<K, V>,
   ): TestMosaicBuilder {
-    val spy = spyk(tile, recordPrivateCalls = true)
-    val inputMosaic = slot<Mosaic>()
+    val newTile = multiTile<K, V>(provider)
     val keys = slot<Set<K>>()
-    coEvery { spy["block"](capture(inputMosaic), capture(keys)) } coAnswers {
-      provider(inputMosaic.captured, keys.captured)
-    }
+    coEvery { mosaic.get(tile, capture(keys)) } coAnswers { mosaic.get(newTile, keys.captured) }
+
+    @Suppress("UNCHECKED_CAST")
+    coEvery {
+      mosaic.get(tile, key = match(ConstantMatcher(true)) as K)
+    } coAnswers { mosaic.get(newTile, secondArg<Any>() as K) }
     return this
   }
 
   /**
    * Sets the [MosaicRequest] to be used by the test mosaic.
-   * A [MockMosaicRequest] is provided by default if not called.
+   * A default [MosaicRequest] is provided if not called.
    *
    * @param request The request instance to use
    * @return This builder for method chaining
    *
    * ```kotlin
    * val testMosaic = TestMosaicBuilder()
-   *   .withRequest(MyCustomRequest())
-   *   .withMockTile<MyTile>("test data")
+   *   .withRequest(MosaicRequest(mapOf("userId" to "123")))
+   *   .withMockTile(MyTile, "test data")
    *   .build()
    * ```
    */
   fun withRequest(request: MosaicRequest): TestMosaicBuilder {
-    this.request = request
+    every { mosaic.request } returns request
     return this
   }
 
@@ -323,5 +344,5 @@ class TestMosaicBuilder {
    *   .build()
    * ```
    */
-  fun build(): TestMosaic = TestMosaic(Mosaic(request, injector))
+  fun build(): TestMosaic = TestMosaic(mosaic)
 }

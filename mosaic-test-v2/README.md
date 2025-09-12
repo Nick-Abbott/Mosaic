@@ -1,154 +1,384 @@
-# Mosaic Test v2
+# Mosaic Test Framework V2
 
-A testing library for Mosaic v2 that provides utilities for testing [Tile](https://github.com/Nick-Abbott/Mosaic) implementations.
+[![Tests](https://github.com/Nick-Abbott/Mosaic/workflows/Test%20Badge/badge.svg)](https://github.com/Nick-Abbott/Mosaic/actions?query=workflow%3A%22Test+Badge%22)
+[![Build](https://github.com/Nick-Abbott/Mosaic/workflows/Build%20Badge/badge.svg)](https://github.com/Nick-Abbott/Mosaic/actions?query=workflow%3A%22Build+Badge%22)
+[![Kotlin](https://img.shields.io/badge/kotlin-2.2.0-blue.svg)](https://kotlinlang.org)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-## Features
+**Test your DSL-based Mosaic tiles with confidence.**
 
-- **Simple API**: Easy-to-use builder pattern for setting up test scenarios
-- **Flexible Mocking**: Support for success, failure, delayed, and custom behaviors
-- **Type-Safe**: Full Kotlin type safety with coroutine support
-- **MultiTile Support**: Test batch operations with the same ease as single operations
-- **Verification**: Built-in support for verifying tile invocations
+Mosaic-test-v2 provides a fluent testing API designed specifically for the new DSL-based tile approach. Mock dependencies, simulate failures, and verify behavior with type-safe assertions - all while working seamlessly with the natural tile composition patterns.
 
-## Installation
+## 🚀 **Quick Start**
 
-Add the following to your `build.gradle.kts`:
+### **Installation**
 
 ```kotlin
 dependencies {
-    testImplementation("org.buildmosaic:mosaic-test-v2:0.2.0")
+  testImplementation("org.buildmosaic:mosaic-test-v2:0.1.0")
 }
 ```
 
-## Usage
-
-### Basic Testing
+### **Your First DSL Tile Test**
 
 ```kotlin
-class MyTileTest {
-    private val myTile = singleTile { "Hello, Mosaic!" }
+@Test
+fun `user tile fetches user data`() = runBlocking {
+  val userTile = singleTile<User> {
+    val userId = request.attributes["userId"] as String
+    UserService.fetchUser(userId)
+  }
+  
+  val testMosaic = TestMosaicBuilder()
+    .withMockTile(userTile, User("123", "John Doe"))
+    .build()
+  
+  testMosaic.assertEquals(userTile, User("123", "John Doe"))
+}
+```
+
+## 🧪 **DSL Testing Patterns**
+
+### **Mock Tile Dependencies**
+
+Test tiles in isolation by mocking their dependencies:
+
+```kotlin
+@Test
+fun `order summary composes multiple data sources`() = runBlocking {
+  val orderTile = singleTile<Order> { OrderService.getOrder("order-1") }
+  val customerTile = singleTile<Customer> { CustomerService.getCustomer("customer-1") }
+  val lineItemsTile = multiTile<String, LineItem> { skus -> 
+    LineItemService.getLineItems(skus) 
+  }
+  
+  val orderSummaryTile = singleTile<OrderSummary> {
+    val order = get(orderTile)
+    val customer = get(customerTile)
+    val lineItems = get(lineItemsTile, order.skus)
     
-    @Test
-    fun `test tile returns expected value`() = runBlocking {
-        // Given
-        val testMosaic = TestMosaicBuilder()
-            .withMockTile(myTile, "Test Value")
-            .build()
-        
-        // When
-        val result = testMosaic.get(myTile)
-        
-        // Then
-        testMosaic.assertEquals(myTile, "Test Value")
+    OrderSummary(order, customer, lineItems.values.toList())
+  }
+  
+  val mockOrder = Order("order-1", "customer-1", listOf("sku-1", "sku-2"))
+  val mockCustomer = Customer("customer-1", "Jane Doe")
+  val mockLineItems = mapOf(
+    "sku-1" to LineItem("sku-1", "Product 1", 10.99),
+    "sku-2" to LineItem("sku-2", "Product 2", 25.50)
+  )
+  
+  val testMosaic = TestMosaicBuilder()
+    .withMockTile(orderTile, mockOrder)
+    .withMockTile(customerTile, mockCustomer)
+    .withMockTile(lineItemsTile, mockLineItems)
+    .build()
+  
+  val expected = OrderSummary(mockOrder, mockCustomer, mockLineItems.values.toList())
+  testMosaic.assertEquals(orderSummaryTile, expected)
+}
+```
+
+### **Test Error Handling in DSL Tiles**
+
+Verify your tiles handle failures gracefully:
+
+```kotlin
+@Test
+fun `order page handles customer service failure`() = runBlocking {
+  val orderTile = singleTile<Order> { OrderService.getOrder("order-1") }
+  val customerTile = singleTile<Customer> { CustomerService.getCustomer("customer-1") }
+  
+  val orderPageTile = singleTile<OrderPage> {
+    val order = get(orderTile)
+    val customer = get(customerTile) // This will fail
+    
+    OrderPage(order, customer)
+  }
+  
+  val testMosaic = TestMosaicBuilder()
+    .withMockTile(orderTile, Order("order-1", "customer-1", emptyList()))
+    .withFailedTile(customerTile, CustomerServiceException("Service unavailable"))
+    .build()
+  
+  testMosaic.assertThrows(orderPageTile, CustomerServiceException::class)
+}
+```
+
+### **Test Multi-Tile Batch Operations**
+
+```kotlin
+@Test
+fun `pricing tile efficiently batches multiple SKUs`() = runBlocking {
+  val pricingTile = multiTile<String, Price> { skus ->
+    PricingService.getBulkPrices(skus)
+  }
+  
+  val mockPrices = mapOf(
+    "SKU1" to Price(10.99),
+    "SKU2" to Price(25.50),
+    "SKU3" to Price(5.00)
+  )
+  
+  val testMosaic = TestMosaicBuilder()
+    .withMockTile(pricingTile, mockPrices)
+    .build()
+  
+  testMosaic.assertEquals(pricingTile, setOf("SKU1", "SKU2", "SKU3"), mockPrices)
+}
+```
+
+### **Test Complex DSL Compositions**
+
+```kotlin
+@Test
+fun `dashboard tile orchestrates multiple data sources`() = runBlocking {
+  val userTile = singleTile<User> { UserService.getUser("user-1") }
+  val ordersTile = multiTile<String, Order> { orderIds -> 
+    OrderService.getOrders(orderIds) 
+  }
+  val recommendationsTile = singleTile<List<Product>> { 
+    RecommendationService.getRecommendations("user-1") 
+  }
+  
+  val dashboardTile = singleTile<Dashboard> {
+    // These execute concurrently automatically
+    val user = get(userTile)
+    val recentOrders = get(ordersTile, user.recentOrderIds)
+    val recommendations = get(recommendationsTile)
+    
+    Dashboard(user, recentOrders.values.toList(), recommendations)
+  }
+  
+  val mockUser = User("user-1", "John", listOf("order-1", "order-2"))
+  val mockOrders = mapOf(
+    "order-1" to Order("order-1", "user-1", listOf("sku-1")),
+    "order-2" to Order("order-2", "user-1", listOf("sku-2"))
+  )
+  val mockRecommendations = listOf(Product("rec-1", "Recommended Product"))
+  
+  val testMosaic = TestMosaicBuilder()
+    .withMockTile(userTile, mockUser)
+    .withMockTile(ordersTile, mockOrders)
+    .withMockTile(recommendationsTile, mockRecommendations)
+    .build()
+  
+  val expected = Dashboard(mockUser, mockOrders.values.toList(), mockRecommendations)
+  testMosaic.assertEquals(dashboardTile, expected)
+}
+```
+
+### **Test Performance and Delays**
+
+```kotlin
+@Test
+fun `handles slow external API calls`() = runBlocking {
+  val externalApiTile = singleTile<ApiResponse> {
+    ExternalApiService.fetchData()
+  }
+  
+  val testMosaic = TestMosaicBuilder()
+    .withDelayedTile(externalApiTile, ApiResponse("data"), delayMs = 200)
+    .build()
+  
+  val startTime = System.currentTimeMillis()
+  testMosaic.assertEquals(externalApiTile, ApiResponse("data"))
+  val elapsed = System.currentTimeMillis() - startTime
+  
+  assertTrue(elapsed >= 200, "Should respect delay")
+}
+```
+
+## 📋 **Mock Behaviors for DSL Tiles**
+
+Control how your mocked tiles behave:
+
+```kotlin
+// Success: Returns data immediately (default)
+.withMockTile(userTile, mockUser)
+
+// Error: Throws exception when called
+.withFailedTile(userTile, UserNotFoundException("User not found"))
+
+// Delay: Simulates slow external services
+.withDelayedTile(externalApiTile, mockData, delayMs = 500)
+
+// Custom: Define complex behavior with lambdas
+.withCustomTile(dynamicTile) { 
+  if (request.attributes["premium"] == true) "premium-data" else "standard-data"
+}
+```
+
+## 🔍 **DSL-Aware Assertion API**
+
+Type-safe assertions that work naturally with DSL tiles:
+
+```kotlin
+// Test single-value tiles
+testMosaic.assertEquals(userTile, expectedUser)
+
+// Test multi-value tiles with specific keys
+testMosaic.assertEquals(
+  tile = pricingTile,
+  keys = setOf("SKU1", "SKU2"),
+  expected = mapOf("SKU1" to price1, "SKU2" to price2)
+)
+
+// Test exceptions with proper type safety
+testMosaic.assertThrows(userTile, UserNotFoundException::class)
+
+// All assertions support custom messages
+testMosaic.assertEquals(
+  tile = userTile,
+  expected = expectedUser,
+  message = "User tile should return the expected user data"
+)
+```
+
+## 🧩 **Advanced DSL Testing**
+
+### **Test Conditional Logic**
+
+```kotlin
+@Test
+fun `payment processor chooses correct implementation`() = runBlocking {
+  val customerTile = singleTile<Customer> { CustomerService.getCustomer("customer-1") }
+  val premiumProcessorTile = singleTile<PaymentProcessor> { PremiumProcessor() }
+  val standardProcessorTile = singleTile<PaymentProcessor> { StandardProcessor() }
+  
+  val paymentProcessorTile = singleTile<PaymentProcessor> {
+    val customer = get(customerTile)
+    
+    when (customer.tier) {
+      CustomerTier.PREMIUM -> get(premiumProcessorTile)
+      else -> get(standardProcessorTile)
     }
+  }
+  
+  val premiumCustomer = Customer("customer-1", "John", CustomerTier.PREMIUM)
+  
+  val testMosaic = TestMosaicBuilder()
+    .withMockTile(customerTile, premiumCustomer)
+    .withMockTile(premiumProcessorTile, PremiumProcessor())
+    .withMockTile(standardProcessorTile, StandardProcessor())
+    .build()
+  
+  val result = testMosaic.get(paymentProcessorTile)
+  assertIs<PremiumProcessor>(result)
 }
 ```
 
-### Testing Error Cases
+### **Test Dynamic Key Generation**
 
 ```kotlin
 @Test
-fun `test tile throws exception`() = runBlocking {
-    val testMosaic = TestMosaicBuilder()
-        .withFailedTile(myTile, RuntimeException("Test Error"))
-        .build()
+fun `related products tile generates keys dynamically`() = runBlocking {
+  val orderTile = singleTile<Order> { OrderService.getOrder("order-1") }
+  val productsByCategoryTile = multiTile<String, List<Product>> { categoryIds ->
+    ProductService.getProductsByCategories(categoryIds)
+  }
+  
+  val relatedProductsTile = singleTile<List<Product>> {
+    val order = get(orderTile)
+    val categoryIds = order.items.map { it.categoryId }.distinct()
     
-    // Verify the exception is thrown
-    testMosaic.assertThrows<RuntimeException>(myTile)
+    val productsByCategory = get(productsByCategoryTile, categoryIds.toSet())
+    productsByCategory.values.flatten().take(10)
+  }
+  
+  val mockOrder = Order("order-1", "customer-1", listOf(
+    OrderItem("item-1", "category-A"),
+    OrderItem("item-2", "category-B")
+  ))
+  val mockProductsByCategory = mapOf(
+    "category-A" to listOf(Product("prod-1", "Product 1")),
+    "category-B" to listOf(Product("prod-2", "Product 2"))
+  )
+  
+  val testMosaic = TestMosaicBuilder()
+    .withMockTile(orderTile, mockOrder)
+    .withMockTile(productsByCategoryTile, mockProductsByCategory)
+    .build()
+  
+  val expected = listOf(Product("prod-1", "Product 1"), Product("prod-2", "Product 2"))
+  testMosaic.assertEquals(relatedProductsTile, expected)
 }
 ```
 
-### Testing with Delays
+### **Test Request Context Usage**
 
 ```kotlin
 @Test
-fun `test tile with delay`() = runBlocking {
-    val delayedTile = singleTile { "Delayed Result" }
-    val testMosaic = TestMosaicBuilder()
-        .withDelayedTile(delayedTile, "Delayed Result", 500.milliseconds)
-        .build()
+fun `user preferences tile uses request context`() = runBlocking {
+  val userPreferencesTile = singleTile<Preferences> {
+    val userId = request.attributes["userId"] as String
+    val locale = request.attributes["locale"] as String? ?: "en-US"
     
-    val startTime = System.currentTimeMillis()
-    val result = testMosaic.get(delayedTile)
-    val duration = System.currentTimeMillis() - startTime
-    
-    assertEquals("Delayed Result", result)
-    assertTrue(duration >= 500, "Should respect the delay")
+    PreferencesService.getPreferences(userId, locale)
+  }
+  
+  val customRequest = MosaicRequest(mapOf(
+    "userId" to "user-123",
+    "locale" to "es-ES"
+  ))
+  
+  val testMosaic = TestMosaicBuilder()
+    .withRequest(customRequest)
+    .withMockTile(userPreferencesTile, Preferences("user-123", "es-ES"))
+    .build()
+  
+  testMosaic.assertEquals(userPreferencesTile, Preferences("user-123", "es-ES"))
 }
 ```
 
-### Testing MultiTiles
+## 🎯 **Best Practices for DSL Testing**
+
+- **Test tile logic, not framework**: Focus on your business logic within tiles
+- **Mock external dependencies**: Use `withMockTile` for all external data sources
+- **Test error scenarios**: Verify graceful handling of failures with `withFailedTile`
+- **Test composition patterns**: Ensure tiles compose correctly with realistic data
+- **Use realistic test data**: Mock data should resemble production scenarios
+- **Test request context usage**: Verify tiles properly access request attributes
+
+## 🌟 **Key Features**
+
+- **🧪 DSL-Native Testing**: Designed specifically for DSL-based tile patterns
+- **🎯 Type-Safe Assertions**: Full Kotlin type safety with coroutine support
+- **🔄 Flexible Mocking**: SUCCESS, ERROR, DELAY, and CUSTOM behaviors
+- **⚡ Concurrent Testing**: Proper support for testing concurrent tile execution
+- **📊 Request Context**: Test tiles that depend on request attributes
+- **🧩 Composition Testing**: Verify complex tile orchestrations work correctly
+
+## 🔗 **Related Modules**
+
+- **[mosaic-core-v2](../mosaic-core-v2/README.md)**: The DSL-based framework for composable backend orchestration
+- **[mosaic-test](../mosaic-test/README.md)**: Testing framework for class-based tiles
+
+## 🚀 **Migration from V1 Testing**
+
+Migrating from mosaic-test to mosaic-test-v2 reflects the shift to DSL-based tiles:
 
 ```kotlin
+// V1: Class-based tile testing
 @Test
-fun `test multi tile with multiple keys`() = runBlocking {
-    val userTile = multiTile<Int, User> { ids ->
-        ids.associateWith { id -> User(id, "User $id") }
-    }
-    
-    val testMosaic = TestMosaicBuilder()
-        .withMockTile(userTile, mapOf(
-            1 to User(1, "Test User 1"),
-            2 to User(2, "Test User 2")
-        ))
-        .build()
-    
-    val users = testMosaic.get(userTile, 1, 2)
-    
-    assertEquals(2, users.size)
-    assertEquals("Test User 1", users[1]?.name)
-    assertEquals("Test User 2", users[2]?.name)
+fun `test customer tile`() = runBlocking {
+  val testMosaic = TestMosaicBuilder()
+    .withMockTile(CustomerTile::class, mockCustomer)
+    .build()
+  
+  testMosaic.assertEquals(CustomerTile::class, mockCustomer)
+}
+
+// V2: DSL tile testing
+@Test
+fun `test customer tile`() = runBlocking {
+  val customerTile = singleTile<Customer> { CustomerService.getCustomer("123") }
+  
+  val testMosaic = TestMosaicBuilder()
+    .withMockTile(customerTile, mockCustomer)
+    .build()
+  
+  testMosaic.assertEquals(customerTile, mockCustomer)
 }
 ```
 
-### Custom Behavior
-
-```kotlin
-@Test
-fun `test tile with custom behavior`() = runBlocking {
-    val customTile = singleTile { 42 }
-    
-    val testMosaic = TestMosaicBuilder()
-        .withCustomTile(customTile) { 
-            // Custom logic here
-            if (System.currentTimeMillis() % 2 == 0L) "Even" else "Odd"
-        }
-        .build()
-    
-    val result = testMosaic.get(customTile)
-    assertTrue(result == "Even" || result == "Odd")
-}
-```
-
-### Verifying Tile Invocations
-
-```kotlin
-@Test
-fun `verify tile is called`() = runBlocking {
-    val testTile = singleTile { "Test" }
-    val testMosaic = TestMosaicBuilder()
-        .withMockTile(testTile, "Test")
-        .build()
-    
-    testMosaic.get(testTile)
-    testMosaic.verify(testTile, times = 1)
-}
-```
-
-## License
-
-```
-Copyright 2025 Nicholas Abbott
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-   http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-```
+The DSL approach makes testing more natural and eliminates the need for class-based tile definitions in tests.

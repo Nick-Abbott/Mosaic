@@ -49,7 +49,9 @@ import kotlin.test.assertFailsWith as testAssertFailsWith
  * ```
  *
  */
-class TestMosaic(private val mosaic: Mosaic) {
+class TestMosaic(
+  private val mosaic: Mosaic,
+) {
   /**
    * The [MosaicRequest] associated with this test instance.
    *
@@ -75,7 +77,7 @@ class TestMosaic(private val mosaic: Mosaic) {
    * @param keys The keys to retrieve values for
    * @return A map of keys to their corresponding values
    */
-  suspend fun <K, V> get(
+  suspend fun <K : Any, V> get(
     tile: MultiTile<K, V>,
     keys: Collection<K>,
   ): Map<K, V> = mosaic.get<K, V>(tile, keys)
@@ -89,7 +91,7 @@ class TestMosaic(private val mosaic: Mosaic) {
    * @param keys The keys to retrieve values for
    * @return A map of keys to their corresponding values
    */
-  suspend fun <K, V> get(
+  suspend fun <K : Any, V> get(
     tile: MultiTile<K, V>,
     vararg keys: K,
   ): Map<K, V> = get(tile, keys.toList())
@@ -106,7 +108,7 @@ class TestMosaic(private val mosaic: Mosaic) {
    * testMosaic.assertEquals(MyTile, "expected value")
    * ```
    */
-  suspend inline fun <V> assertEquals(
+  suspend fun <V> assertEquals(
     tile: Tile<V>,
     expected: V,
   ) = testAssertEquals(expected, get<V>(tile))
@@ -128,7 +130,7 @@ class TestMosaic(private val mosaic: Mosaic) {
    * )
    * ```
    */
-  suspend inline fun <V> assertEquals(
+  suspend fun <V> assertEquals(
     tile: Tile<V>,
     expected: V,
     message: String,
@@ -152,7 +154,7 @@ class TestMosaic(private val mosaic: Mosaic) {
    * )
    * ```
    */
-  suspend inline fun <K, V> assertEquals(
+  suspend fun <K : Any, V> assertEquals(
     tile: MultiTile<K, V>,
     keys: Collection<K>,
     expected: Map<K, V>,
@@ -178,7 +180,7 @@ class TestMosaic(private val mosaic: Mosaic) {
    * )
    * ```
    */
-  suspend inline fun <K, V> assertEquals(
+  suspend fun <K : Any, V> assertEquals(
     tile: MultiTile<K, V>,
     keys: List<K>,
     expected: Map<K, V>,
@@ -186,7 +188,7 @@ class TestMosaic(private val mosaic: Mosaic) {
   ) = testAssertEquals(expected, get(tile, keys), message)
 
   /**
-   * Asserts that a [Tile] throws the expected exception when its [Tile.get] is called.
+   * Asserts that a [Tile] throws the expected exception when retrieved.
    *
    * @param tile The tile to test
    * @param expectedException The exception class that is expected to be thrown
@@ -199,7 +201,7 @@ class TestMosaic(private val mosaic: Mosaic) {
    * )
    * ```
    */
-  suspend inline fun assertThrows(
+  suspend fun assertThrows(
     tile: Tile<*>,
     expectedException: KClass<out Throwable>,
   ) = testAssertFailsWith(expectedException) { get(tile) }
@@ -220,14 +222,14 @@ class TestMosaic(private val mosaic: Mosaic) {
    * )
    * ```
    */
-  suspend inline fun assertThrows(
+  suspend fun assertThrows(
     tile: Tile<*>,
     expectedException: KClass<out Throwable>,
     message: String,
   ) = testAssertFailsWith(expectedException, message) { get(tile) }
 
   /**
-   * Asserts that a [MultiTile] throws the expected exception when [MultiTile.getByKeys] is called.
+   * Asserts that a [MultiTile] throws the expected exception when retrieved with the given keys.
    *
    * @param K The type of keys in the response map
    * @param tile The tile to test
@@ -243,7 +245,7 @@ class TestMosaic(private val mosaic: Mosaic) {
    * )
    * ```
    */
-  suspend inline fun <K> assertThrows(
+  suspend fun <K : Any> assertThrows(
     tile: MultiTile<K, *>,
     keys: List<K>,
     expectedException: KClass<out Throwable>,
