@@ -5,6 +5,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
+import org.buildmosaic.core.vtwo.injection.Canvas
+import org.buildmosaic.core.vtwo.injection.MosaicSceneBuilder
+import org.buildmosaic.core.vtwo.injection.source
 import kotlin.reflect.KClass
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -17,9 +20,9 @@ class TileDslTest {
         var count = 0
       }
       val service = Service()
-      val injector =
-        object : Injector {
-          override fun <T : Any> get(type: KClass<T>): T {
+      val mockCanvas =
+        object : Canvas {
+          override fun <T : Any> source(type: KClass<T>): T {
             @Suppress("UNCHECKED_CAST")
             return when (type) {
               Service::class -> service as T
@@ -27,15 +30,15 @@ class TileDslTest {
             }
           }
         }
-      val mosaic = Mosaic(MosaicRequest(), injector)
+      val mosaic = Mosaic(MosaicSceneBuilder().build(), mockCanvas)
       val tile =
         singleTile {
-          val s = inject<Service>()
+          val s = canvas.source<Service>()
           s.count++
           "result"
         }
-      val first = mosaic.get(tile)
-      val second = mosaic.get(tile)
+      val first = mosaic.compose(tile)
+      val second = mosaic.compose(tile)
       assertEquals("result", first)
       assertEquals("result", second)
       assertEquals(1, service.count)
@@ -55,8 +58,8 @@ class TileDslTest {
       }
       val service = Service()
       val injector =
-        object : Injector {
-          override fun <T : Any> get(type: KClass<T>): T {
+        object : Canvas {
+          override fun <T : Any> source(type: KClass<T>): T {
             @Suppress("UNCHECKED_CAST")
             return when (type) {
               Service::class -> service as T
@@ -64,14 +67,15 @@ class TileDslTest {
             }
           }
         }
-      val mosaic = Mosaic(MosaicRequest(), injector)
+      val mosaic = Mosaic(MosaicSceneBuilder().build(), injector)
       val tile =
         singleTile {
-          val svc = inject<Service>()
+          System.out.println("RUNNING TILE")
+          val svc = source<Service>()
           svc.fetch()
         }
-      val first = async { mosaic.get(tile) }
-      val second = async { mosaic.get(tile) }
+      val first = async { mosaic.compose(tile) }
+      val second = async { mosaic.compose(tile) }
       assertEquals("v", first.await())
       assertEquals("v", second.await())
       assertEquals(1, service.calls)
@@ -90,8 +94,8 @@ class TileDslTest {
       }
       val service = Service()
       val injector =
-        object : Injector {
-          override fun <T : Any> get(type: KClass<T>): T {
+        object : Canvas {
+          override fun <T : Any> source(type: KClass<T>): T {
             @Suppress("UNCHECKED_CAST")
             return when (type) {
               Service::class -> service as T
@@ -99,20 +103,20 @@ class TileDslTest {
             }
           }
         }
-      val mosaic = Mosaic(MosaicRequest(), injector)
+      val mosaic = Mosaic(MosaicSceneBuilder().build(), injector)
       val tile =
         multiTile<String, String> { ids ->
-          val svc = inject<Service>()
+          val svc = source<Service>()
           svc.fetch(ids)
         }
-      val first = mosaic.get(tile, listOf("a", "b"))
-      val second = mosaic.get(tile, listOf("b", "c"))
-      val third = mosaic.get(tile, "a")
+      val first = mosaic.compose(tile, listOf("a", "b"))
+      val second = mosaic.compose(tile, listOf("b", "c"))
+      val third = mosaic.compose(tile, "a")
       assertEquals("v_a", first["a"])
       assertEquals("v_b", first["b"])
       assertEquals("v_b", second["b"])
       assertEquals("v_c", second["c"])
-      assertEquals("v_a", third["a"])
+      assertEquals("v_a", third)
       assertEquals(2, service.calls)
     }
 
@@ -129,8 +133,8 @@ class TileDslTest {
       }
       val service = Service()
       val injector =
-        object : Injector {
-          override fun <T : Any> get(type: KClass<T>): T {
+        object : Canvas {
+          override fun <T : Any> source(type: KClass<T>): T {
             @Suppress("UNCHECKED_CAST")
             return when (type) {
               Service::class -> service as T
@@ -138,15 +142,15 @@ class TileDslTest {
             }
           }
         }
-      val mosaic = Mosaic(MosaicRequest(), injector)
+      val mosaic = Mosaic(MosaicSceneBuilder().build(), injector)
       val tile =
         perKeyTile<String, String> { id ->
-          val svc = inject<Service>()
+          val svc = source<Service>()
           svc.fetch(id)
         }
-      val first = mosaic.get(tile, listOf("a", "b"))
+      val first = mosaic.compose(tile, listOf("a", "b"))
       assertEquals(2, service.calls.size)
-      val second = mosaic.get(tile, listOf("b", "c"))
+      val second = mosaic.compose(tile, listOf("b", "c"))
       assertEquals(3, service.calls.size)
       assertEquals(setOf("a", "b", "c"), service.calls.toSet())
       assertEquals("v_a", first["a"])
@@ -164,6 +168,7 @@ class TileDslTest {
 
         suspend fun fetch(ids: List<String>): Map<String, String> {
           batches += ids.toList()
+          @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
           starts += scope.currentTime
           delay(10)
           return ids.associateWith { "v_$it" }
@@ -171,8 +176,8 @@ class TileDslTest {
       }
       val service = Service(this)
       val injector =
-        object : Injector {
-          override fun <T : Any> get(type: KClass<T>): T {
+        object : Canvas {
+          override fun <T : Any> source(type: KClass<T>): T {
             @Suppress("UNCHECKED_CAST")
             return when (type) {
               Service::class -> service as T
@@ -180,16 +185,16 @@ class TileDslTest {
             }
           }
         }
-      val mosaic = Mosaic(MosaicRequest(), injector)
+      val mosaic = Mosaic(MosaicSceneBuilder().build(), injector)
       val tile =
         chunkedMultiTile<String, String>(2) { ids ->
-          val svc = inject<Service>()
+          val svc = source<Service>()
           svc.fetch(ids)
         }
-      val first = mosaic.get(tile, listOf("a", "b", "c", "d"))
+      val first = mosaic.compose(tile, listOf("a", "b", "c", "d"))
       assertEquals(listOf(listOf("a", "b"), listOf("c", "d")), service.batches)
       assertEquals(listOf(0L, 0L), service.starts)
-      val second = mosaic.get(tile, listOf("c", "e"))
+      val second = mosaic.compose(tile, listOf("c", "e"))
       assertEquals(
         listOf(listOf("a", "b"), listOf("c", "d"), listOf("e")),
         service.batches,
