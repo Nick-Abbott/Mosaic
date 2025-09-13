@@ -25,7 +25,4 @@ dependencies {
   // Testing dependencies - needed for main source set since this is a testing framework
   implementation(kotlin("test"))
   implementation(libs.kotlinx.coroutines.test)
-
-  // Mocking and assertion libraries
-  implementation(libs.mockk)
 }

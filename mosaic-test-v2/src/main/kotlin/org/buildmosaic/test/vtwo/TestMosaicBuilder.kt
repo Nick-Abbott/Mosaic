@@ -16,16 +16,13 @@
 
 package org.buildmosaic.test.vtwo
 
-import io.mockk.ConstantMatcher
-import io.mockk.coEvery
-import io.mockk.every
-import io.mockk.slot
-import io.mockk.spyk
 import kotlinx.coroutines.delay
 import org.buildmosaic.core.vtwo.Mosaic
-import org.buildmosaic.core.vtwo.MosaicRequest
+import org.buildmosaic.core.vtwo.MosaicImpl
 import org.buildmosaic.core.vtwo.MultiTile
 import org.buildmosaic.core.vtwo.Tile
+import org.buildmosaic.core.vtwo.injection.MosaicSceneBuilder
+import org.buildmosaic.core.vtwo.injection.SceneKey
 import org.buildmosaic.core.vtwo.multiTile
 import org.buildmosaic.core.vtwo.singleTile
 import kotlin.jvm.JvmName
@@ -60,8 +57,11 @@ import kotlin.reflect.KClass
  */
 @Suppress("LargeClass")
 class TestMosaicBuilder {
-  private val injector = MockInjector()
-  private val mosaic = spyk(Mosaic(MosaicRequest(), injector))
+  private val canvas = MockCanvas()
+  private val sceneBuilder = MosaicSceneBuilder()
+
+  private val mockTileCache: MutableMap<Tile<*>, Tile<*>> = mutableMapOf()
+  private val mockMultiTileCache: MutableMap<MultiTile<*, *>, MultiTile<*, *>> = mutableMapOf()
 
   /**
    * Adds a mock [Tile] that returns the specified response.
@@ -80,11 +80,10 @@ class TestMosaicBuilder {
   fun <V> withMockTile(
     tile: Tile<V>,
     response: V,
-  ): TestMosaicBuilder {
-    val newTile = singleTile { response }
-    coEvery { mosaic.get(tile) } coAnswers { mosaic.get(newTile) }
-    return this
-  }
+  ): TestMosaicBuilder =
+    apply {
+      mockTileCache[tile] = singleTile { response }
+    }
 
   /**
    * Adds a mock [Tile] that fails with the specified exception.
@@ -102,11 +101,10 @@ class TestMosaicBuilder {
   fun withFailedTile(
     tile: Tile<*>,
     throwable: Throwable,
-  ): TestMosaicBuilder {
-    val newTile = singleTile<Any> { throw throwable }
-    coEvery { mosaic.get(tile) } coAnswers { mosaic.get(newTile) }
-    return this
-  }
+  ): TestMosaicBuilder =
+    apply {
+      mockTileCache[tile] = singleTile<Any> { throw throwable }
+    }
 
   /**
    * Adds a mock [Tile] that delays before returning the response.
@@ -127,15 +125,14 @@ class TestMosaicBuilder {
     tile: Tile<V>,
     response: V,
     delayMs: Long,
-  ): TestMosaicBuilder {
-    val newTile =
-      singleTile {
-        delay(delayMs)
-        response
-      }
-    coEvery { mosaic.get(tile) } coAnswers { mosaic.get(newTile) }
-    return this
-  }
+  ): TestMosaicBuilder =
+    apply {
+      mockTileCache[tile] =
+        singleTile {
+          delay(delayMs)
+          response
+        }
+    }
 
   /**
    * Adds a mock [Tile] with custom behavior.
@@ -157,11 +154,10 @@ class TestMosaicBuilder {
   fun <V> withCustomTile(
     tile: Tile<V>,
     provider: suspend Mosaic.() -> V,
-  ): TestMosaicBuilder {
-    val newTile = singleTile(provider)
-    coEvery { mosaic.get(tile) } coAnswers { mosaic.get(newTile) }
-    return this
-  }
+  ): TestMosaicBuilder =
+    apply {
+      mockTileCache[tile] = singleTile(provider)
+    }
 
   /**
    * Adds a mock [MultiTile] that returns the specified responses for given keys.
@@ -185,17 +181,10 @@ class TestMosaicBuilder {
   fun <K : Any, V> withMockTile(
     tile: MultiTile<K, V>,
     response: Map<K, V>,
-  ): TestMosaicBuilder {
-    val newTile = multiTile<K, V> { response }
-    val keys = slot<Collection<K>>()
-    coEvery { mosaic.get(tile, capture(keys)) } coAnswers { mosaic.get(newTile, keys.captured) }
-
-    @Suppress("UNCHECKED_CAST")
-    coEvery {
-      mosaic.get(tile, key = match(ConstantMatcher(true)) as K)
-    } coAnswers { mosaic.get(newTile, secondArg<Any>() as K) }
-    return this
-  }
+  ): TestMosaicBuilder =
+    apply {
+      mockMultiTileCache[tile] = multiTile { response }
+    }
 
   /**
    * Adds a mock [MultiTile] that fails with the specified exception.
@@ -212,20 +201,13 @@ class TestMosaicBuilder {
    * ```
    */
   @JvmName("withFailedMultiTile")
-  fun <K : Any> withFailedTile(
-    tile: MultiTile<K, *>,
+  fun withFailedTile(
+    tile: MultiTile<*, *>,
     throwable: Throwable,
-  ): TestMosaicBuilder {
-    val newTile = multiTile<K, Any> { throw throwable }
-    val keys = slot<Collection<K>>()
-    coEvery { mosaic.get(tile, capture(keys)) } coAnswers { mosaic.get(newTile, keys.captured) }
-
-    @Suppress("UNCHECKED_CAST")
-    coEvery {
-      mosaic.get(tile, key = match(ConstantMatcher(true)) as K)
-    } coAnswers { mosaic.get(newTile, secondArg<Any>() as K) }
-    return this
-  }
+  ): TestMosaicBuilder =
+    apply {
+      mockMultiTileCache[tile] = multiTile<Any, Any> { throw throwable }
+    }
 
   /**
    * Adds a mock [MultiTile] that delays before returning responses.
@@ -248,21 +230,14 @@ class TestMosaicBuilder {
     tile: MultiTile<K, V>,
     response: Map<K, V>,
     delayMs: Long,
-  ): TestMosaicBuilder {
-    val newTile = multiTile<K, V> { response }
-    val keys = slot<Set<K>>()
-    coEvery { mosaic.get(tile, capture(keys)) } coAnswers {
-      delay(delayMs)
-      mosaic.get(newTile, keys.captured)
+  ): TestMosaicBuilder =
+    apply {
+      mockMultiTileCache[tile] =
+        multiTile {
+          delay(delayMs)
+          response
+        }
     }
-
-    @Suppress("UNCHECKED_CAST")
-    coEvery { mosaic.get(tile, key = match(ConstantMatcher(true)) as K) } coAnswers {
-      delay(delayMs)
-      mosaic.get(newTile, secondArg<Any>() as K)
-    }
-    return this
-  }
 
   /**
    * Adds a mock [MultiTile] with custom behavior.
@@ -289,46 +264,45 @@ class TestMosaicBuilder {
   fun <K : Any, V> withCustomTile(
     tile: MultiTile<K, V>,
     provider: suspend Mosaic.(Set<K>) -> Map<K, V>,
-  ): TestMosaicBuilder {
-    val newTile = multiTile<K, V>(provider)
-    val keys = slot<Set<K>>()
-    coEvery { mosaic.get(tile, capture(keys)) } coAnswers { mosaic.get(newTile, keys.captured) }
-
-    @Suppress("UNCHECKED_CAST")
-    coEvery {
-      mosaic.get(tile, key = match(ConstantMatcher(true)) as K)
-    } coAnswers { mosaic.get(newTile, secondArg<Any>() as K) }
-    return this
-  }
+  ): TestMosaicBuilder =
+    apply {
+      mockMultiTileCache[tile] = multiTile(provider)
+    }
 
   /**
-   * Sets the [MosaicRequest] to be used by the test mosaic.
-   * A default [MosaicRequest] is provided if not called.
+   * Adds a claim to the scene with the specified key and value.
    *
-   * @param request The request instance to use
+   * @param key The scene key to claim
+   * @param value The value to associate with the key
    * @return This builder for method chaining
    *
    * ```kotlin
+   * val USER_ID_KEY = SceneKey<String>("userId")
    * val testMosaic = TestMosaicBuilder()
-   *   .withRequest(MosaicRequest(mapOf("userId" to "123")))
+   *   .withSceneClaim(USER_ID_KEY, "123")
    *   .withMockTile(MyTile, "test data")
    *   .build()
    * ```
    */
-  fun withRequest(request: MosaicRequest): TestMosaicBuilder {
-    every { mosaic.request } returns request
-    return this
-  }
+  fun <T : Any> withSceneClaim(
+    key: SceneKey<T>,
+    value: T,
+  ): TestMosaicBuilder =
+    apply {
+      sceneBuilder.registerClaim(key, value)
+      return this
+    }
 
-  fun <T : Any> withInjection(
+  fun <T : Any> withCanvasSource(
     clazz: KClass<T>,
     obj: T,
-  ): TestMosaicBuilder {
-    injector.register(clazz, obj)
-    return this
-  }
+  ): TestMosaicBuilder =
+    apply {
+      canvas.register(clazz, obj)
+      return this
+    }
 
-  inline fun <reified T : Any> withInjection(obj: T): TestMosaicBuilder = withInjection(T::class, obj)
+  inline fun <reified T : Any> withCanvasSource(obj: T): TestMosaicBuilder = withCanvasSource(T::class, obj)
 
   /**
    * Builds and returns a configured [TestMosaic] instance.
@@ -344,5 +318,10 @@ class TestMosaicBuilder {
    *   .build()
    * ```
    */
-  fun build(): TestMosaic = TestMosaic(mosaic)
+  fun build(): TestMosaic =
+    TestMosaic(
+      MosaicImpl(sceneBuilder.build(), canvas),
+      mockTileCache,
+      mockMultiTileCache,
+    )
 }

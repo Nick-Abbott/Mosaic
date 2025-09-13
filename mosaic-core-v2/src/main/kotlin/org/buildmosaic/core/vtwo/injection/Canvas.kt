@@ -1,6 +1,7 @@
 package org.buildmosaic.core.vtwo.injection
 
 import org.buildmosaic.core.vtwo.Mosaic
+import org.buildmosaic.core.vtwo.MosaicImpl
 import kotlin.reflect.KClass
 
 /**
@@ -36,4 +37,4 @@ inline fun <reified T : Any> Canvas.source(): T = source(T::class)
  * @param scene The scene that you are processing
  * @return An instance of [Mosaic] scoped to the [Canvas] and [Scene]
  */
-fun Canvas.create(scene: Scene): Mosaic = Mosaic(scene, this)
+fun Canvas.create(scene: Scene): Mosaic = MosaicImpl(scene, this)

@@ -22,17 +22,13 @@ dependencies {
 ### **Your First Tile**
 
 ```kotlin
-val USER_ID_KEY = SceneKey<String>("userId")
-
 val userTile = singleTile<User> {
-  val userId = scene.claim(USER_ID_KEY)
-  val userService = canvas.source<UserService>()
-  userService.fetchUser(userId)
+  val userId = request.attributes["userId"] as String
+  UserService.fetchUser(userId)
 }
 
 val ordersTile = multiTile<String, Order> { orderIds ->
-  val orderService = canvas.source<OrderService>()
-  orderService.fetchOrders(orderIds)
+  OrderService.fetchOrders(orderIds)
 }
 ```
 
@@ -43,12 +39,9 @@ val ordersTile = multiTile<String, Order> { orderIds ->
 Creates a tile that returns a single value with automatic caching:
 
 ```kotlin
-val CUSTOMER_ID_KEY = SceneKey<String>("customerId")
-
 val customerTile = singleTile<Customer> {
-  val customerId = scene.claim(CUSTOMER_ID_KEY)
-  val customerService = canvas.source<CustomerService>()
-  customerService.fetchCustomer(customerId)
+  val customerId = request.attributes["customerId"] as String
+  CustomerService.fetchCustomer(customerId)
 }
 ```
 
@@ -58,9 +51,8 @@ Creates a tile that efficiently batches multiple requests:
 
 ```kotlin
 val pricingTile = multiTile<String, Price> { skus ->
-  val pricingService = canvas.source<PricingService>()
   // Automatically batches requests for multiple SKUs
-  pricingService.getBulkPrices(skus)
+  PricingService.getBulkPrices(skus)
 }
 ```
 
@@ -70,9 +62,8 @@ Creates a tile that processes each key individually but with shared caching:
 
 ```kotlin
 val productTile = perKeyTile<String, Product> { sku ->
-  val productService = canvas.source<ProductService>()
   // Called once per unique SKU, results are cached
-  productService.getProduct(sku)
+  ProductService.getProduct(sku)
 }
 ```
 
@@ -82,9 +73,8 @@ Creates a tile that processes requests in configurable chunks:
 
 ```kotlin
 val inventoryTile = chunkedMultiTile<String, Inventory>(chunkSize = 50) { skus ->
-  val inventoryService = canvas.source<InventoryService>()
   // Processes up to 50 SKUs at a time to respect API limits
-  inventoryService.checkInventory(skus)
+  InventoryService.checkInventory(skus)
 }
 ```
 
@@ -92,14 +82,14 @@ val inventoryTile = chunkedMultiTile<String, Inventory>(chunkSize = 50) { skus -
 
 ### **Natural Data Flow**
 
-Compose tiles using simple `compose()` calls - no complex class hierarchies:
+Compose tiles using simple `get()` calls - no complex class hierarchies:
 
 ```kotlin
 val orderSummaryTile = singleTile<OrderSummary> {
   // These run concurrently automatically
-  val order = compose(orderTile)
-  val customer = compose(customerTile) 
-  val lineItems = compose(lineItemsTile)
+  val order = get(orderTile)
+  val customer = get(customerTile) 
+  val lineItems = get(lineItemsTile)
   
   OrderSummary(order, customer, lineItems)
 }
@@ -111,12 +101,12 @@ Seamlessly mix single and multi tiles:
 
 ```kotlin
 val enrichedOrderTile = singleTile<EnrichedOrder> {
-  val order = compose(orderTile)
+  val order = get(orderTile)
   
   // Batch fetch all required data
-  val products = compose(productTile, order.skus)
-  val prices = compose(pricingTile, order.skus)
-  val inventory = compose(inventoryTile, order.skus)
+  val products = get(productTile, order.skus)
+  val prices = get(pricingTile, order.skus)
+  val inventory = get(inventoryTile, order.skus)
   
   EnrichedOrder(order, products, prices, inventory)
 }
@@ -128,12 +118,12 @@ Use standard Kotlin control flow within tiles:
 
 ```kotlin
 val paymentProcessorTile = singleTile<PaymentProcessor> {
-  val customer = compose(customerTile)
+  val customer = get(customerTile)
   
   when (customer.tier) {
-    CustomerTier.PREMIUM -> compose(premiumProcessorTile)
-    CustomerTier.BUSINESS -> compose(businessProcessorTile)
-    else -> compose(standardProcessorTile)
+    CustomerTier.PREMIUM -> get(premiumProcessorTile)
+    CustomerTier.BUSINESS -> get(businessProcessorTile)
+    else -> get(standardProcessorTile)
   }
 }
 ```
@@ -147,10 +137,10 @@ The DSL automatically optimizes for concurrency:
 ```kotlin
 val dashboardTile = singleTile<Dashboard> {
   // All these tiles start executing immediately in parallel
-  val user = compose(userTile)
-  val orders = compose(recentOrdersTile)
-  val recommendations = compose(recommendationsTile)
-  val notifications = compose(notificationsTile)
+  val user = get(userTile)
+  val orders = get(recentOrdersTile)
+  val recommendations = get(recommendationsTile)
+  val notifications = get(notificationsTile)
   
   // Results are awaited only when accessed
   Dashboard(user, orders, recommendations, notifications)
@@ -163,11 +153,11 @@ Generate keys dynamically based on other tile results:
 
 ```kotlin
 val relatedProductsTile = singleTile<List<Product>> {
-  val order = compose(orderTile)
+  val order = get(orderTile)
   val categoryIds = order.items.map { it.categoryId }.distinct()
   
   // Dynamic multi-tile call based on order contents
-  val productsByCategory = compose(productsByCategoryTile, categoryIds)
+  val productsByCategory = get(productsByCategoryTile, categoryIds)
   productsByCategory.values.flatten().take(10)
 }
 ```
@@ -179,43 +169,37 @@ Standard Kotlin exception handling works naturally:
 ```kotlin
 val resilientDataTile = singleTile<Data> {
   try {
-    compose(primaryDataTile)
+    get(primaryDataTile)
   } catch (e: PrimaryServiceException) {
     // Fallback to secondary source
-    compose(fallbackDataTile)
+    get(fallbackDataTile)
   }
 }
 ```
 
 ## 🏗 **Mosaic Context**
 
-### **Scene Access**
+### **Request Access**
 
-Access request-scoped context anywhere in your tiles:
+Access request context anywhere in your tiles:
 
 ```kotlin
-val USER_ID_KEY = SceneKey<String>("userId")
-val LOCALE_KEY = SceneKey<String>("locale")
-
 val userPreferencesTile = singleTile<Preferences> {
-  val userId = scene.claim(USER_ID_KEY)
-  val locale = scene.claimOr(LOCALE_KEY, "en-US")
-  val preferencesService = canvas.source<PreferencesService>()
+  val userId = request.attributes["userId"] as String
+  val locale = request.attributes["locale"] as String? ?: "en-US"
   
-  preferencesService.getPreferences(userId, locale)
+  PreferencesService.getPreferences(userId, locale)
 }
 ```
 
-### **Canvas Injection**
+### **Dependency Injection**
 
-Inject application-level services directly into tiles:
+Inject services directly into tiles:
 
 ```kotlin
-val ORDER_ID_KEY = SceneKey<String>("orderId")
-
 val orderTile = singleTile<Order> {
-  val orderService = canvas.source<OrderService>()
-  val orderId = scene.claim(ORDER_ID_KEY)
+  val orderService = inject<OrderService>()
+  val orderId = request.attributes["orderId"] as String
   
   orderService.fetchOrder(orderId)
 }
@@ -230,7 +214,7 @@ val orderTile = singleTile<Order> {
 
 ### **Natural Composition**
 - Write tiles like regular suspend functions
-- Compose using simple `compose()` calls
+- Compose using simple `get()` calls
 - Standard Kotlin control flow works everywhere
 
 ### **Automatic Optimization**
@@ -248,32 +232,26 @@ val orderTile = singleTile<Order> {
 ### **Standalone Usage**
 
 ```kotlin
-val USER_ID_KEY = SceneKey<String>("userId")
+val mosaic = Mosaic(
+  request = MosaicRequest(mapOf("userId" to "123")),
+  injector = MyInjector()
+)
 
-val scene = MosaicSceneBuilder()
-  .registerClaim(USER_ID_KEY, "123")
-  .build()
-
-val canvas = MyCanvas() // implements Canvas interface
-val mosaic = Mosaic(scene, canvas)
-
-val result = mosaic.compose(userDashboardTile)
+val result = mosaic.get(userDashboardTile)
 ```
 
 ### **Spring Integration**
 
 ```kotlin
 @RestController
-class UserController(private val springCanvas: SpringCanvas) {
+class UserController(private val mosaicRegistry: MosaicRegistry) {
   
   @GetMapping("/users/{userId}/dashboard")
   suspend fun getUserDashboard(@PathVariable userId: String): Dashboard = 
     runBlocking {
-      val scene = MosaicSceneBuilder()
-        .registerClaim(USER_ID_KEY, userId)
-        .build()
-      val mosaic = Mosaic(scene, springCanvas)
-      mosaic.compose(userDashboardTile)
+      val request = MosaicRequest(mapOf("userId" to userId))
+      val mosaic = Mosaic(request, springInjector)
+      mosaic.get(userDashboardTile)
     }
 }
 ```
@@ -284,12 +262,10 @@ class UserController(private val springCanvas: SpringCanvas) {
 routing {
   get("/users/{userId}/dashboard") {
     val userId = call.parameters["userId"]!!
-    val scene = MosaicSceneBuilder()
-      .registerClaim(USER_ID_KEY, userId)
-      .build()
-    val mosaic = Mosaic(scene, koinCanvas)
+    val request = MosaicRequest(mapOf("userId" to userId))
+    val mosaic = Mosaic(request, koinInjector)
     
-    call.respond(mosaic.compose(userDashboardTile))
+    call.respond(mosaic.get(userDashboardTile))
   }
 }
 ```
@@ -317,9 +293,8 @@ The DSL approach maintains full observability:
 
 ```kotlin
 // Tiles are introspectable for monitoring
-// Note: Monitoring APIs are under development
-val executionStats = mosaic.getExecutionStats()
-val cacheHitRatio = mosaic.getCacheHitRatio()
+val tileMetrics = mosaic.getExecutionMetrics()
+val cacheStats = mosaic.getCacheStatistics()
 ```
 
 ## 🔗 **Related Modules**
@@ -342,14 +317,11 @@ class CustomerTile(mosaic: Mosaic) : SingleTile<Customer>(mosaic) {
   }
 }
 
-// V2: DSL approach with Canvas/Scene
-val CUSTOMER_ID_KEY = SceneKey<String>("customerId")
-
+// V2: DSL approach
 val customerTile = singleTile<Customer> {
-  val customerId = scene.claim(CUSTOMER_ID_KEY)
-  val customerService = canvas.source<CustomerService>()
-  customerService.fetchCustomer(customerId)
+  val customerId = request.attributes["customerId"] as String
+  CustomerService.fetchCustomer(customerId)
 }
 ```
 
-The DSL approach eliminates boilerplate while providing better type safety and cleaner separation of concerns through Canvas (application dependencies) and Scene (request context).
+The DSL approach eliminates boilerplate while maintaining all the power and performance of the original framework.

@@ -17,7 +17,6 @@
 package org.buildmosaic.test.vtwo
 
 import kotlinx.coroutines.test.runTest
-import org.buildmosaic.core.vtwo.MosaicRequest
 import org.buildmosaic.core.vtwo.multiTile
 import org.buildmosaic.core.vtwo.singleTile
 import kotlin.test.BeforeTest
@@ -33,12 +32,11 @@ import kotlin.test.fail
  */
 @Suppress("LargeClass", "FunctionMaxLength")
 class TestMosaicTest {
-  private lateinit var request: MosaicRequest
   private lateinit var testMosaic: TestMosaic
 
   // Test tiles for testing
-  private val testSingleTile = singleTile<String> { "test-data" }
-  private val testIntTile = singleTile<Int> { 42 }
+  private val testSingleTile = singleTile { "test-data" }
+  private val testIntTile = singleTile { 42 }
   private val testMultiTile =
     multiTile<String, String> { keys ->
       keys.associateWith { "data-for-$it" }
@@ -58,16 +56,7 @@ class TestMosaicTest {
 
   @BeforeTest
   fun setUp() {
-    request = MosaicRequest(mapOf("testId" to "123"))
-    testMosaic =
-      TestMosaicBuilder()
-        .withRequest(request)
-        .build()
-  }
-
-  @Test
-  fun `should return request property correctly`() {
-    assertEquals(request, testMosaic.request)
+    testMosaic = TestMosaicBuilder().build()
   }
 
   @Test
@@ -82,8 +71,8 @@ class TestMosaicTest {
           .withMockTile(testIntTile, intData)
           .build()
 
-      assertEquals(testData, mosaic.get(testSingleTile))
-      assertEquals(intData, mosaic.get(testIntTile))
+      assertEquals(testData, mosaic.compose(testSingleTile))
+      assertEquals(intData, mosaic.compose(testIntTile))
     }
 
   @Test
@@ -97,11 +86,11 @@ class TestMosaicTest {
           .withMockTile(testMultiTile, expected)
           .build()
 
-      assertEquals(expected, mosaic.get(testMultiTile, keys))
+      assertEquals(expected, mosaic.compose(testMultiTile, keys))
     }
 
   @Test
-  fun `should get multi tile values with varargs`() =
+  fun `should get multi tile values with one key`() =
     runTest {
       val expected = mapOf("a" to "A", "b" to "B", "c" to "C")
 
@@ -110,7 +99,7 @@ class TestMosaicTest {
           .withMockTile(testMultiTile, expected)
           .build()
 
-      assertEquals(expected, mosaic.get(testMultiTile, "a", "b", "c"))
+      assertEquals(expected["a"]!!, mosaic.compose(testMultiTile, "a"))
     }
 
   @Test
@@ -362,7 +351,7 @@ class TestMosaicTest {
     runTest {
       data class ComplexData(val id: Int, val name: String, val nested: Map<String, List<Int>>)
       val complexTile =
-        singleTile<ComplexData> {
+        singleTile {
           ComplexData(1, "test", mapOf("list" to listOf(1, 2, 3)))
         }
       val complexData = ComplexData(99, "complex", mapOf("items" to listOf(4, 5, 6)))
@@ -405,22 +394,6 @@ class TestMosaicTest {
 
       // Failure case
       mosaic.assertThrows(testErrorTile, RuntimeException::class)
-    }
-
-  @Test
-  fun `should work with custom request implementations`() =
-    runTest {
-      val customRequest = MosaicRequest(mapOf("userId" to "user123", "sessionId" to "session456"))
-
-      val mosaic =
-        TestMosaicBuilder()
-          .withRequest(customRequest)
-          .withMockTile(testSingleTile, "custom-data")
-          .build()
-
-      assertEquals(customRequest, mosaic.request)
-      assertEquals("user123", mosaic.request.attributes["userId"])
-      assertEquals("session456", mosaic.request.attributes["sessionId"])
     }
 }
 

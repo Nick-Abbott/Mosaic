@@ -18,7 +18,6 @@ package org.buildmosaic.test.vtwo
 
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
-import org.buildmosaic.core.vtwo.MosaicRequest
 import org.buildmosaic.core.vtwo.multiTile
 import org.buildmosaic.core.vtwo.singleTile
 import kotlin.test.Test
@@ -33,9 +32,9 @@ class TestMosaicBuilderTest {
   private val builder = TestMosaicBuilder()
 
   // Test tiles for single tile operations
-  private val testSingleTile = singleTile<String> { "original" }
-  private val testIntTile = singleTile<Int> { 42 }
-  private val testBooleanTile = singleTile<Boolean> { true }
+  private val testSingleTile = singleTile { "original" }
+  private val testIntTile = singleTile { 42 }
+  private val testBooleanTile = singleTile { true }
 
   // Test tiles for multi tile operations
   private val testMultiTile = multiTile<String, String> { keys -> keys.associateWith { "original-$it" } }
@@ -134,8 +133,8 @@ class TestMosaicBuilderTest {
       launch {
         val workDuration =
           testScheduler.timeSource.measureTime {
-            singleResult = testMosaic.get(testSingleTile)
-            intResult = testMosaic.get(testIntTile)
+            singleResult = testMosaic.compose(testSingleTile)
+            intResult = testMosaic.compose(testIntTile)
           }
         assertEquals((singleDelay + intDelay).milliseconds, workDuration)
       }
@@ -176,8 +175,8 @@ class TestMosaicBuilderTest {
       launch {
         val workDuration =
           testScheduler.timeSource.measureTime {
-            multiResult = testMosaic.get(testMultiTile, multiData.keys)
-            intMultiResult = testMosaic.get(testIntMultiTile, intMultiData.keys)
+            multiResult = testMosaic.compose(testMultiTile, multiData.keys)
+            intMultiResult = testMosaic.compose(testIntMultiTile, intMultiData.keys)
           }
         assertEquals((multiDelay + intMultiDelay).milliseconds, workDuration)
       }
@@ -235,14 +234,6 @@ class TestMosaicBuilderTest {
     }
 
   @Test
-  fun `allows custom request`() =
-    runTest {
-      val customRequest = MosaicRequest(mapOf("userId" to "123", "sessionId" to "abc"))
-      val testMosaic = builder.withRequest(customRequest).build()
-      assertEquals(customRequest, testMosaic.request)
-    }
-
-  @Test
   fun `supports dependency injection with KClass`() =
     runTest {
       data class TestService(val name: String)
@@ -250,7 +241,7 @@ class TestMosaicBuilderTest {
 
       val testMosaic =
         builder
-          .withInjection(TestService::class, testService)
+          .withCanvasSource(TestService::class, testService)
           .build()
 
       // We can't directly test injection retrieval through TestMosaic,
@@ -266,7 +257,7 @@ class TestMosaicBuilderTest {
 
       val testMosaic =
         builder
-          .withInjection(anotherService)
+          .withCanvasSource(anotherService)
           .build()
 
       // We can't directly test injection retrieval through TestMosaic,
@@ -277,15 +268,13 @@ class TestMosaicBuilderTest {
   @Test
   fun `builder methods return builder for chaining`() =
     runTest {
-      val customRequest = MosaicRequest(mapOf("test" to "value"))
       val result =
         builder
           .withMockTile(testSingleTile, "test")
           .withMockTile(testMultiTile, mapOf("a" to "A"))
           .withFailedTile(testIntTile, RuntimeException("error"))
           .withDelayedTile(testBooleanTile, true, 100L)
-          .withRequest(customRequest)
-          .withInjection(String::class, "injected")
+          .withCanvasSource(String::class, "injected")
 
       assertIs<TestMosaicBuilder>(result)
       assertIs<TestMosaic>(result.build())
@@ -319,7 +308,7 @@ class TestMosaicBuilderTest {
   fun `supports complex data types`() =
     runTest {
       data class ComplexData(val id: Int, val name: String, val tags: List<String>)
-      val complexTile = singleTile<ComplexData> { ComplexData(1, "test", listOf("tag1", "tag2")) }
+      val complexTile = singleTile { ComplexData(1, "test", listOf("tag1", "tag2")) }
       val complexData = ComplexData(99, "mocked", listOf("mock", "test"))
 
       val testMosaic =
@@ -333,10 +322,10 @@ class TestMosaicBuilderTest {
   @Test
   fun `supports nested tile composition in custom tiles`() =
     runTest {
-      val baseTile = singleTile<String> { "base" }
+      val baseTile = singleTile { "base" }
       val composedTile =
-        singleTile<String> {
-          val base = get(baseTile)
+        singleTile {
+          val base = compose(baseTile)
           "composed-$base"
         }
 
@@ -344,7 +333,7 @@ class TestMosaicBuilderTest {
         builder
           .withMockTile(baseTile, "mocked-base")
           .withCustomTile(composedTile) {
-            val base = get(baseTile)
+            val base = compose(baseTile)
             "custom-composed-$base"
           }
           .build()

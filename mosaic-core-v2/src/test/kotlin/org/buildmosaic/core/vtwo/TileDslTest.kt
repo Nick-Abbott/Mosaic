@@ -30,7 +30,7 @@ class TileDslTest {
             }
           }
         }
-      val mosaic = Mosaic(MosaicSceneBuilder().build(), mockCanvas)
+      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), mockCanvas)
       val tile =
         singleTile {
           val s = canvas.source<Service>()
@@ -67,7 +67,7 @@ class TileDslTest {
             }
           }
         }
-      val mosaic = Mosaic(MosaicSceneBuilder().build(), injector)
+      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), injector)
       val tile =
         singleTile {
           System.out.println("RUNNING TILE")
@@ -103,7 +103,7 @@ class TileDslTest {
             }
           }
         }
-      val mosaic = Mosaic(MosaicSceneBuilder().build(), injector)
+      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), injector)
       val tile =
         multiTile<String, String> { ids ->
           val svc = source<Service>()
@@ -142,7 +142,7 @@ class TileDslTest {
             }
           }
         }
-      val mosaic = Mosaic(MosaicSceneBuilder().build(), injector)
+      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), injector)
       val tile =
         perKeyTile<String, String> { id ->
           val svc = source<Service>()
@@ -185,7 +185,7 @@ class TileDslTest {
             }
           }
         }
-      val mosaic = Mosaic(MosaicSceneBuilder().build(), injector)
+      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), injector)
       val tile =
         chunkedMultiTile<String, String>(2) { ids ->
           val svc = source<Service>()

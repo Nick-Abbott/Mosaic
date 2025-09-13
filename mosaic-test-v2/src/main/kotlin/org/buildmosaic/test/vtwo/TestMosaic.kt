@@ -16,10 +16,12 @@
 
 package org.buildmosaic.test.vtwo
 
+import kotlinx.coroutines.Deferred
 import org.buildmosaic.core.vtwo.Mosaic
-import org.buildmosaic.core.vtwo.MosaicRequest
 import org.buildmosaic.core.vtwo.MultiTile
 import org.buildmosaic.core.vtwo.Tile
+import org.buildmosaic.core.vtwo.injection.Canvas
+import org.buildmosaic.core.vtwo.injection.Scene
 import kotlin.reflect.KClass
 import kotlin.test.assertEquals as testAssertEquals
 import kotlin.test.assertFailsWith as testAssertFailsWith
@@ -51,13 +53,28 @@ import kotlin.test.assertFailsWith as testAssertFailsWith
  */
 class TestMosaic(
   private val mosaic: Mosaic,
-) {
+  private val mockTileCache: Map<Tile<*>, Tile<*>>,
+  private val mockMultiTileCache: Map<MultiTile<*, *>, MultiTile<*, *>>,
+) : Mosaic {
   /**
-   * The [MosaicRequest] associated with this test instance.
+   * The [Scene] associated with this test instance.
    *
-   * This provides access to the request context being used in the test.
+   * This provides access to the scene context being used in the test.
    */
-  val request: MosaicRequest get() = mosaic.request
+  override val scene: Scene get() = mosaic.scene
+
+  /**
+   * The [Canvas] associated with this test instance
+   *
+   * This provides access to the canvas context being used in the test.
+   */
+  override val canvas: Canvas get() = mosaic.canvas
+
+  @Suppress("UNCHECKED_CAST")
+  private fun <V> cacheOrTile(tile: Tile<V>): Tile<V> = mockTileCache[tile] as Tile<V>? ?: tile
+
+  @Suppress("UNCHECKED_CAST")
+  private fun <K : Any, V> cacheOrTile(tile: MultiTile<K, V>) = mockMultiTileCache[tile] as MultiTile<K, V>? ?: tile
 
   /**
    * Retrieves a value from a [Tile].
@@ -66,7 +83,17 @@ class TestMosaic(
    * @param tile The tile to retrieve a value from
    * @return The value retrieved from the tile
    */
-  suspend fun <V> get(tile: Tile<V>): V = mosaic.get<V>(tile)
+  @Suppress("UNCHECKED_CAST")
+  override suspend fun <V> compose(tile: Tile<V>): V = mosaic.compose(cacheOrTile(tile))
+
+  /**
+   * Retrieves a deferred value from a [Tile].
+   *
+   * @param V The type of value the tile returns
+   * @param tile The tile to retrieve a value from
+   * @return The value retrieved from the tile
+   */
+  override suspend fun <V> composeAsync(tile: Tile<V>): Deferred<V> = mosaic.composeAsync(cacheOrTile(tile))
 
   /**
    * Retrieves a map of values from a [MultiTile].
@@ -77,10 +104,10 @@ class TestMosaic(
    * @param keys The keys to retrieve values for
    * @return A map of keys to their corresponding values
    */
-  suspend fun <K : Any, V> get(
+  override suspend fun <K : Any, V> compose(
     tile: MultiTile<K, V>,
     keys: Collection<K>,
-  ): Map<K, V> = mosaic.get<K, V>(tile, keys)
+  ): Map<K, V> = mosaic.compose(cacheOrTile(tile), keys)
 
   /**
    * Retrieves a map of values from a [MultiTile].
@@ -91,10 +118,24 @@ class TestMosaic(
    * @param keys The keys to retrieve values for
    * @return A map of keys to their corresponding values
    */
-  suspend fun <K : Any, V> get(
+  override suspend fun <K : Any, V> composeAsync(
     tile: MultiTile<K, V>,
-    vararg keys: K,
-  ): Map<K, V> = get(tile, keys.toList())
+    keys: Collection<K>,
+  ): Map<K, Deferred<V>> = mosaic.composeAsync(cacheOrTile(tile), keys)
+
+  /**
+   * Retrieves a map of values from a [MultiTile].
+   *
+   * @param K The type of keys in the multi-tile
+   * @param V The type of values in the multi-tile
+   * @param tile The multi-tile to retrieve values from
+   * @param keys The keys to retrieve values for
+   * @return A map of keys to their corresponding values
+   */
+  override suspend fun <K : Any, V> compose(
+    tile: MultiTile<K, V>,
+    key: K,
+  ): V = mosaic.compose(cacheOrTile(tile), key)
 
   /**
    * Asserts that a [Tile] returns the expected value.
@@ -111,7 +152,7 @@ class TestMosaic(
   suspend fun <V> assertEquals(
     tile: Tile<V>,
     expected: V,
-  ) = testAssertEquals(expected, get<V>(tile))
+  ) = testAssertEquals(expected, compose(tile))
 
   /**
    * Asserts that a [Tile] returns the expected value with a custom failure message.
@@ -134,7 +175,7 @@ class TestMosaic(
     tile: Tile<V>,
     expected: V,
     message: String,
-  ) = testAssertEquals(expected, get(tile), message)
+  ) = testAssertEquals(expected, compose(tile), message)
 
   /**
    * Asserts that a [MultiTile] returns the expected values for the given keys.
@@ -158,7 +199,7 @@ class TestMosaic(
     tile: MultiTile<K, V>,
     keys: Collection<K>,
     expected: Map<K, V>,
-  ) = testAssertEquals(expected, get(tile, keys))
+  ) = testAssertEquals(expected, compose(tile, keys))
 
   /**
    * Asserts that a [MultiTile] returns the expected values for the given keys with a custom failure message.
@@ -185,7 +226,7 @@ class TestMosaic(
     keys: List<K>,
     expected: Map<K, V>,
     message: String,
-  ) = testAssertEquals(expected, get(tile, keys), message)
+  ) = testAssertEquals(expected, compose(tile, keys), message)
 
   /**
    * Asserts that a [Tile] throws the expected exception when retrieved.
@@ -204,7 +245,7 @@ class TestMosaic(
   suspend fun assertThrows(
     tile: Tile<*>,
     expectedException: KClass<out Throwable>,
-  ) = testAssertFailsWith(expectedException) { get(tile) }
+  ) = testAssertFailsWith(expectedException) { compose(tile) }
 
   /**
    * Asserts that a [Tile] throws the expected exception with a custom failure message.
@@ -226,7 +267,7 @@ class TestMosaic(
     tile: Tile<*>,
     expectedException: KClass<out Throwable>,
     message: String,
-  ) = testAssertFailsWith(expectedException, message) { get(tile) }
+  ) = testAssertFailsWith(expectedException, message) { compose(tile) }
 
   /**
    * Asserts that a [MultiTile] throws the expected exception when retrieved with the given keys.
@@ -249,5 +290,5 @@ class TestMosaic(
     tile: MultiTile<K, *>,
     keys: List<K>,
     expectedException: KClass<out Throwable>,
-  ) = testAssertFailsWith(expectedException) { get(tile, keys) }
+  ) = testAssertFailsWith(expectedException) { compose(tile, keys) }
 }

@@ -24,28 +24,28 @@ import kotlin.test.assertSame
 
 @Suppress("FunctionMaxLength")
 class MockInjectorTest {
-  private val injector = MockInjector()
+  private val canvas = MockCanvas()
 
   @Test
   fun `should register and retrieve instances by KClass`() {
     val testString = "test-value"
     val testInt = 42
 
-    injector.register(String::class, testString)
-    injector.register(Int::class, testInt)
+    canvas.register(String::class, testString)
+    canvas.register(Int::class, testInt)
 
-    assertEquals(testString, injector.get(String::class))
-    assertEquals(testInt, injector.get(Int::class))
+    assertEquals(testString, canvas.source(String::class))
+    assertEquals(testInt, canvas.source(Int::class))
   }
 
   @Test
   fun `should return same instance for same type`() {
     val testService = TestService("service-name")
 
-    injector.register(TestService::class, testService)
+    canvas.register(TestService::class, testService)
 
-    val retrieved1 = injector.get(TestService::class)
-    val retrieved2 = injector.get(TestService::class)
+    val retrieved1 = canvas.source(TestService::class)
+    val retrieved2 = canvas.source(TestService::class)
 
     assertSame(testService, retrieved1)
     assertSame(retrieved1, retrieved2)
@@ -55,7 +55,7 @@ class MockInjectorTest {
   fun `should throw exception when type not registered`() {
     val exception =
       assertFailsWith<IllegalArgumentException> {
-        injector.get(String::class)
+        canvas.source(String::class)
       }
 
     assertEquals("There is no injection for class kotlin.String", exception.message)
@@ -73,13 +73,13 @@ class MockInjectorTest {
     val serviceB = ServiceB(100)
     val serviceC = ServiceC(true)
 
-    injector.register(ServiceA::class, serviceA)
-    injector.register(ServiceB::class, serviceB)
-    injector.register(ServiceC::class, serviceC)
+    canvas.register(ServiceA::class, serviceA)
+    canvas.register(ServiceB::class, serviceB)
+    canvas.register(ServiceC::class, serviceC)
 
-    assertEquals(serviceA, injector.get(ServiceA::class))
-    assertEquals(serviceB, injector.get(ServiceB::class))
-    assertEquals(serviceC, injector.get(ServiceC::class))
+    assertEquals(serviceA, canvas.source(ServiceA::class))
+    assertEquals(serviceB, canvas.source(ServiceB::class))
+    assertEquals(serviceC, canvas.source(ServiceC::class))
   }
 
   @Test
@@ -87,10 +87,10 @@ class MockInjectorTest {
     val firstString = "first"
     val secondString = "second"
 
-    injector.register(String::class, firstString)
-    injector.register(String::class, secondString)
+    canvas.register(String::class, firstString)
+    canvas.register(String::class, secondString)
 
-    val retrieved = injector.get(String::class)
+    val retrieved = canvas.source(String::class)
     assertEquals(secondString, retrieved)
     assertNotSame(firstString, retrieved)
   }
@@ -101,9 +101,9 @@ class MockInjectorTest {
     data class NullableWrapper(val value: String?)
     val wrapper = NullableWrapper(null)
 
-    injector.register(NullableWrapper::class, wrapper)
+    canvas.register(NullableWrapper::class, wrapper)
 
-    val retrieved = injector.get(NullableWrapper::class)
+    val retrieved = canvas.source(NullableWrapper::class)
     assertEquals(wrapper, retrieved)
     assertEquals(null, retrieved.value)
   }
@@ -111,9 +111,9 @@ class MockInjectorTest {
   @Test
   fun `should handle interface types`() {
     val implementation = TestInterfaceImpl()
-    injector.register(TestInterfaceContract::class, implementation)
+    canvas.register(TestInterfaceContract::class, implementation)
 
-    val retrieved = injector.get(TestInterfaceContract::class)
+    val retrieved = canvas.source(TestInterfaceContract::class)
     assertSame(implementation, retrieved)
     assertEquals("implementation", retrieved.getValue())
   }
@@ -121,9 +121,9 @@ class MockInjectorTest {
   @Test
   fun `should handle abstract class types`() {
     val service = ConcreteServiceImpl()
-    injector.register(AbstractServiceBase::class, service)
+    canvas.register(AbstractServiceBase::class, service)
 
-    val retrieved = injector.get(AbstractServiceBase::class)
+    val retrieved = canvas.source(AbstractServiceBase::class)
     assertSame(service, retrieved)
     assertEquals("processed", retrieved.process())
   }
@@ -135,15 +135,15 @@ class MockInjectorTest {
     val results = mutableListOf<String>()
 
     // Register initial value
-    injector.register(String::class, "initial")
+    canvas.register(String::class, "initial")
 
     val threads =
       (1..numThreads).map { threadId ->
         Thread {
           repeat(numOperationsPerThread) { opId ->
             val value = "thread-$threadId-op-$opId"
-            injector.register(String::class, value)
-            val retrieved = injector.get(String::class)
+            canvas.register(String::class, value)
+            val retrieved = canvas.source(String::class)
             synchronized(results) {
               results.add(retrieved)
             }
@@ -170,15 +170,15 @@ class MockInjectorTest {
     val mapOfIntToString = mapOf(1 to "one", 2 to "two")
 
     @Suppress("UNCHECKED_CAST")
-    injector.register(List::class as kotlin.reflect.KClass<List<String>>, listOfStrings)
+    canvas.register(List::class as kotlin.reflect.KClass<List<String>>, listOfStrings)
     @Suppress("UNCHECKED_CAST")
-    injector.register(Map::class as kotlin.reflect.KClass<Map<Int, String>>, mapOfIntToString)
+    canvas.register(Map::class as kotlin.reflect.KClass<Map<Int, String>>, mapOfIntToString)
 
     @Suppress("UNCHECKED_CAST")
-    val retrievedList = injector.get(List::class as kotlin.reflect.KClass<List<String>>)
+    val retrievedList = canvas.source(List::class as kotlin.reflect.KClass<List<String>>)
 
     @Suppress("UNCHECKED_CAST")
-    val retrievedMap = injector.get(Map::class as kotlin.reflect.KClass<Map<Int, String>>)
+    val retrievedMap = canvas.source(Map::class as kotlin.reflect.KClass<Map<Int, String>>)
 
     assertEquals(listOfStrings, retrievedList)
     assertEquals(mapOfIntToString, retrievedMap)
@@ -193,16 +193,16 @@ class MockInjectorTest {
     val instanceA = TypeA("A")
     val instanceB = TypeB("B")
 
-    injector.register(TypeA::class, instanceA)
-    injector.register(TypeB::class, instanceB)
+    canvas.register(TypeA::class, instanceA)
+    canvas.register(TypeB::class, instanceB)
 
     // Should not be able to retrieve TypeA as TypeB or vice versa
-    assertEquals(instanceA, injector.get(TypeA::class))
-    assertEquals(instanceB, injector.get(TypeB::class))
+    assertEquals(instanceA, canvas.source(TypeA::class))
+    assertEquals(instanceB, canvas.source(TypeB::class))
 
     // Attempting to get unregistered type should fail
     assertFailsWith<IllegalArgumentException> {
-      injector.get(Int::class)
+      canvas.source(Int::class)
     }
   }
 
