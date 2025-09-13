@@ -70,73 +70,6 @@ class TestMosaic(
    */
   override val canvas: Canvas get() = mosaic.canvas
 
-  @Suppress("UNCHECKED_CAST")
-  private fun <V> cacheOrTile(tile: Tile<V>): Tile<V> = mockTileCache[tile] as Tile<V>? ?: tile
-
-  @Suppress("UNCHECKED_CAST")
-  private fun <K : Any, V> cacheOrTile(tile: MultiTile<K, V>) = mockMultiTileCache[tile] as MultiTile<K, V>? ?: tile
-
-  /**
-   * Retrieves a value from a [Tile].
-   *
-   * @param V The type of value the tile returns
-   * @param tile The tile to retrieve a value from
-   * @return The value retrieved from the tile
-   */
-  @Suppress("UNCHECKED_CAST")
-  override suspend fun <V> compose(tile: Tile<V>): V = mosaic.compose(cacheOrTile(tile))
-
-  /**
-   * Retrieves a deferred value from a [Tile].
-   *
-   * @param V The type of value the tile returns
-   * @param tile The tile to retrieve a value from
-   * @return The value retrieved from the tile
-   */
-  override suspend fun <V> composeAsync(tile: Tile<V>): Deferred<V> = mosaic.composeAsync(cacheOrTile(tile))
-
-  /**
-   * Retrieves a map of values from a [MultiTile].
-   *
-   * @param K The type of keys in the multi-tile
-   * @param V The type of values in the multi-tile
-   * @param tile The multi-tile to retrieve values from
-   * @param keys The keys to retrieve values for
-   * @return A map of keys to their corresponding values
-   */
-  override suspend fun <K : Any, V> compose(
-    tile: MultiTile<K, V>,
-    keys: Collection<K>,
-  ): Map<K, V> = mosaic.compose(cacheOrTile(tile), keys)
-
-  /**
-   * Retrieves a map of values from a [MultiTile].
-   *
-   * @param K The type of keys in the multi-tile
-   * @param V The type of values in the multi-tile
-   * @param tile The multi-tile to retrieve values from
-   * @param keys The keys to retrieve values for
-   * @return A map of keys to their corresponding values
-   */
-  override suspend fun <K : Any, V> composeAsync(
-    tile: MultiTile<K, V>,
-    keys: Collection<K>,
-  ): Map<K, Deferred<V>> = mosaic.composeAsync(cacheOrTile(tile), keys)
-
-  /**
-   * Retrieves a map of values from a [MultiTile].
-   *
-   * @param K The type of keys in the multi-tile
-   * @param V The type of values in the multi-tile
-   * @param tile The multi-tile to retrieve values from
-   * @param keys The keys to retrieve values for
-   * @return A map of keys to their corresponding values
-   */
-  override suspend fun <K : Any, V> compose(
-    tile: MultiTile<K, V>,
-    key: K,
-  ): V = mosaic.compose(cacheOrTile(tile), key)
-
   /**
    * Asserts that a [Tile] returns the expected value.
    *
@@ -291,4 +224,37 @@ class TestMosaic(
     keys: List<K>,
     expectedException: KClass<out Throwable>,
   ) = testAssertFailsWith(expectedException) { compose(tile, keys) }
+
+
+  // Mosaic interface passthroughs
+  @Suppress("UNCHECKED_CAST")
+  override suspend fun <V> compose(tile: Tile<V>): V = mosaic.compose(cacheOrTile(tile))
+
+  override suspend fun <V> composeAsync(tile: Tile<V>): Deferred<V> = mosaic.composeAsync(cacheOrTile(tile))
+
+  override suspend fun <K : Any, V> compose(
+    tile: MultiTile<K, V>,
+    keys: Collection<K>,
+  ): Map<K, V> = mosaic.compose(cacheOrTile(tile), keys)
+
+  override suspend fun <K : Any, V> composeAsync(
+    tile: MultiTile<K, V>,
+    keys: Collection<K>,
+  ): Map<K, Deferred<V>> = mosaic.composeAsync(cacheOrTile(tile), keys)
+
+  override suspend fun <K : Any, V> compose(
+    tile: MultiTile<K, V>,
+    key: K,
+  ): V = mosaic.compose(cacheOrTile(tile), key)
+
+  override suspend fun <K : Any, V> composeAsync(
+    tile: MultiTile<K, V>,
+    key: K,
+  ): Deferred<V> = mosaic.composeAsync(cacheOrTile(tile), key)
+
+  @Suppress("UNCHECKED_CAST")
+  private fun <V> cacheOrTile(tile: Tile<V>): Tile<V> = mockTileCache[tile] as Tile<V>? ?: tile
+
+  @Suppress("UNCHECKED_CAST")
+  private fun <K : Any, V> cacheOrTile(tile: MultiTile<K, V>) = mockMultiTileCache[tile] as MultiTile<K, V>? ?: tile
 }

@@ -23,5 +23,5 @@ class MosaicScene internal constructor(private val claims: Map<SceneKey<*>, Any>
   override fun <T : Any> claimOrCompute(
     key: SceneKey<T>,
     def: () -> T,
-  ): T = claims.getOrDefault(key, def()) as T
+  ): T = if (key in claims) claims[key] as T else def()
 }

@@ -2,6 +2,7 @@ package org.buildmosaic.core.vtwo.injection
 
 import org.buildmosaic.core.vtwo.Mosaic
 import org.buildmosaic.core.vtwo.MosaicImpl
+import org.buildmosaic.core.vtwo.exception.MosaicMissingTypeException
 import kotlin.reflect.KClass
 
 /**
@@ -18,7 +19,7 @@ interface Canvas {
    * @param T The type of the dependency to retrieve
    * @param type The class of the dependency
    * @return An instance of the requested type
-   * @throws IllegalArgumentException if no instance is registered for the type
+   * @throws [MosaicMissingTypeException] if no instance is registered for the type
    */
   fun <T : Any> source(type: KClass<T>): T
 }

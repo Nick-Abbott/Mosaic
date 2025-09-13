@@ -2,6 +2,7 @@ package org.buildmosaic.core.vtwo
 
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
@@ -30,7 +31,8 @@ class TileDslTest {
             }
           }
         }
-      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), mockCanvas)
+      val testDispatcher = StandardTestDispatcher(testScheduler)
+      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), mockCanvas, testDispatcher)
       val tile =
         singleTile {
           val s = canvas.source<Service>()
@@ -57,7 +59,7 @@ class TileDslTest {
         }
       }
       val service = Service()
-      val injector =
+      val mockCanvas =
         object : Canvas {
           override fun <T : Any> source(type: KClass<T>): T {
             @Suppress("UNCHECKED_CAST")
@@ -67,7 +69,8 @@ class TileDslTest {
             }
           }
         }
-      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), injector)
+      val testDispatcher = StandardTestDispatcher(testScheduler)
+      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), mockCanvas, testDispatcher)
       val tile =
         singleTile {
           System.out.println("RUNNING TILE")
@@ -93,7 +96,7 @@ class TileDslTest {
         }
       }
       val service = Service()
-      val injector =
+      val mockCanvas =
         object : Canvas {
           override fun <T : Any> source(type: KClass<T>): T {
             @Suppress("UNCHECKED_CAST")
@@ -103,9 +106,10 @@ class TileDslTest {
             }
           }
         }
-      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), injector)
+      val testDispatcher = StandardTestDispatcher(testScheduler)
+      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), mockCanvas, testDispatcher)
       val tile =
-        multiTile<String, String> { ids ->
+        multiTile { ids ->
           val svc = source<Service>()
           svc.fetch(ids)
         }
@@ -132,7 +136,7 @@ class TileDslTest {
         }
       }
       val service = Service()
-      val injector =
+      val mockCanvas =
         object : Canvas {
           override fun <T : Any> source(type: KClass<T>): T {
             @Suppress("UNCHECKED_CAST")
@@ -142,7 +146,8 @@ class TileDslTest {
             }
           }
         }
-      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), injector)
+      val testDispatcher = StandardTestDispatcher(testScheduler)
+      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), mockCanvas, testDispatcher)
       val tile =
         perKeyTile<String, String> { id ->
           val svc = source<Service>()
@@ -175,7 +180,7 @@ class TileDslTest {
         }
       }
       val service = Service(this)
-      val injector =
+      val mockCanvas =
         object : Canvas {
           override fun <T : Any> source(type: KClass<T>): T {
             @Suppress("UNCHECKED_CAST")
@@ -185,7 +190,8 @@ class TileDslTest {
             }
           }
         }
-      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), injector)
+      val testDispatcher = StandardTestDispatcher(testScheduler)
+      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), mockCanvas, testDispatcher)
       val tile =
         chunkedMultiTile<String, String>(2) { ids ->
           val svc = source<Service>()

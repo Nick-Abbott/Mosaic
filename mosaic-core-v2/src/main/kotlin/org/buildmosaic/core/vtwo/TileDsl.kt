@@ -99,6 +99,3 @@ fun <K : Any, V> chunkedMultiTile(
       result
     }
   }
-
-/** Simple request context that can carry arbitrary attributes. */
-data class MosaicRequest(val attributes: Map<String, Any?> = emptyMap())
