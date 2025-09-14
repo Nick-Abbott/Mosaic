@@ -16,6 +16,7 @@
 
 package org.buildmosaic.test.vtwo
 
+import org.buildmosaic.core.vtwo.exception.MosaicMissingTypeException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -23,7 +24,7 @@ import kotlin.test.assertNotSame
 import kotlin.test.assertSame
 
 @Suppress("FunctionMaxLength")
-class MockInjectorTest {
+class MockCanvasTest {
   private val canvas = MockCanvas()
 
   @Test
@@ -53,12 +54,9 @@ class MockInjectorTest {
 
   @Test
   fun `should throw exception when type not registered`() {
-    val exception =
-      assertFailsWith<IllegalArgumentException> {
-        canvas.source(String::class)
-      }
-
-    assertEquals("There is no injection for class kotlin.String", exception.message)
+    assertFailsWith<MosaicMissingTypeException> {
+      canvas.source(String::class)
+    }
   }
 
   @Test

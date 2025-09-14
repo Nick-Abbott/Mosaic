@@ -27,10 +27,8 @@ import kotlin.test.assertNull
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.measureTime
 
-@Suppress("LargeClass")
+@Suppress("LargeClass", "FunctionMaxLength")
 class TestMosaicBuilderTest {
-  private val builder = TestMosaicBuilder()
-
   // Test tiles for single tile operations
   private val testSingleTile = singleTile { "original" }
   private val testIntTile = singleTile { 42 }
@@ -43,7 +41,7 @@ class TestMosaicBuilderTest {
   @Test
   fun `builds a test mosaic`() =
     runTest {
-      assertIs<TestMosaic>(builder.build())
+      assertIs<TestMosaic>(mosaicBuilder().build())
     }
 
   @Test
@@ -54,7 +52,7 @@ class TestMosaicBuilderTest {
       val booleanTileData = false
 
       val testMosaic =
-        builder
+        mosaicBuilder()
           .withMockTile(testSingleTile, singleTileData)
           .withMockTile(testIntTile, intTileData)
           .withMockTile(testBooleanTile, booleanTileData)
@@ -72,7 +70,7 @@ class TestMosaicBuilderTest {
       val intMultiTileData = mapOf(1 to "one", 2 to "two")
 
       val testMosaic =
-        builder
+        mosaicBuilder()
           .withMockTile(testMultiTile, multiTileData)
           .withMockTile(testIntMultiTile, intMultiTileData)
           .build()
@@ -88,7 +86,7 @@ class TestMosaicBuilderTest {
       val runtimeException = RuntimeException("runtime error")
 
       val testMosaic =
-        builder
+        mosaicBuilder()
           .withFailedTile(testSingleTile, exception)
           .withFailedTile(testIntTile, runtimeException)
           .build()
@@ -104,7 +102,7 @@ class TestMosaicBuilderTest {
       val runtimeException = RuntimeException("multi runtime error")
 
       val testMosaic =
-        builder
+        mosaicBuilder()
           .withFailedTile(testMultiTile, exception)
           .withFailedTile(testIntMultiTile, runtimeException)
           .build()
@@ -122,7 +120,7 @@ class TestMosaicBuilderTest {
       val intData = 999
 
       val testMosaic =
-        builder
+        mosaicBuilder()
           .withDelayedTile(testSingleTile, singleData, singleDelay)
           .withDelayedTile(testIntTile, intData, intDelay)
           .build()
@@ -164,7 +162,7 @@ class TestMosaicBuilderTest {
       val intMultiData = mapOf(10 to "ten", 20 to "twenty")
 
       val testMosaic =
-        builder
+        mosaicBuilder()
           .withDelayedTile(testMultiTile, multiData, multiDelay)
           .withDelayedTile(testIntMultiTile, intMultiData, intMultiDelay)
           .build()
@@ -201,7 +199,7 @@ class TestMosaicBuilderTest {
   fun `registers custom single tiles`() =
     runTest {
       val testMosaic =
-        builder
+        mosaicBuilder()
           .withCustomTile(testSingleTile) { "custom-single" }
           .withCustomTile(testIntTile) { 777 }
           .build()
@@ -217,7 +215,7 @@ class TestMosaicBuilderTest {
       val inputIntKeys = setOf(1, 2)
 
       val testMosaic =
-        builder
+        mosaicBuilder()
           .withCustomTile(testMultiTile) { keys ->
             keys.associateWith { it.uppercase() + "-custom" }
           }
@@ -240,12 +238,12 @@ class TestMosaicBuilderTest {
       val testService = TestService("test-service")
 
       val testMosaic =
-        builder
+        mosaicBuilder()
           .withCanvasSource(TestService::class, testService)
           .build()
 
       // We can't directly test injection retrieval through TestMosaic,
-      // but we can verify the builder accepts the injection without error
+      // but we can verify the mosaicBuilder() accepts the injection without error
       assertIs<TestMosaic>(testMosaic)
     }
 
@@ -256,20 +254,20 @@ class TestMosaicBuilderTest {
       val anotherService = AnotherService(42)
 
       val testMosaic =
-        builder
+        mosaicBuilder()
           .withCanvasSource(anotherService)
           .build()
 
       // We can't directly test injection retrieval through TestMosaic,
-      // but we can verify the builder accepts the injection without error
+      // but we can verify the mosaicBuilder() accepts the injection without error
       assertIs<TestMosaic>(testMosaic)
     }
 
   @Test
-  fun `builder methods return builder for chaining`() =
+  fun `mosaicBuilder() methods return mosaicBuilder() for chaining`() =
     runTest {
       val result =
-        builder
+        mosaicBuilder()
           .withMockTile(testSingleTile, "test")
           .withMockTile(testMultiTile, mapOf("a" to "A"))
           .withFailedTile(testIntTile, RuntimeException("error"))
@@ -285,7 +283,7 @@ class TestMosaicBuilderTest {
     runTest {
       val nullableTile = singleTile<String?> { null }
       val testMosaic =
-        builder
+        mosaicBuilder()
           .withMockTile(nullableTile, null)
           .build()
 
@@ -297,7 +295,7 @@ class TestMosaicBuilderTest {
     runTest {
       val emptyMap = emptyMap<String, String>()
       val testMosaic =
-        builder
+        mosaicBuilder()
           .withMockTile(testMultiTile, emptyMap)
           .build()
 
@@ -312,7 +310,7 @@ class TestMosaicBuilderTest {
       val complexData = ComplexData(99, "mocked", listOf("mock", "test"))
 
       val testMosaic =
-        builder
+        mosaicBuilder()
           .withMockTile(complexTile, complexData)
           .build()
 
@@ -330,7 +328,7 @@ class TestMosaicBuilderTest {
         }
 
       val testMosaic =
-        builder
+        mosaicBuilder()
           .withMockTile(baseTile, "mocked-base")
           .withCustomTile(composedTile) {
             val base = compose(baseTile)
@@ -346,7 +344,7 @@ class TestMosaicBuilderTest {
     runTest {
       // Last registration should win
       val testMosaic =
-        builder
+        mosaicBuilder()
           .withMockTile(testSingleTile, "first")
           .withMockTile(testSingleTile, "second")
           .withMockTile(testSingleTile, "third")

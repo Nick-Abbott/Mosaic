@@ -17,7 +17,9 @@
 package org.buildmosaic.test.vtwo
 
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.test.TestDispatcher
 import org.buildmosaic.core.vtwo.Mosaic
+import org.buildmosaic.core.vtwo.MosaicImpl
 import org.buildmosaic.core.vtwo.MultiTile
 import org.buildmosaic.core.vtwo.Tile
 import org.buildmosaic.core.vtwo.injection.Canvas
@@ -52,24 +54,12 @@ import kotlin.test.assertFailsWith as testAssertFailsWith
  *
  */
 class TestMosaic(
-  private val mosaic: Mosaic,
+  scene: Scene,
+  canvas: Canvas,
   private val mockTileCache: Map<Tile<*>, Tile<*>>,
   private val mockMultiTileCache: Map<MultiTile<*, *>, MultiTile<*, *>>,
-) : Mosaic {
-  /**
-   * The [Scene] associated with this test instance.
-   *
-   * This provides access to the scene context being used in the test.
-   */
-  override val scene: Scene get() = mosaic.scene
-
-  /**
-   * The [Canvas] associated with this test instance
-   *
-   * This provides access to the canvas context being used in the test.
-   */
-  override val canvas: Canvas get() = mosaic.canvas
-
+  dispatcher: TestDispatcher,
+) : MosaicImpl(scene, canvas, dispatcher) {
   /**
    * Asserts that a [Tile] returns the expected value.
    *
@@ -225,32 +215,33 @@ class TestMosaic(
     expectedException: KClass<out Throwable>,
   ) = testAssertFailsWith(expectedException) { compose(tile, keys) }
 
-
   // Mosaic interface passthroughs
   @Suppress("UNCHECKED_CAST")
-  override suspend fun <V> compose(tile: Tile<V>): V = mosaic.compose(cacheOrTile(tile))
+  override suspend fun <V> compose(tile: Tile<V>): V {
+    return super.compose(cacheOrTile(tile))
+  }
 
-  override suspend fun <V> composeAsync(tile: Tile<V>): Deferred<V> = mosaic.composeAsync(cacheOrTile(tile))
+  override suspend fun <V> composeAsync(tile: Tile<V>): Deferred<V> = super.composeAsync(cacheOrTile(tile))
 
   override suspend fun <K : Any, V> compose(
     tile: MultiTile<K, V>,
     keys: Collection<K>,
-  ): Map<K, V> = mosaic.compose(cacheOrTile(tile), keys)
+  ): Map<K, V> = super.compose(cacheOrTile(tile), keys)
 
   override suspend fun <K : Any, V> composeAsync(
     tile: MultiTile<K, V>,
     keys: Collection<K>,
-  ): Map<K, Deferred<V>> = mosaic.composeAsync(cacheOrTile(tile), keys)
+  ): Map<K, Deferred<V>> = super.composeAsync(cacheOrTile(tile), keys)
 
   override suspend fun <K : Any, V> compose(
     tile: MultiTile<K, V>,
     key: K,
-  ): V = mosaic.compose(cacheOrTile(tile), key)
+  ): V = super.compose(cacheOrTile(tile), key)
 
   override suspend fun <K : Any, V> composeAsync(
     tile: MultiTile<K, V>,
     key: K,
-  ): Deferred<V> = mosaic.composeAsync(cacheOrTile(tile), key)
+  ): Deferred<V> = super.composeAsync(cacheOrTile(tile), key)
 
   @Suppress("UNCHECKED_CAST")
   private fun <V> cacheOrTile(tile: Tile<V>): Tile<V> = mockTileCache[tile] as Tile<V>? ?: tile

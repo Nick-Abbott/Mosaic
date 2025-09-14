@@ -12,7 +12,7 @@ import org.buildmosaic.core.vtwo.injection.Canvas
 import org.buildmosaic.core.vtwo.injection.Scene
 import kotlin.coroutines.CoroutineContext
 
-class MosaicImpl(
+open class MosaicImpl(
   override val scene: Scene,
   override val canvas: Canvas,
   dispatcher: CoroutineDispatcher = Dispatchers.Default,

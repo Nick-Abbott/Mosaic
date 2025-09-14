@@ -17,8 +17,9 @@
 package org.buildmosaic.test.vtwo
 
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import org.buildmosaic.core.vtwo.Mosaic
-import org.buildmosaic.core.vtwo.MosaicImpl
 import org.buildmosaic.core.vtwo.MultiTile
 import org.buildmosaic.core.vtwo.Tile
 import org.buildmosaic.core.vtwo.injection.MosaicSceneBuilder
@@ -56,9 +57,10 @@ import kotlin.reflect.KClass
  * ```
  */
 @Suppress("LargeClass")
-class TestMosaicBuilder {
+class TestMosaicBuilder(testContext: TestScope) {
   private val canvas = MockCanvas()
   private val sceneBuilder = MosaicSceneBuilder()
+  private var dispatcher = StandardTestDispatcher(testContext.testScheduler)
 
   private val mockTileCache: MutableMap<Tile<*>, Tile<*>> = mutableMapOf()
   private val mockMultiTileCache: MutableMap<MultiTile<*, *>, MultiTile<*, *>> = mutableMapOf()
@@ -290,18 +292,44 @@ class TestMosaicBuilder {
   ): TestMosaicBuilder =
     apply {
       sceneBuilder.registerClaim(key, value)
-      return this
     }
 
-  fun <T : Any> withCanvasSource(
+  /**
+   * Adds a source to the canvas with the specified class and object.
+   * Allows for passing in a superclass as the retrieval type.
+   *
+   * @param clazz The class of the object to register
+   * @param obj The object to register
+   * @return This builder for method chaining
+   *
+   * ```kotlin
+   * val testMosaic = TestMosaicBuilder()
+   *   .withCanvasSource(User::class, User("test-user"))
+   *   .withMockTile(MyTile, "test data")
+   *   .build()
+   * ```
+   */
+  fun <T : Any, V : T> withCanvasSource(
     clazz: KClass<T>,
-    obj: T,
+    obj: V,
   ): TestMosaicBuilder =
     apply {
       canvas.register(clazz, obj)
-      return this
     }
 
+  /**
+   * Adds a source to the canvas with the specified object.
+   *
+   * @param obj The object to register
+   * @return This builder for method chaining
+   *
+   * ```kotlin
+   * val testMosaic = TestMosaicBuilder()
+   *   .withCanvasSource(User("test-user"))
+   *   .withMockTile(MyTile, "test data")
+   *   .build()
+   * ```
+   */
   inline fun <reified T : Any> withCanvasSource(obj: T): TestMosaicBuilder = withCanvasSource(T::class, obj)
 
   /**
@@ -318,10 +346,7 @@ class TestMosaicBuilder {
    *   .build()
    * ```
    */
-  fun build(): TestMosaic =
-    TestMosaic(
-      MosaicImpl(sceneBuilder.build(), canvas),
-      mockTileCache,
-      mockMultiTileCache,
-    )
+  fun build(): TestMosaic = TestMosaic(sceneBuilder.build(), canvas, mockTileCache, mockMultiTileCache, dispatcher)
 }
+
+fun TestScope.mosaicBuilder() = TestMosaicBuilder(this)

@@ -19,7 +19,6 @@ package org.buildmosaic.test.vtwo
 import kotlinx.coroutines.test.runTest
 import org.buildmosaic.core.vtwo.multiTile
 import org.buildmosaic.core.vtwo.singleTile
-import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -32,8 +31,6 @@ import kotlin.test.fail
  */
 @Suppress("LargeClass", "FunctionMaxLength")
 class TestMosaicTest {
-  private lateinit var testMosaic: TestMosaic
-
   // Test tiles for testing
   private val testSingleTile = singleTile { "test-data" }
   private val testIntTile = singleTile { 42 }
@@ -54,11 +51,6 @@ class TestMosaicTest {
       throw TestException("Multi tile error")
     }
 
-  @BeforeTest
-  fun setUp() {
-    testMosaic = TestMosaicBuilder().build()
-  }
-
   @Test
   fun `should get single tile values`() =
     runTest {
@@ -66,7 +58,7 @@ class TestMosaicTest {
       val intData = 123
 
       val mosaic =
-        TestMosaicBuilder()
+        mosaicBuilder()
           .withMockTile(testSingleTile, testData)
           .withMockTile(testIntTile, intData)
           .build()
@@ -82,7 +74,7 @@ class TestMosaicTest {
       val expected = mapOf("key1" to "value1", "key2" to "value2")
 
       val mosaic =
-        TestMosaicBuilder()
+        mosaicBuilder()
           .withMockTile(testMultiTile, expected)
           .build()
 
@@ -95,7 +87,7 @@ class TestMosaicTest {
       val expected = mapOf("a" to "A", "b" to "B", "c" to "C")
 
       val mosaic =
-        TestMosaicBuilder()
+        mosaicBuilder()
           .withMockTile(testMultiTile, expected)
           .build()
 
@@ -108,7 +100,7 @@ class TestMosaicTest {
       val testData = "expected-data"
 
       val mosaic =
-        TestMosaicBuilder()
+        mosaicBuilder()
           .withMockTile(testSingleTile, testData)
           .build()
 
@@ -122,7 +114,7 @@ class TestMosaicTest {
       val customMessage = "Custom assertion message"
 
       val mosaic =
-        TestMosaicBuilder()
+        mosaicBuilder()
           .withMockTile(testSingleTile, testData)
           .build()
 
@@ -136,7 +128,7 @@ class TestMosaicTest {
       val wrongData = "wrong-data"
 
       val mosaic =
-        TestMosaicBuilder()
+        mosaicBuilder()
           .withMockTile(testSingleTile, testData)
           .build()
 
@@ -153,7 +145,7 @@ class TestMosaicTest {
       val customMessage = "Custom failure message"
 
       val mosaic =
-        TestMosaicBuilder()
+        mosaicBuilder()
           .withMockTile(testSingleTile, testData)
           .build()
 
@@ -173,7 +165,7 @@ class TestMosaicTest {
       val expected = mapOf("key1" to "data-for-key1", "key2" to "data-for-key2")
 
       val mosaic =
-        TestMosaicBuilder()
+        mosaicBuilder()
           .withMockTile(testMultiTile, expected)
           .build()
 
@@ -188,7 +180,7 @@ class TestMosaicTest {
       val customMessage = "Multi tile assertion message"
 
       val mosaic =
-        TestMosaicBuilder()
+        mosaicBuilder()
           .withMockTile(testMultiTile, expected)
           .build()
 
@@ -203,7 +195,7 @@ class TestMosaicTest {
       val wrongData = mapOf("key1" to "wrong-data", "key2" to "wrong-data")
 
       val mosaic =
-        TestMosaicBuilder()
+        mosaicBuilder()
           .withMockTile(testMultiTile, expected)
           .build()
 
@@ -221,7 +213,7 @@ class TestMosaicTest {
       val customMessage = "Multi tile failure message"
 
       val mosaic =
-        TestMosaicBuilder()
+        mosaicBuilder()
           .withMockTile(testMultiTile, expected)
           .build()
 
@@ -238,7 +230,7 @@ class TestMosaicTest {
   fun `should assert throws for single tile`() =
     runTest {
       val mosaic =
-        TestMosaicBuilder()
+        mosaicBuilder()
           .withFailedTile(testErrorTile, TestException("Test error"))
           .build()
 
@@ -251,7 +243,7 @@ class TestMosaicTest {
       val customMessage = "Expected exception message"
 
       val mosaic =
-        TestMosaicBuilder()
+        mosaicBuilder()
           .withFailedTile(testErrorTile, TestException("Test error"))
           .build()
 
@@ -262,7 +254,7 @@ class TestMosaicTest {
   fun `should fail assert throws for single tile with wrong exception`() =
     runTest {
       val mosaic =
-        TestMosaicBuilder()
+        mosaicBuilder()
           .withMockTile(testSingleTile, "normal-data")
           .build()
 
@@ -277,7 +269,7 @@ class TestMosaicTest {
       val customMessage = "Wrong exception message"
 
       val mosaic =
-        TestMosaicBuilder()
+        mosaicBuilder()
           .withMockTile(testSingleTile, "normal-data")
           .build()
 
@@ -296,7 +288,7 @@ class TestMosaicTest {
       val keys = listOf("key1")
 
       val mosaic =
-        TestMosaicBuilder()
+        mosaicBuilder()
           .withFailedTile(testErrorMultiTile, TestException("Multi error"))
           .build()
 
@@ -310,7 +302,7 @@ class TestMosaicTest {
       val expected = mapOf("key1" to "normal-data")
 
       val mosaic =
-        TestMosaicBuilder()
+        mosaicBuilder()
           .withMockTile(testMultiTile, expected)
           .build()
 
@@ -325,7 +317,7 @@ class TestMosaicTest {
       val nullableTile = singleTile<String?> { null }
 
       val mosaic =
-        TestMosaicBuilder()
+        mosaicBuilder()
           .withMockTile(nullableTile, null)
           .build()
 
@@ -339,7 +331,7 @@ class TestMosaicTest {
       val emptyResult = emptyMap<String, String>()
 
       val mosaic =
-        TestMosaicBuilder()
+        mosaicBuilder()
           .withMockTile(testMultiTile, emptyResult)
           .build()
 
@@ -357,7 +349,7 @@ class TestMosaicTest {
       val complexData = ComplexData(99, "complex", mapOf("items" to listOf(4, 5, 6)))
 
       val mosaic =
-        TestMosaicBuilder()
+        mosaicBuilder()
           .withMockTile(complexTile, complexData)
           .build()
 
@@ -371,7 +363,7 @@ class TestMosaicTest {
       val intExpected = mapOf(1 to "one", 2 to "two", 3 to "three")
 
       val mosaic =
-        TestMosaicBuilder()
+        mosaicBuilder()
           .withMockTile(testIntMultiTile, intExpected)
           .build()
 
@@ -383,17 +375,172 @@ class TestMosaicTest {
     runTest {
       val successData = "success"
 
+      class MyFakeException : Exception("Expected failure")
       val mosaic =
-        TestMosaicBuilder()
+        mosaicBuilder()
           .withMockTile(testSingleTile, successData)
-          .withFailedTile(testErrorTile, RuntimeException("Expected failure"))
+          .withFailedTile(testErrorTile, MyFakeException())
           .build()
 
       // Success case
       mosaic.assertEquals(testSingleTile, successData)
 
       // Failure case
-      mosaic.assertThrows(testErrorTile, RuntimeException::class)
+      mosaic.assertThrows(testErrorTile, MyFakeException::class)
+    }
+
+  @Test
+  fun `should compose single tile asynchronously`() =
+    runTest {
+      val testData = "async-data"
+
+      val mosaic =
+        mosaicBuilder()
+          .withMockTile(testSingleTile, testData)
+          .build()
+
+      val deferred = mosaic.composeAsync(testSingleTile)
+      val result = deferred.await()
+      assertEquals(testData, result)
+    }
+
+  @Test
+  fun `should compose multi tile asynchronously with collection`() =
+    runTest {
+      val keys = listOf("key1", "key2")
+      val expected = mapOf("key1" to "value1", "key2" to "value2")
+
+      val mosaic =
+        mosaicBuilder()
+          .withMockTile(testMultiTile, expected)
+          .build()
+
+      val deferredMap = mosaic.composeAsync(testMultiTile, keys)
+      val result = deferredMap.mapValues { it.value.await() }
+      assertEquals(expected, result)
+    }
+
+  @Test
+  fun `should compose multi tile asynchronously with single key`() =
+    runTest {
+      val expected = mapOf("test-key" to "test-value")
+
+      val mosaic =
+        mosaicBuilder()
+          .withMockTile(testMultiTile, expected)
+          .build()
+
+      val deferred = mosaic.composeAsync(testMultiTile, "test-key")
+      val result = deferred.await()
+      assertEquals("test-value", result)
+    }
+
+  @Test
+  fun `should allow non-mocked tiles to work correctly within composed tiles`() =
+    runTest {
+      val realTile = singleTile { "real-data" }
+      val mockedTile = singleTile { "mocked-data" }
+
+      val composedTile =
+        singleTile {
+          val realResult = compose(realTile)
+          val mockedResult = compose(mockedTile)
+          "$realResult + $mockedResult"
+        }
+
+      val mosaic =
+        mosaicBuilder()
+          .withMockTile(mockedTile, "test-mocked-data")
+          // realTile is not mocked, should use original implementation
+          .build()
+
+      val result = mosaic.compose(composedTile)
+      assertEquals("real-data + test-mocked-data", result)
+    }
+
+  @Test
+  fun `should allow non-mocked multi tiles to work correctly within composed tiles`() =
+    runTest {
+      val realMultiTile =
+        multiTile<String, String> { keys ->
+          keys.associateWith { "real-$it" }
+        }
+      val mockedMultiTile =
+        multiTile<String, String> { keys ->
+          keys.associateWith { "mocked-$it" }
+        }
+
+      val composedTile =
+        singleTile {
+          val realResults = compose(realMultiTile, listOf("a", "b"))
+          val mockedResults = compose(mockedMultiTile, listOf("x", "y"))
+          "Real: ${realResults.values.joinToString()}, Mocked: ${mockedResults.values.joinToString()}"
+        }
+
+      val mosaic =
+        mosaicBuilder()
+          .withMockTile(mockedMultiTile, mapOf("x" to "test-x", "y" to "test-y"))
+          // realMultiTile is not mocked, should use original implementation
+          .build()
+
+      val result = mosaic.compose(composedTile)
+      assertEquals("Real: real-a, real-b, Mocked: test-x, test-y", result)
+    }
+
+  @Test
+  fun `should handle mixed mocked and non-mocked tiles in complex composition`() =
+    runTest {
+      val baseTile = singleTile { 10 }
+      val multiplierTile = singleTile { 3 }
+      val formatTile = singleTile<String> { "formatted" }
+
+      val complexTile =
+        singleTile {
+          val base = compose(baseTile)
+          val multiplier = compose(multiplierTile)
+          val format = compose(formatTile)
+          "$format: ${base * multiplier}"
+        }
+
+      val mosaic =
+        mosaicBuilder()
+          .withMockTile(multiplierTile, 5) // Mock multiplier
+          .withMockTile(formatTile, "result") // Mock format
+          // baseTile is not mocked, should return 10
+          .build()
+
+      val result = mosaic.compose(complexTile)
+      assertEquals("result: 50", result)
+    }
+
+  @Test
+  fun `should provide access to scene from test mosaic`() =
+    runTest {
+      val testKey = org.buildmosaic.core.vtwo.injection.SceneKey<String>("test-key")
+      val testValue = "test-value"
+
+      val mosaic =
+        mosaicBuilder()
+          .withSceneClaim(testKey, testValue)
+          .build()
+
+      val scene = mosaic.scene
+      assertEquals(testValue, scene.claim(testKey))
+    }
+
+  @Test
+  fun `should provide access to canvas from test mosaic`() =
+    runTest {
+      data class TestService(val name: String)
+      val testService = TestService("test-service")
+
+      val mosaic =
+        mosaicBuilder()
+          .withCanvasSource(testService)
+          .build()
+
+      val canvas = mosaic.canvas
+      assertEquals(testService, canvas.source(TestService::class))
     }
 }
 
