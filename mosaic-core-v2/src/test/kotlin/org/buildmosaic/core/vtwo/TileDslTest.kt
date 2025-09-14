@@ -73,7 +73,6 @@ class TileDslTest {
       val mosaic = MosaicImpl(MosaicSceneBuilder().build(), mockCanvas, testDispatcher)
       val tile =
         singleTile {
-          System.out.println("RUNNING TILE")
           val svc = source<Service>()
           svc.fetch()
         }
