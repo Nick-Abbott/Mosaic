@@ -1,16 +1,16 @@
 package org.buildmosaic.library.tile
 
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import org.buildmosaic.library.model.LineItemDetail
 import org.buildmosaic.library.model.Price
 import org.buildmosaic.library.model.Product
-import org.buildmosaic.test.TestMosaicBuilder
+import org.buildmosaic.test.vtwo.TestMosaicBuilder
 import kotlin.test.Test
 
 class OrderTotalTileTest {
   @Test
   fun `order total tile sums line item prices`() =
-    runBlocking {
+    runTest {
       val lineItems =
         listOf(
           LineItemDetail(Product("product-1", "Coffee Mug"), Price("sku-1", 12.99), 2),
@@ -18,19 +18,19 @@ class OrderTotalTileTest {
         )
       val expected = lineItems.sumOf { it.price.amount * it.quantity }
       val testMosaic =
-        TestMosaicBuilder()
-          .withMockTile(LineItemsTile::class, lineItems)
+        TestMosaicBuilder(this)
+          .withMockTile(LineItemsTile, lineItems)
           .build()
-      testMosaic.assertEquals(OrderTotalTile::class, expected)
+      testMosaic.assertEquals(OrderTotalTile, expected)
     }
 
   @Test
   fun `order total tile fails when line items fail`() =
-    runBlocking {
+    runTest {
       val testMosaic =
-        TestMosaicBuilder()
-          .withFailedTile(LineItemsTile::class, RuntimeException("boom"))
+        TestMosaicBuilder(this)
+          .withFailedTile(LineItemsTile, RuntimeException("boom"))
           .build()
-      testMosaic.assertThrows(OrderTotalTile::class, RuntimeException::class)
+      testMosaic.assertThrows(OrderTotalTile, RuntimeException::class)
     }
 }

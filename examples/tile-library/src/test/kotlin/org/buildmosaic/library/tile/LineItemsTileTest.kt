@@ -1,18 +1,18 @@
 package org.buildmosaic.library.tile
 
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import org.buildmosaic.library.model.LineItemDetail
 import org.buildmosaic.library.model.Order
 import org.buildmosaic.library.model.OrderLineItem
 import org.buildmosaic.library.model.Price
 import org.buildmosaic.library.model.Product
-import org.buildmosaic.test.TestMosaicBuilder
+import org.buildmosaic.test.vtwo.TestMosaicBuilder
 import kotlin.test.Test
 
 class LineItemsTileTest {
   @Test
   fun `line items tile combines other tiles`() =
-    runBlocking {
+    runTest {
       val order =
         Order(
           id = "order-1",
@@ -30,17 +30,17 @@ class LineItemsTileTest {
           ),
         )
       val testMosaic =
-        TestMosaicBuilder()
-          .withMockTile(OrderTile::class, order)
-          .withMockTile(ProductsByIdTile::class, products)
-          .withMockTile(PricingBySkuTile::class, prices)
+        TestMosaicBuilder(this)
+          .withMockTile(OrderTile, order)
+          .withMockTile(ProductsByIdTile, products)
+          .withMockTile(PricingBySkuTile, prices)
           .build()
-      testMosaic.assertEquals(LineItemsTile::class, expected)
+      testMosaic.assertEquals(LineItemsTile, expected)
     }
 
   @Test
   fun `line items tile fails when products tile fails`() =
-    runBlocking {
+    runTest {
       val order =
         Order(
           id = "order-1",
@@ -48,10 +48,10 @@ class LineItemsTileTest {
           items = listOf(OrderLineItem("product-1", "sku-1", 1)),
         )
       val testMosaic =
-        TestMosaicBuilder()
-          .withMockTile(OrderTile::class, order)
-          .withFailedTile(ProductsByIdTile::class, RuntimeException("boom"))
+        TestMosaicBuilder(this)
+          .withMockTile(OrderTile, order)
+          .withFailedTile(ProductsByIdTile, RuntimeException("boom"))
           .build()
-      testMosaic.assertThrows(LineItemsTile::class, RuntimeException::class)
+      testMosaic.assertThrows(LineItemsTile, RuntimeException::class)
     }
 }

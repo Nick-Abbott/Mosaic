@@ -2,12 +2,12 @@ plugins {
   kotlin("jvm")
   kotlin("plugin.serialization") version "2.2.10"
   id("com.google.devtools.ksp")
-  id("org.buildmosaic.consumer") version "0.1.0"
   id("io.micronaut.application") version "4.5.4"
 }
 
 dependencies {
   implementation(project(":tile-library"))
+  implementation("org.buildmosaic:mosaic-core-v2:0.1.0")
 
   // Micronaut dependencies
   implementation("io.micronaut:micronaut-http-server-netty")
@@ -17,11 +17,14 @@ dependencies {
   implementation("org.yaml:snakeyaml")
   implementation(libs.kotlinx.coroutines.core)
   implementation("jakarta.inject:jakarta.inject-api:2.0.1")
+  implementation(kotlin("reflect"))
 
   // Testing
   testImplementation("io.micronaut.test:micronaut-test-junit5")
   testImplementation("io.micronaut:micronaut-http-client")
   testImplementation(kotlin("test"))
+  testImplementation("org.buildmosaic:mosaic-test-v2:0.1.0")
+  testImplementation(libs.kotlinx.coroutines.test)
 }
 
 kotlin {

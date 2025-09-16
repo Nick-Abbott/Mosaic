@@ -1,17 +1,17 @@
 package org.buildmosaic.library.tile
 
-import kotlinx.coroutines.runBlocking
-import org.buildmosaic.library.OrderRequest
+import kotlinx.coroutines.test.runTest
+import org.buildmosaic.library.OrderKey
 import org.buildmosaic.library.exception.OrderNotFoundException
 import org.buildmosaic.library.model.Order
 import org.buildmosaic.library.model.OrderLineItem
-import org.buildmosaic.test.TestMosaicBuilder
+import org.buildmosaic.test.vtwo.TestMosaicBuilder
 import kotlin.test.Test
 
 class OrderTileTest {
   @Test
   fun `order tile returns order from request`() =
-    runBlocking {
+    runTest {
       val expected =
         Order(
           id = "order-1",
@@ -22,14 +22,20 @@ class OrderTileTest {
               OrderLineItem("product-2", "sku-2", 1),
             ),
         )
-      val testMosaic = TestMosaicBuilder().withRequest(OrderRequest("order-1")).build()
-      testMosaic.assertEquals(OrderTile::class, expected)
+      val testMosaic =
+        TestMosaicBuilder(this)
+          .withCanvasSource(OrderKey, "order-1")
+          .build()
+      testMosaic.assertEquals(OrderTile, expected)
     }
 
   @Test
   fun `order tile throws custom exception when missing`() =
-    runBlocking {
-      val testMosaic = TestMosaicBuilder().withRequest(OrderRequest("missing")).build()
-      testMosaic.assertThrows(OrderTile::class, OrderNotFoundException::class)
+    runTest {
+      val testMosaic =
+        TestMosaicBuilder(this)
+          .withCanvasSource(OrderKey, "missing")
+          .build()
+      testMosaic.assertThrows(OrderTile, OrderNotFoundException::class)
     }
 }

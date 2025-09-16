@@ -1,13 +1,12 @@
 plugins {
   kotlin("jvm")
   kotlin("plugin.serialization") version "2.2.10"
-  id("com.google.devtools.ksp")
-  id("org.buildmosaic.consumer") version "0.1.0"
   application
 }
 
 dependencies {
   implementation(project(":tile-library"))
+  implementation("org.buildmosaic:mosaic-core-v2:0.1.0")
   implementation("io.ktor:ktor-server-core:2.3.12")
   implementation("io.ktor:ktor-server-netty:2.3.12")
   implementation("io.ktor:ktor-server-content-negotiation:2.3.12")
@@ -18,6 +17,8 @@ dependencies {
   testImplementation("io.ktor:ktor-server-tests:2.3.12")
   testImplementation("io.ktor:ktor-client-content-negotiation:2.3.12")
   testImplementation(kotlin("test"))
+  testImplementation("org.buildmosaic:mosaic-test-v2:0.1.0")
+  testImplementation(libs.kotlinx.coroutines.test)
 }
 
 kotlin {

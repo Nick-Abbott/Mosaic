@@ -1,9 +1,9 @@
 package org.buildmosaic.spring.orders.web
 
 import kotlinx.coroutines.runBlocking
-import org.buildmosaic.core.Mosaic
-import org.buildmosaic.core.MosaicRegistry
-import org.buildmosaic.library.OrderRequest
+import org.buildmosaic.core.vtwo.injection.Canvas
+import org.buildmosaic.core.vtwo.injection.create
+import org.buildmosaic.library.OrderKey
 import org.buildmosaic.library.model.OrderPage
 import org.buildmosaic.library.tile.OrderPageTile
 import org.buildmosaic.library.tile.OrderTotalTile
@@ -14,14 +14,17 @@ import org.springframework.web.bind.annotation.RestController
 
 @RestController
 @RequestMapping("/orders")
-class OrderController(private val registry: MosaicRegistry) {
+class OrderController(private val canvas: Canvas) {
   @GetMapping("/{id}")
   fun getOrder(
     @PathVariable("id") id: String,
   ): OrderPage =
     runBlocking {
-      val mosaic = Mosaic(registry, OrderRequest(id))
-      mosaic.getTile<OrderPageTile>().get()
+      val mosaic =
+        canvas.withLayer {
+          single(OrderKey.qualifier) { id }
+        }.create()
+      mosaic.compose(OrderPageTile)
     }
 
   @GetMapping("/{id}/total")
@@ -29,7 +32,10 @@ class OrderController(private val registry: MosaicRegistry) {
     @PathVariable("id") id: String,
   ): Double =
     runBlocking {
-      val mosaic = Mosaic(registry, OrderRequest(id))
-      mosaic.getTile<OrderTotalTile>().get()
+      val mosaic =
+        canvas.withLayer {
+          single(OrderKey.qualifier) { id }
+        }.create()
+      mosaic.compose(OrderTotalTile)
     }
 }

@@ -11,10 +11,10 @@ import io.micronaut.http.annotation.PathVariable
 import io.micronaut.runtime.Micronaut
 import jakarta.inject.Singleton
 import kotlinx.coroutines.runBlocking
-import org.buildmosaic.core.Mosaic
-import org.buildmosaic.core.MosaicRegistry
-import org.buildmosaic.core.generated.registerGeneratedTiles
-import org.buildmosaic.library.OrderRequest
+import org.buildmosaic.core.vtwo.injection.Canvas
+import org.buildmosaic.core.vtwo.injection.canvas
+import org.buildmosaic.core.vtwo.injection.create
+import org.buildmosaic.library.OrderKey
 import org.buildmosaic.library.exception.OrderNotFoundException
 import org.buildmosaic.library.model.OrderPage
 import org.buildmosaic.library.tile.OrderPageTile
@@ -30,15 +30,15 @@ class MicronautExampleApplication
 class MosaicConfiguration {
   @Bean
   @Singleton
-  fun mosaicRegistry(): MosaicRegistry {
-    val registry = MosaicRegistry()
-    registry.registerGeneratedTiles()
-    return registry
+  fun mosaicCanvas(): Canvas {
+    return kotlinx.coroutines.runBlocking {
+      canvas { }
+    }
   }
 }
 
 @Controller("/orders")
-class OrderController(private val registry: MosaicRegistry) {
+class OrderController(private val canvas: Canvas) {
   @Get("/{id}")
   fun getOrder(
     @PathVariable id: String,
@@ -46,8 +46,11 @@ class OrderController(private val registry: MosaicRegistry) {
     runBlocking {
       System.out.println(id)
       try {
-        val mosaic = Mosaic(registry, OrderRequest(id))
-        mosaic.getTile<OrderPageTile>().get()
+        val mosaic =
+          canvas.withLayer {
+            single(OrderKey.qualifier) { id }
+          }.create()
+        mosaic.compose(OrderPageTile)
       } catch (err: Exception) {
         System.out.println(err.toString())
         throw err
@@ -59,8 +62,11 @@ class OrderController(private val registry: MosaicRegistry) {
     @PathVariable id: String,
   ): Map<String, Double> =
     runBlocking {
-      val mosaic = Mosaic(registry, OrderRequest(id))
-      val total = mosaic.getTile<OrderTotalTile>().get()
+      val mosaic =
+        canvas.withLayer {
+          single(OrderKey.qualifier) { id }
+        }.create()
+      val total = mosaic.compose(OrderTotalTile)
       mapOf("total" to total)
     }
 

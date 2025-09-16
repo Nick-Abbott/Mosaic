@@ -1,28 +1,28 @@
 package org.buildmosaic.library.tile
 
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import org.buildmosaic.library.model.Customer
 import org.buildmosaic.library.model.Order
-import org.buildmosaic.test.TestMosaicBuilder
+import org.buildmosaic.test.vtwo.TestMosaicBuilder
 import kotlin.test.Test
 
 class CustomerTileTest {
   @Test
   fun `customer tile uses order tile`() =
-    runBlocking {
+    runTest {
       val order = Order("order-1", "customer-1", emptyList())
       val expected = Customer("customer-1", "Jane Doe")
-      val testMosaic = TestMosaicBuilder().withMockTile(OrderTile::class, order).build()
-      testMosaic.assertEquals(CustomerTile::class, expected)
+      val testMosaic = TestMosaicBuilder(this).withMockTile(OrderTile, order).build()
+      testMosaic.assertEquals(CustomerTile, expected)
     }
 
   @Test
   fun `customer tile fails when order tile fails`() =
-    runBlocking {
+    runTest {
       val testMosaic =
-        TestMosaicBuilder()
-          .withFailedTile(OrderTile::class, RuntimeException("boom"))
+        TestMosaicBuilder(this)
+          .withFailedTile(OrderTile, RuntimeException("boom"))
           .build()
-      testMosaic.assertThrows(CustomerTile::class, RuntimeException::class)
+      testMosaic.assertThrows(CustomerTile, RuntimeException::class)
     }
 }
