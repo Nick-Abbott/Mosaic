@@ -36,9 +36,10 @@ class MosaicConcurrencyTest {
 
   @BeforeTest
   fun setUp() {
-    val emptyCanvas = object : Canvas {
-      override fun <T : Any> sourceOr(key: CanvasKey<T>): T? = null
-    }
+    val emptyCanvas =
+      object : Canvas {
+        override fun <T : Any> sourceOr(key: CanvasKey<T>): T? = null
+      }
     mosaic = MosaicImpl(emptyCanvas)
   }
 

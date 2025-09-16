@@ -514,21 +514,6 @@ class TestMosaicTest {
     }
 
   @Test
-  fun `should provide access to scene from test mosaic`() =
-    runTest {
-      val testKey = org.buildmosaic.core.vtwo.injection.SceneKey<String>("test-key")
-      val testValue = "test-value"
-
-      val mosaic =
-        mosaicBuilder()
-          .withSceneClaim(testKey, testValue)
-          .build()
-
-      val scene = mosaic.scene
-      assertEquals(testValue, scene.claim(testKey))
-    }
-
-  @Test
   fun `should provide access to canvas from test mosaic`() =
     runTest {
       data class TestService(val name: String)

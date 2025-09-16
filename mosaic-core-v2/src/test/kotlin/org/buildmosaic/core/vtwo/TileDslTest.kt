@@ -9,7 +9,6 @@ import kotlinx.coroutines.test.runTest
 import org.buildmosaic.core.vtwo.injection.Canvas
 import org.buildmosaic.core.vtwo.injection.CanvasKey
 import org.buildmosaic.core.vtwo.injection.source
-import kotlin.reflect.KClass
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

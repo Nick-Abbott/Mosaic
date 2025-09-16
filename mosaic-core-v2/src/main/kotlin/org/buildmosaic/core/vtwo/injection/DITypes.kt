@@ -10,7 +10,7 @@ sealed interface MosaicDI
 
 /**
  * Represents a dependency that hasn't been initialized yet.
- * 
+ *
  * Stubs are used during the canvas building phase to defer dependency creation
  * until the canvas is fully constructed and ready to resolve dependencies.
  */
@@ -36,11 +36,20 @@ class SingleStub<T : Any>(private val ctor: suspend CanvasFactory.() -> T) : Stu
 
   @Volatile lateinit var instance: T
 
+  @Volatile var isInitializing = false
+
   override suspend fun create(canvas: CanvasFactory): T {
     if (::instance.isInitialized) return instance
+    check(!isInitializing) { "Circular dependency detected during initialization" }
     return initLock.withLock {
-      if (!::instance.isInitialized) instance = ctor(canvas)
-      instance
+      if (::instance.isInitialized) return instance
+      isInitializing = true
+      try {
+        instance = ctor(canvas)
+        instance
+      } finally {
+        isInitializing = false
+      }
     }
   }
 

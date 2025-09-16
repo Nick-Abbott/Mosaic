@@ -6,7 +6,7 @@ private fun missingKeyError(key: CanvasKey<*>): Nothing = throw MosaicMissingKey
 
 /**
  * Builder for constructing a [Canvas] with dependency bindings.
- * 
+ *
  * Use this builder to register dependencies that will be available for injection
  * in tiles and other canvas-aware components.
  */

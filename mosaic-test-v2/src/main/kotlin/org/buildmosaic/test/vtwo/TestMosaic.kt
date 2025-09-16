@@ -23,7 +23,6 @@ import org.buildmosaic.core.vtwo.MosaicImpl
 import org.buildmosaic.core.vtwo.MultiTile
 import org.buildmosaic.core.vtwo.Tile
 import org.buildmosaic.core.vtwo.injection.Canvas
-import org.buildmosaic.core.vtwo.injection.Scene
 import kotlin.reflect.KClass
 import kotlin.test.assertEquals as testAssertEquals
 import kotlin.test.assertFailsWith as testAssertFailsWith
@@ -54,12 +53,11 @@ import kotlin.test.assertFailsWith as testAssertFailsWith
  *
  */
 class TestMosaic(
-  scene: Scene,
   canvas: Canvas,
   private val mockTileCache: Map<Tile<*>, Tile<*>>,
   private val mockMultiTileCache: Map<MultiTile<*, *>, MultiTile<*, *>>,
   dispatcher: TestDispatcher,
-) : MosaicImpl(scene, canvas, dispatcher) {
+) : MosaicImpl(canvas, dispatcher) {
   /**
    * Asserts that a [Tile] returns the expected value.
    *

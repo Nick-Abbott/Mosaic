@@ -22,8 +22,7 @@ import kotlinx.coroutines.test.TestScope
 import org.buildmosaic.core.vtwo.Mosaic
 import org.buildmosaic.core.vtwo.MultiTile
 import org.buildmosaic.core.vtwo.Tile
-import org.buildmosaic.core.vtwo.injection.MosaicSceneBuilder
-import org.buildmosaic.core.vtwo.injection.SceneKey
+import org.buildmosaic.core.vtwo.injection.CanvasKey
 import org.buildmosaic.core.vtwo.multiTile
 import org.buildmosaic.core.vtwo.singleTile
 import kotlin.jvm.JvmName
@@ -59,7 +58,6 @@ import kotlin.reflect.KClass
 @Suppress("LargeClass")
 class TestMosaicBuilder(testContext: TestScope) {
   private val canvas = MockCanvas()
-  private val sceneBuilder = MosaicSceneBuilder()
   private var dispatcher = StandardTestDispatcher(testContext.testScheduler)
 
   private val mockTileCache: MutableMap<Tile<*>, Tile<*>> = mutableMapOf()
@@ -272,29 +270,6 @@ class TestMosaicBuilder(testContext: TestScope) {
     }
 
   /**
-   * Adds a claim to the scene with the specified key and value.
-   *
-   * @param key The scene key to claim
-   * @param value The value to associate with the key
-   * @return This builder for method chaining
-   *
-   * ```kotlin
-   * val USER_ID_KEY = SceneKey<String>("userId")
-   * val testMosaic = TestMosaicBuilder()
-   *   .withSceneClaim(USER_ID_KEY, "123")
-   *   .withMockTile(MyTile, "test data")
-   *   .build()
-   * ```
-   */
-  fun <T : Any> withSceneClaim(
-    key: SceneKey<T>,
-    value: T,
-  ): TestMosaicBuilder =
-    apply {
-      sceneBuilder.registerClaim(key, value)
-    }
-
-  /**
    * Adds a source to the canvas with the specified class and object.
    * Allows for passing in a superclass as the retrieval type.
    *
@@ -333,6 +308,71 @@ class TestMosaicBuilder(testContext: TestScope) {
   inline fun <reified T : Any> withCanvasSource(obj: T): TestMosaicBuilder = withCanvasSource(T::class, obj)
 
   /**
+   * Adds a source to the canvas with the specified class, qualifier, and object.
+   *
+   * @param clazz The class of the object to register
+   * @param qualifier The qualifier to distinguish this instance
+   * @param obj The object to register
+   * @return This builder for method chaining
+   *
+   * ```kotlin
+   * val testMosaic = TestMosaicBuilder()
+   *   .withCanvasSource(DatabaseService::class, "primary", primaryDb)
+   *   .withCanvasSource(DatabaseService::class, "secondary", secondaryDb)
+   *   .build()
+   * ```
+   */
+  fun <T : Any, V : T> withCanvasSource(
+    clazz: KClass<T>,
+    qualifier: String,
+    obj: V,
+  ): TestMosaicBuilder =
+    apply {
+      canvas.register(clazz, qualifier, obj)
+    }
+
+  /**
+   * Adds a source to the canvas with the specified object and qualifier.
+   *
+   * @param qualifier The qualifier to distinguish this instance
+   * @param obj The object to register
+   * @return This builder for method chaining
+   *
+   * ```kotlin
+   * val testMosaic = TestMosaicBuilder()
+   *   .withCanvasSource("primary", primaryDb)
+   *   .withCanvasSource("secondary", secondaryDb)
+   *   .build()
+   * ```
+   */
+  inline fun <reified T : Any> withCanvasSource(
+    qualifier: String,
+    obj: T,
+  ): TestMosaicBuilder = withCanvasSource(T::class, qualifier, obj)
+
+  /**
+   * Adds a source to the canvas using a CanvasKey.
+   *
+   * @param key The canvas key to register under
+   * @param obj The object to register
+   * @return This builder for method chaining
+   *
+   * ```kotlin
+   * val dbKey = CanvasKey(DatabaseService::class, "primary")
+   * val testMosaic = TestMosaicBuilder()
+   *   .withCanvasSource(dbKey, primaryDb)
+   *   .build()
+   * ```
+   */
+  fun <T : Any> withCanvasSource(
+    key: CanvasKey<T>,
+    obj: T,
+  ): TestMosaicBuilder =
+    apply {
+      canvas.register(key, obj)
+    }
+
+  /**
    * Builds and returns a configured [TestMosaic] instance.
    *
    * This method finalizes the builder configuration and creates a new [TestMosaic]
@@ -346,7 +386,7 @@ class TestMosaicBuilder(testContext: TestScope) {
    *   .build()
    * ```
    */
-  fun build(): TestMosaic = TestMosaic(sceneBuilder.build(), canvas, mockTileCache, mockMultiTileCache, dispatcher)
+  fun build(): TestMosaic = TestMosaic(canvas, mockTileCache, mockMultiTileCache, dispatcher)
 }
 
 fun TestScope.mosaicBuilder() = TestMosaicBuilder(this)
