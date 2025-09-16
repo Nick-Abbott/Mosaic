@@ -1,7 +1,8 @@
 package org.buildmosaic.core.vtwo
 
 import kotlinx.coroutines.test.runTest
-import org.buildmosaic.core.vtwo.injection.MosaicSceneBuilder
+import org.buildmosaic.core.vtwo.injection.Canvas
+import org.buildmosaic.core.vtwo.injection.CanvasKey
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -13,7 +14,10 @@ class TileTest {
 
   @BeforeTest
   fun setUp() {
-    mosaic = MosaicImpl(MosaicSceneBuilder().build(), MockCanvas())
+    val emptyCanvas = object : Canvas {
+      override fun <T : Any> sourceOr(key: CanvasKey<T>): T? = null
+    }
+    mosaic = MosaicImpl(emptyCanvas)
   }
 
   @Test

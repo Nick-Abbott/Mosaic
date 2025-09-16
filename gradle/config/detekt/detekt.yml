@@ -251,9 +251,7 @@ potential-bugs:
   IteratorNotThrowingNoSuchElementException:
     active: true
   LateinitUsage:
-    active: true
-    ignoreAnnotated: []
-    ignoreOnClassesPattern: ''
+    active: false
   MapGetWithNotNullAssertionOperator:
     active: true
   UnsafeCallOnNullableType:

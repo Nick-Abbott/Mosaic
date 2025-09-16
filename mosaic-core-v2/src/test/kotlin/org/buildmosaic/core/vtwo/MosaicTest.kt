@@ -5,7 +5,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
-import org.buildmosaic.core.vtwo.injection.MosaicSceneBuilder
+import org.buildmosaic.core.vtwo.injection.canvas
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -21,7 +21,7 @@ class MosaicTest {
   fun `should retrieve a singleTile asynchronously`() =
     runTest {
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), MockCanvas(), testDispatcher)
+      val mosaic = MosaicImpl(canvas { }, testDispatcher)
 
       val resultValue = "test-result"
       val delayLength = 100L
@@ -53,7 +53,7 @@ class MosaicTest {
   fun `should retrieve a singleTile synchronously`() =
     runTest {
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), MockCanvas(), testDispatcher)
+      val mosaic = MosaicImpl(canvas { }, testDispatcher)
 
       val resultValue = "test-result"
       val delayLength = 100L
@@ -83,7 +83,7 @@ class MosaicTest {
   fun `should retrieve a mutltiTile asynchronously`() =
     runTest {
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), MockCanvas(), testDispatcher)
+      val mosaic = MosaicImpl(canvas { }, testDispatcher)
 
       val resultMap = mapOf("a" to "foo", "b" to "bar", "c" to "baz")
       val delayLength = 100L
@@ -115,7 +115,7 @@ class MosaicTest {
   fun `should retrieve a multiTile synchronously`() =
     runTest {
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), MockCanvas(), testDispatcher)
+      val mosaic = MosaicImpl(canvas { }, testDispatcher)
 
       val resultMap = mapOf("a" to "foo", "b" to "bar", "c" to "baz")
       val delayLength = 100L
@@ -145,7 +145,7 @@ class MosaicTest {
   fun `should receive a single key from a multiTile asynchronously`() =
     runTest {
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), MockCanvas(), testDispatcher)
+      val mosaic = MosaicImpl(canvas { }, testDispatcher)
 
       val resultMap = mapOf("a" to "foo", "b" to "bar", "c" to "baz")
       val delayLength = 100L
@@ -177,7 +177,7 @@ class MosaicTest {
   fun `should receive a single key from a multiTile synchronously`() =
     runTest {
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), MockCanvas(), testDispatcher)
+      val mosaic = MosaicImpl(canvas { }, testDispatcher)
 
       val resultMap = mapOf("a" to "foo", "b" to "bar", "c" to "baz")
       val delayLength = 100L

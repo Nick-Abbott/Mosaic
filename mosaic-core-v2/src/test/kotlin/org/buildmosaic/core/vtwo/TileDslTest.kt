@@ -7,7 +7,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
 import org.buildmosaic.core.vtwo.injection.Canvas
-import org.buildmosaic.core.vtwo.injection.MosaicSceneBuilder
+import org.buildmosaic.core.vtwo.injection.CanvasKey
 import org.buildmosaic.core.vtwo.injection.source
 import kotlin.reflect.KClass
 import kotlin.test.Test
@@ -23,16 +23,16 @@ class TileDslTest {
       val service = Service()
       val mockCanvas =
         object : Canvas {
-          override fun <T : Any> source(type: KClass<T>): T {
+          override fun <T : Any> sourceOr(key: CanvasKey<T>): T? {
             @Suppress("UNCHECKED_CAST")
-            return when (type) {
+            return when (key.type) {
               Service::class -> service as T
-              else -> error("unknown type $type")
+              else -> null
             }
           }
         }
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), mockCanvas, testDispatcher)
+      val mosaic = MosaicImpl(mockCanvas, testDispatcher)
       val tile =
         singleTile {
           val s = canvas.source<Service>()
@@ -61,16 +61,16 @@ class TileDslTest {
       val service = Service()
       val mockCanvas =
         object : Canvas {
-          override fun <T : Any> source(type: KClass<T>): T {
+          override fun <T : Any> sourceOr(key: CanvasKey<T>): T? {
             @Suppress("UNCHECKED_CAST")
-            return when (type) {
+            return when (key.type) {
               Service::class -> service as T
-              else -> error("unknown type $type")
+              else -> null
             }
           }
         }
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), mockCanvas, testDispatcher)
+      val mosaic = MosaicImpl(mockCanvas, testDispatcher)
       val tile =
         singleTile {
           val svc = source<Service>()
@@ -97,16 +97,16 @@ class TileDslTest {
       val service = Service()
       val mockCanvas =
         object : Canvas {
-          override fun <T : Any> source(type: KClass<T>): T {
+          override fun <T : Any> sourceOr(key: CanvasKey<T>): T? {
             @Suppress("UNCHECKED_CAST")
-            return when (type) {
+            return when (key.type) {
               Service::class -> service as T
-              else -> error("unknown type $type")
+              else -> null
             }
           }
         }
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), mockCanvas, testDispatcher)
+      val mosaic = MosaicImpl(mockCanvas, testDispatcher)
       val tile =
         multiTile { ids ->
           val svc = source<Service>()
@@ -137,16 +137,16 @@ class TileDslTest {
       val service = Service()
       val mockCanvas =
         object : Canvas {
-          override fun <T : Any> source(type: KClass<T>): T {
+          override fun <T : Any> sourceOr(key: CanvasKey<T>): T? {
             @Suppress("UNCHECKED_CAST")
-            return when (type) {
+            return when (key.type) {
               Service::class -> service as T
-              else -> error("unknown type $type")
+              else -> null
             }
           }
         }
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), mockCanvas, testDispatcher)
+      val mosaic = MosaicImpl(mockCanvas, testDispatcher)
       val tile =
         perKeyTile<String, String> { id ->
           val svc = source<Service>()
@@ -181,16 +181,16 @@ class TileDslTest {
       val service = Service(this)
       val mockCanvas =
         object : Canvas {
-          override fun <T : Any> source(type: KClass<T>): T {
+          override fun <T : Any> sourceOr(key: CanvasKey<T>): T? {
             @Suppress("UNCHECKED_CAST")
-            return when (type) {
+            return when (key.type) {
               Service::class -> service as T
-              else -> error("unknown type $type")
+              else -> null
             }
           }
         }
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(MosaicSceneBuilder().build(), mockCanvas, testDispatcher)
+      val mosaic = MosaicImpl(mockCanvas, testDispatcher)
       val tile =
         chunkedMultiTile<String, String>(2) { ids ->
           val svc = source<Service>()

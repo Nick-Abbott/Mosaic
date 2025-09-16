@@ -2,14 +2,13 @@ package org.buildmosaic.core.vtwo
 
 import kotlinx.coroutines.Deferred
 import org.buildmosaic.core.vtwo.injection.Canvas
-import org.buildmosaic.core.vtwo.injection.Scene
+import org.buildmosaic.core.vtwo.injection.CanvasKey
 
 /**
  * Per-request context used to execute tiles and access dependencies.
  */
 interface Mosaic {
   val canvas: Canvas
-  val scene: Scene
 
   /**
    * Retrieve the value of a [Tile] wrapped in a deferred for awaiting later
@@ -80,4 +79,40 @@ interface Mosaic {
   ): V
 }
 
-inline fun <reified T : Any> Mosaic.source(): T = canvas.source(T::class)
+/**
+ * Retrieves a dependency from the canvas using reified type parameters.
+ *
+ * @param T The type of the dependency to retrieve
+ * @param qualifier Optional qualifier to distinguish between multiple instances of the same type
+ * @return The dependency instance
+ * @throws MosaicMissingKeyException if the dependency is not found
+ */
+inline fun <reified T : Any> Mosaic.source(qualifier: String? = null) = canvas.source(T::class, qualifier)
+
+/**
+ * Retrieves a dependency from the canvas using a [CanvasKey].
+ *
+ * @param T The type of the dependency to retrieve
+ * @param key The canvas key identifying the dependency
+ * @return The dependency instance
+ * @throws MosaicMissingKeyException if the dependency is not found
+ */
+fun <T : Any> Mosaic.source(key: CanvasKey<T>) = canvas.source(key)
+
+/**
+ * Retrieves a dependency from the canvas using reified type parameters, returning null if not found.
+ *
+ * @param T The type of the dependency to retrieve
+ * @param qualifier Optional qualifier to distinguish between multiple instances of the same type
+ * @return The dependency instance or null if not found
+ */
+inline fun <reified T : Any> Mosaic.sourceOr(qualifier: String? = null) = canvas.sourceOr(T::class, qualifier)
+
+/**
+ * Retrieves a dependency from the canvas using a [CanvasKey], returning null if not found.
+ *
+ * @param T The type of the dependency to retrieve
+ * @param key The canvas key identifying the dependency
+ * @return The dependency instance or null if not found
+ */
+fun <T : Any> Mosaic.sourceOr(key: CanvasKey<T>) = canvas.sourceOr(key)

@@ -9,11 +9,18 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.buildmosaic.core.vtwo.injection.Canvas
-import org.buildmosaic.core.vtwo.injection.Scene
 import kotlin.coroutines.CoroutineContext
 
+/**
+ * Default implementation of [Mosaic] that provides tile caching and concurrency management.
+ *
+ * This implementation uses coroutines for parallel execution and maintains separate caches
+ * for single-value and multi-value tiles to ensure efficient deduplication and batching.
+ *
+ * @param canvas The dependency injection canvas for accessing services
+ * @param dispatcher The coroutine dispatcher for executing tiles (defaults to [Dispatchers.Default])
+ */
 open class MosaicImpl(
-  override val scene: Scene,
   override val canvas: Canvas,
   dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : Mosaic, CoroutineScope {
