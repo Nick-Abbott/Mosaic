@@ -1,6 +1,7 @@
 package org.buildmosaic.core
 
 import kotlinx.coroutines.Deferred
+import org.buildmosaic.core.exception.MosaicMissingKeyException
 import org.buildmosaic.core.injection.Canvas
 import org.buildmosaic.core.injection.CanvasKey
 
@@ -16,7 +17,7 @@ interface Mosaic {
    * @param V the type of the [Tile] return value
    * @param tile the [Tile] to retrieve
    */
-  suspend fun <V> composeAsync(tile: Tile<V>): Deferred<V>
+  fun <V> composeAsync(tile: Tile<V>): Deferred<V>
 
   /**
    * Await the value of a [Tile]
@@ -24,7 +25,7 @@ interface Mosaic {
    * @param V the type of the [Tile] return value
    * @param tile the [Tile] to retrieve
    */
-  suspend fun <V> compose(tile: Tile<V>): V
+  suspend fun <V> compose(tile: Tile<V>): V = composeAsync(tile).await()
 
   /**
    * Retrieve the value of a [MultiTile] wrapped in a deferred for awaiting later
@@ -34,7 +35,7 @@ interface Mosaic {
    * @param tile the [MultiTile] to retrieve
    * @param keys the keys to be retrieved
    */
-  suspend fun <K : Any, V> composeAsync(
+  fun <K : Any, V> composeAsync(
     tile: MultiTile<K, V>,
     keys: Collection<K>,
   ): Map<K, Deferred<V>>
@@ -50,7 +51,7 @@ interface Mosaic {
   suspend fun <K : Any, V> compose(
     tile: MultiTile<K, V>,
     keys: Collection<K>,
-  ): Map<K, V>
+  ): Map<K, V> = composeAsync(tile, keys).mapValues { it.value.await() }
 
   /**
    * Retrieve a single value from a [MultiTile] wrapped in a deferred for awaiting later
@@ -60,7 +61,7 @@ interface Mosaic {
    * @param tile the [MultiTile] to retrieve
    * @param key the single key to be retrieved
    */
-  suspend fun <K : Any, V> composeAsync(
+  fun <K : Any, V> composeAsync(
     tile: MultiTile<K, V>,
     key: K,
   ): Deferred<V>
@@ -76,7 +77,7 @@ interface Mosaic {
   suspend fun <K : Any, V> compose(
     tile: MultiTile<K, V>,
     key: K,
-  ): V
+  ): V = composeAsync(tile, key).await()
 }
 
 /**
@@ -85,7 +86,7 @@ interface Mosaic {
  * @param T The type of the dependency to retrieve
  * @param qualifier Optional qualifier to distinguish between multiple instances of the same type
  * @return The dependency instance
- * @throws MosaicMissingKeyException if the dependency is not found
+ * @throws [MosaicMissingKeyException] if the dependency is not found
  */
 inline fun <reified T : Any> Mosaic.source(qualifier: String? = null) = canvas.source(T::class, qualifier)
 
@@ -95,7 +96,7 @@ inline fun <reified T : Any> Mosaic.source(qualifier: String? = null) = canvas.s
  * @param T The type of the dependency to retrieve
  * @param key The canvas key identifying the dependency
  * @return The dependency instance
- * @throws MosaicMissingKeyException if the dependency is not found
+ * @throws [MosaicMissingKeyException] if the dependency is not found
  */
 fun <T : Any> Mosaic.source(key: CanvasKey<T>) = canvas.source(key)
 

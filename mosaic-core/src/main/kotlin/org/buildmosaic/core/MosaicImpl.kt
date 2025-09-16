@@ -1,14 +1,15 @@
 package org.buildmosaic.core
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.launch
 import org.buildmosaic.core.injection.Canvas
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -29,62 +30,85 @@ open class MosaicImpl(
   override val coroutineContext: CoroutineContext = job + dispatcher
 
   // Tile management
-  private val singleCache = mutableMapOf<Tile<*>, Deferred<*>>()
-  private val multiCache = mutableMapOf<MultiTile<*, *>, MutableMap<Any, Deferred<*>>>()
-  private val singleMutex = Mutex()
-  private val multiMutex = Mutex()
+  private val singleCache = ConcurrentHashMap<Tile<*>, Deferred<*>>()
+  private val multiCache = ConcurrentHashMap<MultiTile<*, *>, ConcurrentHashMap<Any, Deferred<*>>>()
 
-  override suspend fun <V> composeAsync(tile: Tile<V>): Deferred<V> {
-    @Suppress("UNCHECKED_CAST")
-    singleCache[tile]?.let { return it as Deferred<V> }
-
-    return singleMutex.withLock {
-      @Suppress("UNCHECKED_CAST")
-      (singleCache[tile] as Deferred<V>?) ?: async {
-        tile.block(this@MosaicImpl)
-      }.also {
-        singleCache[tile] = it
+  @Suppress("UNCHECKED_CAST")
+  override fun <V> composeAsync(tile: Tile<V>): Deferred<V> {
+    return singleCache[tile] as Deferred<V>? ?: run {
+      val placeholder = CompletableDeferred<V>(coroutineContext[Job])
+      val prev = singleCache.putIfAbsent(tile, placeholder) as Deferred<V>?
+      if (prev != null) return prev
+      launch {
+        runCatching {
+          val result = tile.block(this@MosaicImpl)
+          placeholder.complete(result)
+        }.onFailure { throwable ->
+          placeholder.completeExceptionally(throwable)
+        }
       }
+      return placeholder
     }
   }
 
-  override suspend fun <V> compose(tile: Tile<V>): V = composeAsync(tile).await()
-
-  override suspend fun <K : Any, V> composeAsync(
+  @Suppress("UNCHECKED_CAST")
+  override fun <K : Any, V> composeAsync(
     tile: MultiTile<K, V>,
     keys: Collection<K>,
   ): Map<K, Deferred<V>> {
-    val missingKeys = multiCache[tile]?.let { keys.filterNot { key -> it.containsKey(key) } } ?: keys.toList()
+    if (keys.isEmpty()) return emptyMap()
 
-    if (missingKeys.isNotEmpty()) {
-      multiMutex.withLock {
-        @Suppress("UNCHECKED_CAST")
-        val cacheForTile = multiCache.getOrPut(tile) { mutableMapOf() } as MutableMap<K, Deferred<V>>
-        val stillMissing = missingKeys.filterNot { cacheForTile.containsKey(it) }.toSet()
-        if (stillMissing.isNotEmpty()) {
-          val batch = async { tile.block(this@MosaicImpl, stillMissing.toSet()) }
-          stillMissing.forEach {
-            cacheForTile[it] = async { batch.await().getValue(it) }
+    val inner = multiCache.computeIfAbsent(tile) { ConcurrentHashMap() } as ConcurrentHashMap<K, Deferred<V>>
+
+    val result = HashMap<K, Deferred<V>>(keys.size)
+
+    // Set up deferred placeholders without executing to prevent
+    // duplicate calls while maintaining thread safety
+    val winners = HashSet<K>(keys.size)
+    keys.forEach { key ->
+      val existing = inner[key]
+      if (existing != null) {
+        result[key] = existing
+      } else {
+        val placeholder = CompletableDeferred<V>(coroutineContext[Job])
+        val prev = inner.putIfAbsent(key, placeholder)
+        if (prev == null) {
+          result[key] = placeholder
+          winners.add(key)
+        } else {
+          result[key] = prev
+        }
+      }
+    }
+
+    // Launch all coroutines that won the race into the map
+    if (winners.isNotEmpty()) {
+      val immutableWinners = winners.toSet()
+
+      launch {
+        runCatching {
+          val values = tile.block(this@MosaicImpl, immutableWinners)
+          immutableWinners.forEach { key ->
+            val deferred = inner[key] as? CompletableDeferred<V>
+            val v = values[key]
+            if (v != null) {
+              deferred?.complete(v)
+            } else {
+              deferred?.completeExceptionally(NoSuchElementException("Batch result missing key $key"))
+            }
+          }
+        }.onFailure { cause ->
+          immutableWinners.forEach { key ->
+            (inner[key] as? CompletableDeferred<V>)?.completeExceptionally(cause)
           }
         }
       }
     }
-    @Suppress("UNCHECKED_CAST")
-    return keys.associateWith { multiCache[tile]!!.getValue(it) as Deferred<V> }
+    return result
   }
 
-  override suspend fun <K : Any, V> compose(
-    tile: MultiTile<K, V>,
-    keys: Collection<K>,
-  ): Map<K, V> = composeAsync(tile, keys).mapValues { it.value.await() }
-
-  override suspend fun <K : Any, V> composeAsync(
+  override fun <K : Any, V> composeAsync(
     tile: MultiTile<K, V>,
     key: K,
   ): Deferred<V> = composeAsync(tile, listOf(key))[key]!!
-
-  override suspend fun <K : Any, V> compose(
-    tile: MultiTile<K, V>,
-    key: K,
-  ): V = composeAsync(tile, key).await()
 }
