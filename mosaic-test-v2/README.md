@@ -23,13 +23,14 @@ dependencies {
 
 ```kotlin
 @Test
-fun `user tile fetches user data`() = runBlocking {
+fun `user tile fetches user data`() = runTest {
   val userTile = singleTile<User> {
-    val userId = request.attributes["userId"] as String
+    val userId = source(UserIdKey)
     UserService.fetchUser(userId)
   }
   
-  val testMosaic = TestMosaicBuilder()
+  val testMosaic = mosaicBuilder()
+    .withCanvasSource(UserIdKey, "123")
     .withMockTile(userTile, User("123", "John Doe"))
     .build()
   
@@ -45,9 +46,15 @@ Test tiles in isolation by mocking their dependencies:
 
 ```kotlin
 @Test
-fun `order summary composes multiple data sources`() = runBlocking {
-  val orderTile = singleTile<Order> { OrderService.getOrder("order-1") }
-  val customerTile = singleTile<Customer> { CustomerService.getCustomer("customer-1") }
+fun `order summary composes multiple data sources`() = runTest {
+  val orderTile = singleTile<Order> { 
+    val orderId = source(OrderIdKey)
+    OrderService.getOrder(orderId) 
+  }
+  val customerTile = singleTile<Customer> { 
+    val customerId = source(CustomerIdKey)
+    CustomerService.getCustomer(customerId) 
+  }
   val lineItemsTile = multiTile<String, LineItem> { skus -> 
     LineItemService.getLineItems(skus) 
   }
@@ -67,13 +74,14 @@ fun `order summary composes multiple data sources`() = runBlocking {
     "sku-2" to LineItem("sku-2", "Product 2", 25.50)
   )
   
-  val testMosaic = TestMosaicBuilder()
+  val testMosaic = mosaicBuilder()
+    .withCanvasSource(OrderIdKey, "order-1")
+    .withCanvasSource(CustomerIdKey, "customer-1")
     .withMockTile(orderTile, mockOrder)
     .withMockTile(customerTile, mockCustomer)
-    .withMockTile(lineItemsTile, mockLineItems)
     .build()
   
-  val expected = OrderSummary(mockOrder, mockCustomer, mockLineItems.values.toList())
+  val expected = OrderSummary(mockOrder, mockCustomer)
   testMosaic.assertEquals(orderSummaryTile, expected)
 }
 ```
@@ -84,9 +92,15 @@ Verify your tiles handle failures gracefully:
 
 ```kotlin
 @Test
-fun `order page handles customer service failure`() = runBlocking {
-  val orderTile = singleTile<Order> { OrderService.getOrder("order-1") }
-  val customerTile = singleTile<Customer> { CustomerService.getCustomer("customer-1") }
+fun `order page handles customer service failure`() = runTest {
+  val orderTile = singleTile<Order> { 
+    val orderId = source(OrderIdKey)
+    OrderService.getOrder(orderId) 
+  }
+  val customerTile = singleTile<Customer> { 
+    val customerId = source(CustomerIdKey)
+    CustomerService.getCustomer(customerId) 
+  }
   
   val orderPageTile = singleTile<OrderPage> {
     val order = get(orderTile)
@@ -95,8 +109,9 @@ fun `order page handles customer service failure`() = runBlocking {
     OrderPage(order, customer)
   }
   
-  val testMosaic = TestMosaicBuilder()
-    .withMockTile(orderTile, Order("order-1", "customer-1", emptyList()))
+  val testMosaic = mosaicBuilder()
+    .withCanvasSource(OrderIdKey, "order-1")
+    .withCanvasSource(CustomerIdKey, "customer-1")
     .withFailedTile(customerTile, CustomerServiceException("Service unavailable"))
     .build()
   
@@ -108,7 +123,7 @@ fun `order page handles customer service failure`() = runBlocking {
 
 ```kotlin
 @Test
-fun `pricing tile efficiently batches multiple SKUs`() = runBlocking {
+fun `pricing tile efficiently batches multiple SKUs`() = runTest {
   val pricingTile = multiTile<String, Price> { skus ->
     PricingService.getBulkPrices(skus)
   }
@@ -131,13 +146,17 @@ fun `pricing tile efficiently batches multiple SKUs`() = runBlocking {
 
 ```kotlin
 @Test
-fun `dashboard tile orchestrates multiple data sources`() = runBlocking {
-  val userTile = singleTile<User> { UserService.getUser("user-1") }
+fun `dashboard tile orchestrates multiple data sources`() = runTest {
+  val userTile = singleTile<User> { 
+    val userId = source(UserIdKey)
+    UserService.getUser(userId) 
+  }
   val ordersTile = multiTile<String, Order> { orderIds -> 
     OrderService.getOrders(orderIds) 
   }
   val recommendationsTile = singleTile<List<Product>> { 
-    RecommendationService.getRecommendations("user-1") 
+    val userId = source(UserIdKey)
+    RecommendationService.getRecommendations(userId) 
   }
   
   val dashboardTile = singleTile<Dashboard> {
@@ -156,7 +175,8 @@ fun `dashboard tile orchestrates multiple data sources`() = runBlocking {
   )
   val mockRecommendations = listOf(Product("rec-1", "Recommended Product"))
   
-  val testMosaic = TestMosaicBuilder()
+  val testMosaic = mosaicBuilder()
+    .withCanvasSource(UserIdKey, "user-1")
     .withMockTile(userTile, mockUser)
     .withMockTile(ordersTile, mockOrders)
     .withMockTile(recommendationsTile, mockRecommendations)
@@ -171,7 +191,7 @@ fun `dashboard tile orchestrates multiple data sources`() = runBlocking {
 
 ```kotlin
 @Test
-fun `handles slow external API calls`() = runBlocking {
+fun `handles slow external API calls`() = runTest {
   val externalApiTile = singleTile<ApiResponse> {
     ExternalApiService.fetchData()
   }
@@ -240,8 +260,11 @@ testMosaic.assertEquals(
 
 ```kotlin
 @Test
-fun `payment processor chooses correct implementation`() = runBlocking {
-  val customerTile = singleTile<Customer> { CustomerService.getCustomer("customer-1") }
+fun `payment processor chooses correct implementation`() = runTest {
+  val customerTile = singleTile<Customer> { 
+    val customerId = source(CustomerIdKey)
+    CustomerService.getCustomer(customerId) 
+  }
   val premiumProcessorTile = singleTile<PaymentProcessor> { PremiumProcessor() }
   val standardProcessorTile = singleTile<PaymentProcessor> { StandardProcessor() }
   
@@ -256,7 +279,8 @@ fun `payment processor chooses correct implementation`() = runBlocking {
   
   val premiumCustomer = Customer("customer-1", "John", CustomerTier.PREMIUM)
   
-  val testMosaic = TestMosaicBuilder()
+  val testMosaic = mosaicBuilder()
+    .withCanvasSource(CustomerIdKey, "customer-1")
     .withMockTile(customerTile, premiumCustomer)
     .withMockTile(premiumProcessorTile, PremiumProcessor())
     .withMockTile(standardProcessorTile, StandardProcessor())
@@ -271,8 +295,11 @@ fun `payment processor chooses correct implementation`() = runBlocking {
 
 ```kotlin
 @Test
-fun `related products tile generates keys dynamically`() = runBlocking {
-  val orderTile = singleTile<Order> { OrderService.getOrder("order-1") }
+fun `related products tile generates keys dynamically`() = runTest {
+  val orderTile = singleTile<Order> { 
+    val orderId = source(OrderIdKey)
+    OrderService.getOrder(orderId) 
+  }
   val productsByCategoryTile = multiTile<String, List<Product>> { categoryIds ->
     ProductService.getProductsByCategories(categoryIds)
   }
@@ -294,7 +321,8 @@ fun `related products tile generates keys dynamically`() = runBlocking {
     "category-B" to listOf(Product("prod-2", "Product 2"))
   )
   
-  val testMosaic = TestMosaicBuilder()
+  val testMosaic = mosaicBuilder()
+    .withCanvasSource(OrderIdKey, "order-1")
     .withMockTile(orderTile, mockOrder)
     .withMockTile(productsByCategoryTile, mockProductsByCategory)
     .build()
@@ -308,21 +336,17 @@ fun `related products tile generates keys dynamically`() = runBlocking {
 
 ```kotlin
 @Test
-fun `user preferences tile uses request context`() = runBlocking {
+fun `user preferences tile uses canvas dependency injection`() = runTest {
   val userPreferencesTile = singleTile<Preferences> {
-    val userId = request.attributes["userId"] as String
-    val locale = request.attributes["locale"] as String? ?: "en-US"
+    val userId = source(UserIdKey)
+    val locale = source(LocaleKey)
     
     PreferencesService.getPreferences(userId, locale)
   }
   
-  val customRequest = MosaicRequest(mapOf(
-    "userId" to "user-123",
-    "locale" to "es-ES"
-  ))
-  
-  val testMosaic = TestMosaicBuilder()
-    .withRequest(customRequest)
+  val testMosaic = mosaicBuilder()
+    .withCanvasSource(UserIdKey, "user-123")
+    .withCanvasSource(LocaleKey, "es-ES")
     .withMockTile(userPreferencesTile, Preferences("user-123", "es-ES"))
     .build()
   
@@ -337,7 +361,7 @@ fun `user preferences tile uses request context`() = runBlocking {
 - **Test error scenarios**: Verify graceful handling of failures with `withFailedTile`
 - **Test composition patterns**: Ensure tiles compose correctly with realistic data
 - **Use realistic test data**: Mock data should resemble production scenarios
-- **Test request context usage**: Verify tiles properly access request attributes
+- **Test canvas dependency injection**: Verify tiles properly use injected dependencies
 
 ## 🌟 **Key Features**
 
@@ -345,7 +369,7 @@ fun `user preferences tile uses request context`() = runBlocking {
 - **🎯 Type-Safe Assertions**: Full Kotlin type safety with coroutine support
 - **🔄 Flexible Mocking**: SUCCESS, ERROR, DELAY, and CUSTOM behaviors
 - **⚡ Concurrent Testing**: Proper support for testing concurrent tile execution
-- **📊 Request Context**: Test tiles that depend on request attributes
+- **📊 Canvas Dependency Injection**: Test tiles that use Canvas-based dependency injection
 - **🧩 Composition Testing**: Verify complex tile orchestrations work correctly
 
 ## 🔗 **Related Modules**

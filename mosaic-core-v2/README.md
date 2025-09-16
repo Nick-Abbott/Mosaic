@@ -23,7 +23,7 @@ dependencies {
 
 ```kotlin
 val userTile = singleTile<User> {
-  val userId = request.attributes["userId"] as String
+  val userId = source(UserIdKey)
   UserService.fetchUser(userId)
 }
 
@@ -40,7 +40,7 @@ Creates a tile that returns a single value with automatic caching:
 
 ```kotlin
 val customerTile = singleTile<Customer> {
-  val customerId = request.attributes["customerId"] as String
+  val customerId = source(CustomerIdKey)
   CustomerService.fetchCustomer(customerId)
 }
 ```
@@ -179,30 +179,42 @@ val resilientDataTile = singleTile<Data> {
 
 ## 🏗 **Mosaic Context**
 
-### **Request Access**
+### **Canvas-Based Dependency Injection**
 
-Access request context anywhere in your tiles:
+Access dependencies and data sources through the Canvas system:
 
 ```kotlin
+// Define your data sources as keys
+object UserIdKey : SourceKey<String>
+object LocaleKey : SourceKey<String>
+
 val userPreferencesTile = singleTile<Preferences> {
-  val userId = request.attributes["userId"] as String
-  val locale = request.attributes["locale"] as String? ?: "en-US"
+  val userId = source(UserIdKey)
+  val locale = source(LocaleKey) ?: "en-US"
   
   PreferencesService.getPreferences(userId, locale)
 }
 ```
 
-### **Dependency Injection**
+### **Canvas Creation and Usage**
 
-Inject services directly into tiles:
+Create a Canvas with your dependencies and data sources:
 
 ```kotlin
-val orderTile = singleTile<Order> {
-  val orderService = inject<OrderService>()
-  val orderId = request.attributes["orderId"] as String
-  
-  orderService.fetchOrder(orderId)
+val canvas = canvas {
+  // Configure your dependency injection here
+  single<UserService> { UserServiceImpl() }
+  single<PreferencesService> { PreferencesServiceImpl() }
 }
+
+// Create a mosaic instance with specific data sources
+val mosaic = canvas.withLayer {
+  single(UserIdKey.qualifier) { "user-123" }
+  single(LocaleKey.qualifier) { "en-US" }
+}.create()
+
+// Execute tiles
+val preferences = mosaic.compose(userPreferencesTile)
 ```
 
 ## 🎯 **Key Advantages**
@@ -232,26 +244,42 @@ val orderTile = singleTile<Order> {
 ### **Standalone Usage**
 
 ```kotlin
-val mosaic = Mosaic(
-  request = MosaicRequest(mapOf("userId" to "123")),
-  injector = MyInjector()
-)
+val canvas = canvas {
+  single<UserService> { UserServiceImpl() }
+  single<DashboardService> { DashboardServiceImpl() }
+}
 
-val result = mosaic.get(userDashboardTile)
+val mosaic = canvas.withLayer {
+  single(UserIdKey.qualifier) { "123" }
+}.create()
+
+val result = mosaic.compose(userDashboardTile)
 ```
 
 ### **Spring Integration**
 
 ```kotlin
+@Configuration
+class MosaicConfig {
+  @Bean
+  suspend fun mosaicCanvas(): Canvas {
+    return canvas {
+      single<UserService> { UserServiceImpl() }
+      single<DashboardService> { DashboardServiceImpl() }
+    }
+  }
+}
+
 @RestController
-class UserController(private val mosaicRegistry: MosaicRegistry) {
+class UserController(private val canvas: Canvas) {
   
   @GetMapping("/users/{userId}/dashboard")
   suspend fun getUserDashboard(@PathVariable userId: String): Dashboard = 
     runBlocking {
-      val request = MosaicRequest(mapOf("userId" to userId))
-      val mosaic = Mosaic(request, springInjector)
-      mosaic.get(userDashboardTile)
+      val mosaic = canvas.withLayer {
+        single(UserIdKey.qualifier) { userId }
+      }.create()
+      mosaic.compose(userDashboardTile)
     }
 }
 ```
@@ -259,13 +287,23 @@ class UserController(private val mosaicRegistry: MosaicRegistry) {
 ### **Ktor Integration**
 
 ```kotlin
-routing {
-  get("/users/{userId}/dashboard") {
-    val userId = call.parameters["userId"]!!
-    val request = MosaicRequest(mapOf("userId" to userId))
-    val mosaic = Mosaic(request, koinInjector)
-    
-    call.respond(mosaic.get(userDashboardTile))
+fun Application.module() {
+  val canvas = runBlocking {
+    canvas {
+      single<UserService> { UserServiceImpl() }
+      single<DashboardService> { DashboardServiceImpl() }
+    }
+  }
+
+  routing {
+    get("/users/{userId}/dashboard") {
+      val userId = call.parameters["userId"]!!
+      val mosaic = canvas.withLayer {
+        single(UserIdKey.qualifier) { userId }
+      }.create()
+      
+      call.respond(mosaic.compose(userDashboardTile))
+    }
   }
 }
 ```
@@ -309,7 +347,7 @@ val cacheStats = mosaic.getCacheStatistics()
 Migrating from mosaic-core to mosaic-core-v2 is straightforward:
 
 ```kotlin
-// V1: Class-based approach
+// V1: Class-based approach with MosaicRegistry
 class CustomerTile(mosaic: Mosaic) : SingleTile<Customer>(mosaic) {
   override suspend fun retrieve(): Customer {
     val customerId = (mosaic.request as OrderRequest).customerId
@@ -317,11 +355,20 @@ class CustomerTile(mosaic: Mosaic) : SingleTile<Customer>(mosaic) {
   }
 }
 
-// V2: DSL approach
+// V2: DSL approach with Canvas-based DI
+object CustomerIdKey : SourceKey<String>
+
 val customerTile = singleTile<Customer> {
-  val customerId = request.attributes["customerId"] as String
+  val customerId = source(CustomerIdKey)
   CustomerService.fetchCustomer(customerId)
 }
+
+// Usage with Canvas
+val canvas = canvas { /* configure DI */ }
+val mosaic = canvas.withLayer {
+  single(CustomerIdKey.qualifier) { "customer-123" }
+}.create()
+val result = mosaic.compose(customerTile)
 ```
 
 The DSL approach eliminates boilerplate while maintaining all the power and performance of the original framework.
