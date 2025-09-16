@@ -23,10 +23,10 @@
 
 #### Core Architecture
 - **Tiles**: The fundamental building blocks that cache and retrieve data
-  - `SingleTile<T>`: Caches single values (e.g., user profile)
-  - `MultiTile<K, V>`: Caches key-value mappings (e.g., products by ID)
-- **Mosaic Registry**: Dependency injection system for tile management
-- **MosaicRequest**: Context object containing request-specific data (auth, headers, etc.)
+  - `Tile<T>`: Created with `singleTile { }` DSL for single values
+  - `MultiTile<K, V>`: Created with `multiTile { }`, `perKeyTile { }`, or `chunkedMultiTile { }` DSL for key-value mappings
+- **Canvas**: Dependency injection system using hierarchical scoping
+- **Mosaic**: Per-request execution context that manages tile caching and concurrency
 
 #### Response-First Philosophy
 Instead of thinking "what database queries do I need?", developers think "what response do I want to build?" and compose tiles to create that response.
@@ -40,11 +40,8 @@ Instead of thinking "what database queries do I need?", developers think "what r
 
 ```
 Mosaic/
-├── mosaic-core/          # Core framework (SingleTile, MultiTile, Mosaic, Registry)
+├── mosaic-core/          # Core framework (Tile, MultiTile, Mosaic, Canvas)
 ├── mosaic-test/          # Testing framework (TestMosaic, TestMosaicBuilder, etc.)
-├── mosaic-consumer-plugin/  # Gradle build plugin for consumers
-├── mosaic-consumer-ksp/   # KSP plugin to generate tile registration code
-├── mosaic-catalog-ksp/   # KSP plugin to generate tile catalogs for tile libraries
 ├── examples/             # Example implementations
 ├── buildSrc/             # Gradle convention plugins
 └── build.gradle.kts      # Root build configuration
@@ -61,22 +58,36 @@ Mosaic/
 
 #### Tile Implementation Pattern
 ```kotlin
-class UserTile(mosaic: Mosaic) : SingleTile<User>(mosaic) {
-    override suspend fun retrieve(): User {
-        val userId = mosaic.request.userId
-        return userService.getUser(userId)
-    }
+val UserTile = singleTile {
+    val userId = source<String>("userId")
+    userService.getUser(userId)
 }
 ```
 
 #### Composition Pattern
 ```kotlin
-class UserProfileTile(mosaic: Mosaic) : SingleTile<UserProfile>(mosaic) {
-    override suspend fun retrieve(): UserProfile {
-        val user = mosaic.getTile<UserTile>().get()
-        val preferences = mosaic.getTile<PreferencesTile>().get()
-        return UserProfile(user, preferences)
-    }
+val UserProfileTile = singleTile {
+    val user = compose(UserTile)
+    val preferences = compose(PreferencesTile)
+    UserProfile(user, preferences)
+}
+```
+
+#### MultiTile Patterns
+```kotlin
+// Batch API call
+val ProductsByIdTile = multiTile { productIds ->
+    productService.getProducts(productIds.toList())
+}
+
+// Per-key fetching
+val UserByIdTile = perKeyTile { userId ->
+    userService.getUser(userId)
+}
+
+// Chunked requests
+val InventoryBySkuTile = chunkedMultiTile(50) { skus ->
+    inventoryService.getBatch(skus)
 }
 ```
 
@@ -94,8 +105,9 @@ class UserProfileTile(mosaic: Mosaic) : SingleTile<UserProfile>(mosaic) {
 - Isolate tiles from their dependent tiles by using `TestMosaicBuilder`
 - Test both success and error scenarios
 - Use `TestMosaicBuilder` helpers (`withMockTile`, `withFailedTile`, etc.) for different test scenarios
-- Plugin, KSP, and BOM modules do not have unit tests
-- Aim for 80%+ code coverage for other modules (enforced by Kover)
+- Use `runTest` from kotlinx-coroutines-test for coroutine testing
+- Pass `TestScope` to `TestMosaicBuilder` constructor
+- Aim for 80%+ code coverage for core and test modules (enforced by Kover)
 
 ### Common Operations
 
@@ -129,7 +141,9 @@ class UserProfileTile(mosaic: Mosaic) : SingleTile<UserProfile>(mosaic) {
 ### Module-Specific Notes
 
 #### mosaic-core
-- Contains the main framework classes
+- Contains the main framework classes: Mosaic, Canvas, Tile DSL functions
+- Dependency injection via Canvas with hierarchical scoping
+- Automatic caching and concurrency management
 - Focus on performance and thread safety
 - Minimal external dependencies
 
@@ -137,6 +151,7 @@ class UserProfileTile(mosaic: Mosaic) : SingleTile<UserProfile>(mosaic) {
 - Comprehensive testing utilities
 - Mock tile implementations with configurable behaviors
 - Test assertions specific to tile testing
+- Integration with kotlinx-coroutines-test
 
 #### examples/
 - Demonstrates real-world usage patterns
@@ -148,9 +163,10 @@ class UserProfileTile(mosaic: Mosaic) : SingleTile<UserProfile>(mosaic) {
 ### Performance Considerations
 - Tiles should be lightweight and focused
 - Use `MultiTile` for batch operations when possible
-- Avoid blocking operations in tile `retrieve()` methods
-- Request context is available but should be used sparingly
-- If depending on multiple tiles, retrieve all tiles then execute them in parallel
+- Avoid blocking operations in tile DSL blocks
+- Use `composeAsync()` for parallel execution of multiple tiles
+- Dependencies are injected via Canvas, not passed through request context
+- Prefer `composeAsync().await()` pattern for parallel composition
 
 ### Error Handling
 - Tiles should let exceptions bubble up naturally
@@ -163,13 +179,14 @@ class UserProfileTile(mosaic: Mosaic) : SingleTile<UserProfile>(mosaic) {
 3. Fix any ktlint/detekt issues before submitting
 4. Consider impact on existing tile compositions
 5. Update tests when adding new functionality
-6. If a ksp or gradle plugin has been modified, also test examples with `./gradlew clean build -p examples`
+6. Test examples with `./gradlew clean build -p examples` to verify integration
 
 ### Debugging Tips
 - Use the test framework to isolate tile behavior
-- Check the Mosaic registry configuration for tile resolution issues
-- Verify request context is properly propagated
+- Check the Canvas configuration for dependency injection issues
+- Verify Canvas layers are properly configured with required dependencies
 - Use IDE debugging with suspend functions carefully (coroutines)
+- Check tile caching behavior using TestMosaic assertions
 
 ## Quick Reference
 
@@ -189,9 +206,10 @@ class UserProfileTile(mosaic: Mosaic) : SingleTile<UserProfile>(mosaic) {
 ```
 
 ### Key Files to Understand
-- `mosaic-core/src/main/kotlin/com/abbott/mosaic/core/Mosaic.kt` - Main framework class
-- `mosaic-core/src/main/kotlin/com/abbott/mosaic/core/tiles/` - Tile implementations
-- `mosaic-test/src/main/kotlin/com/abbott/mosaic/test/` - Testing framework
+- `mosaic-core/src/main/kotlin/org/buildmosaic/core/Mosaic.kt` - Main framework interface
+- `mosaic-core/src/main/kotlin/org/buildmosaic/core/TileDsl.kt` - Tile DSL functions
+- `mosaic-core/src/main/kotlin/org/buildmosaic/core/injection/Canvas.kt` - Dependency injection
+- `mosaic-test/src/main/kotlin/org/buildmosaic/test/` - Testing framework
 - `examples/` - Usage examples and patterns
 
-This framework excels at building complex, high-performance data access layers through simple, composable tiles. Think in terms of the response you want to build, then compose tiles to create that response efficiently.
+This framework excels at building complex, high-performance data access layers through simple, composable tiles using functional DSL syntax. Think in terms of the response you want to build, then compose tiles to create that response efficiently. Version 2.0 eliminates the need for Gradle plugins and KSP processors, making it a standalone framework with simple dependency management.
