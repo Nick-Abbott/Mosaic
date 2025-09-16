@@ -12,8 +12,8 @@ import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.response.respond
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
-import org.buildmosaic.core.vtwo.injection.canvas
-import org.buildmosaic.core.vtwo.injection.create
+import org.buildmosaic.core.injection.canvas
+import org.buildmosaic.core.injection.create
 import org.buildmosaic.library.OrderKey
 import org.buildmosaic.library.exception.OrderNotFoundException
 import org.buildmosaic.library.tile.OrderPageTile

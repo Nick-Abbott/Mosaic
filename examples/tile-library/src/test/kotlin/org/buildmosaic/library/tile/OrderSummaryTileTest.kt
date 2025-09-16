@@ -7,7 +7,7 @@ import org.buildmosaic.library.model.Order
 import org.buildmosaic.library.model.OrderSummary
 import org.buildmosaic.library.model.Price
 import org.buildmosaic.library.model.Product
-import org.buildmosaic.test.vtwo.TestMosaicBuilder
+import org.buildmosaic.test.TestMosaicBuilder
 import kotlin.test.Test
 
 class OrderSummaryTileTest {

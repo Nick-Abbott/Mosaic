@@ -6,7 +6,7 @@ plugins {
 
 dependencies {
   implementation(project(":tile-library"))
-  implementation("org.buildmosaic:mosaic-core-v2:0.1.0")
+  implementation("org.buildmosaic:mosaic-core:0.2.0")
   implementation("io.ktor:ktor-server-core:2.3.12")
   implementation("io.ktor:ktor-server-netty:2.3.12")
   implementation("io.ktor:ktor-server-content-negotiation:2.3.12")
@@ -17,7 +17,7 @@ dependencies {
   testImplementation("io.ktor:ktor-server-tests:2.3.12")
   testImplementation("io.ktor:ktor-client-content-negotiation:2.3.12")
   testImplementation(kotlin("test"))
-  testImplementation("org.buildmosaic:mosaic-test-v2:0.1.0")
+  testImplementation("org.buildmosaic:mosaic-test:0.2.0")
   testImplementation(libs.kotlinx.coroutines.test)
 }
 

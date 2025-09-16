@@ -1,4 +1,4 @@
-package org.buildmosaic.core.vtwo.injection
+package org.buildmosaic.core.injection
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock

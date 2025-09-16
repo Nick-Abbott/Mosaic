@@ -4,7 +4,7 @@ import kotlinx.coroutines.test.runTest
 import org.buildmosaic.library.model.LineItemDetail
 import org.buildmosaic.library.model.Price
 import org.buildmosaic.library.model.Product
-import org.buildmosaic.test.vtwo.TestMosaicBuilder
+import org.buildmosaic.test.TestMosaicBuilder
 import kotlin.test.Test
 
 class OrderTotalTileTest {

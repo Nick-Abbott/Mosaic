@@ -7,7 +7,7 @@ plugins {
 
 dependencies {
   implementation(project(":tile-library"))
-  implementation("org.buildmosaic:mosaic-core-v2:0.1.0")
+  implementation("org.buildmosaic:mosaic-core:0.1.0")
 
   // Micronaut dependencies
   implementation("io.micronaut:micronaut-http-server-netty")
@@ -23,7 +23,7 @@ dependencies {
   testImplementation("io.micronaut.test:micronaut-test-junit5")
   testImplementation("io.micronaut:micronaut-http-client")
   testImplementation(kotlin("test"))
-  testImplementation("org.buildmosaic:mosaic-test-v2:0.1.0")
+  testImplementation("org.buildmosaic:mosaic-test:0.1.0")
   testImplementation(libs.kotlinx.coroutines.test)
 }
 

@@ -1,8 +1,8 @@
-package org.buildmosaic.core.vtwo
+package org.buildmosaic.core
 
 import kotlinx.coroutines.test.runTest
-import org.buildmosaic.core.vtwo.injection.Canvas
-import org.buildmosaic.core.vtwo.injection.CanvasKey
+import org.buildmosaic.core.injection.Canvas
+import org.buildmosaic.core.injection.CanvasKey
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

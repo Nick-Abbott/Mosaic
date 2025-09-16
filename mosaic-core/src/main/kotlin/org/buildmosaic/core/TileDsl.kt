@@ -1,11 +1,11 @@
-package org.buildmosaic.core.vtwo
+package org.buildmosaic.core
 
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 
 /**
- * Representation of a single-value tile in Mosaic V2.
+ * Representation of a single-value tile in Mosaic.
  *
  * A tile encapsulates a suspending function that produces a single value of type [T].
  * Tiles are the fundamental building blocks of the Mosaic DSL and support automatic
@@ -29,7 +29,7 @@ class Tile<T>(internal val block: suspend Mosaic.() -> T)
 fun <T> singleTile(block: suspend Mosaic.() -> T): Tile<T> = Tile(block)
 
 /**
- * Representation of a multi-value tile in Mosaic V2.
+ * Representation of a multi-value tile in Mosaic.
  *
  * A multi-tile encapsulates a suspending function that produces multiple values
  * based on a set of keys. Multi-tiles support automatic batching, caching,

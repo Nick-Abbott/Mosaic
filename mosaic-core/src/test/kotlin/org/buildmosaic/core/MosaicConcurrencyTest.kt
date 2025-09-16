@@ -21,116 +21,186 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
+import org.buildmosaic.core.injection.Canvas
+import org.buildmosaic.core.injection.CanvasKey
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.collections.mapValues
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertSame
-import kotlin.test.assertTrue
 
-@Suppress("FunctionOnlyReturningConstant", "FunctionMaxLength")
+@Suppress("FunctionOnlyReturningConstant", "FunctionMaxLength", "LargeClass")
 class MosaicConcurrencyTest {
-  private lateinit var registry: MosaicRegistry
   private lateinit var mosaic: Mosaic
 
   @BeforeTest
   fun setUp() {
-    registry = MosaicRegistry()
-    mosaic = Mosaic(registry, TestRequest())
+    val emptyCanvas =
+      object : Canvas {
+        override fun <T : Any> sourceOr(key: CanvasKey<T>): T? = null
+      }
+    mosaic = MosaicImpl(emptyCanvas)
   }
 
   @Test
-  fun `should handle concurrent tile creation with synchronized double-check`() =
+  fun `should handle concurrent single tile composition`() =
     runTest {
       val constructorCallCount = AtomicInteger(0)
 
-      registry.register(TestSingleTile::class) { mosaic ->
-        constructorCallCount.incrementAndGet()
-        TestSingleTile(mosaic)
-      }
+      val testTile =
+        singleTile {
+          constructorCallCount.incrementAndGet()
+          delay(10) // Simulate some work
+          "test-value"
+        }
 
-      // Launch multiple concurrent getTile calls
+      // Launch multiple concurrent compose calls
       val results =
         coroutineScope {
           (1..10).map {
-            async { mosaic.getTile<TestSingleTile>() }
+            async { mosaic.compose(testTile) }
           }.awaitAll()
         }
 
-      // All should return the same instance (synchronized worked)
-      results.forEach { tile ->
-        assertSame(results[0], tile)
+      // All should return the same value
+      results.forEach { result ->
+        assertEquals("test-value", result)
       }
 
-      // Constructor should only be called once (no race condition)
+      // The tile block should only be executed once (synchronized worked)
       assertEquals(1, constructorCallCount.get())
     }
 
   @Test
-  fun `should handle MultiTile concurrent access with mutex protection`() =
+  fun `should handle concurrent single tile async composition`() =
     runTest {
-      val testTile = TestMultiTile()
+      val constructorCallCount = AtomicInteger(0)
+
+      val testTile =
+        singleTile {
+          constructorCallCount.incrementAndGet()
+          delay(10) // Simulate some work
+          "test-value"
+        }
+
+      // Launch multiple concurrent composeAsync calls
+      val deferredResults =
+        coroutineScope {
+          (1..10).map {
+            async { mosaic.composeAsync(testTile) }
+          }.awaitAll()
+        }
+
+      // All deferred results should be the same instance (cached)
+      val firstDeferred = deferredResults[0]
+      deferredResults.forEach { deferred ->
+        assertSame(firstDeferred, deferred)
+      }
+
+      // All should return the same value
+      val results = deferredResults.awaitAll()
+      results.forEach { result ->
+        assertEquals("test-value", result)
+      }
+
+      // The tile block should only be executed once (synchronized worked)
+      assertEquals(1, constructorCallCount.get())
+    }
+
+  @Test
+  fun `should handle concurrent MultiTile access`() =
+    runTest {
+      val retrieveCallCount = AtomicInteger(0)
+
+      val testTile =
+        multiTile { keys: Set<String> ->
+          retrieveCallCount.incrementAndGet()
+          delay(5) // Simulate network call
+          keys.associateWith { it.replace("key", "value") }
+        }
 
       // Launch concurrent calls that might hit the mutex
       val results =
         coroutineScope {
           listOf(
-            async { testTile.getByKeys(listOf("key1", "key2")) },
-            async { testTile.getByKeys(listOf("key2", "key3")) },
-            async { testTile.getByKeys(listOf("key1", "key3")) },
+            async { mosaic.compose(testTile, listOf("key1", "key2")) },
+            async { mosaic.compose(testTile, listOf("key2", "key3")) },
+            async { mosaic.compose(testTile, listOf("key1", "key3")) },
           ).awaitAll()
         }
 
       // Verify all results are correct
-      assertEquals(2, results[0].size)
-      assertEquals(2, results[1].size)
-      assertEquals(2, results[2].size)
+      assertEquals(mapOf("key1" to "value1", "key2" to "value2"), results[0])
+      assertEquals(mapOf("key2" to "value2", "key3" to "value3"), results[1])
+      assertEquals(mapOf("key1" to "value1", "key3" to "value3"), results[2])
 
-      // Should have made efficient batch calls
-      assertEquals(2, testTile.retrieveCallCount.get())
+      assertEquals(2, retrieveCallCount.get())
     }
 
   @Test
-  fun `should verify error message contains plugin suggestion`() {
-    val exception =
-      assertFailsWith<IllegalArgumentException> {
-        registry.getInstance(UnregisteredTile::class, mosaic)
-      }
+  fun `should handle concurrent MultiTile access with async composition`() =
+    runTest {
+      val retrieveCallCount = AtomicInteger(0)
 
-    // Test the new error message format
-    assertTrue(
-      exception.message?.contains("mosaic-consumer-plugin") == true,
-      "Error message should mention mosaic-consumer-plugin",
-    )
-  }
+      val testTile =
+        multiTile { keys: Set<String> ->
+          retrieveCallCount.incrementAndGet()
+          delay(5) // Simulate network call
+          keys.associateWith { it.replace("key", "value") }
+        }
 
-  private class TestSingleTile(mosaic: Mosaic) : SingleTile<String>(mosaic) {
-    override suspend fun retrieve(): String {
-      return "test-value"
+      // Launch concurrent async calls that might hit the mutex
+      val deferredResults =
+        coroutineScope {
+          listOf(
+            async { mosaic.composeAsync(testTile, listOf("key1", "key2")) },
+            async { mosaic.composeAsync(testTile, listOf("key2", "key3")) },
+            async { mosaic.composeAsync(testTile, listOf("key1", "key3")) },
+          ).awaitAll()
+        }
+
+      // Await all results
+      val results =
+        deferredResults.map { deferredMap ->
+          deferredMap.mapValues { it.value.await() }
+        }
+
+      // Verify all results are correct
+      assertEquals(mapOf("key1" to "value1", "key2" to "value2"), results[0])
+      assertEquals(mapOf("key2" to "value2", "key3" to "value3"), results[1])
+      assertEquals(mapOf("key1" to "value1", "key3" to "value3"), results[2])
+
+      assertEquals(2, retrieveCallCount.get())
     }
-  }
 
-  private class TestMultiTile : MultiTile<String, List<String>>(
-    Mosaic(MosaicRegistry(), TestRequest()),
-  ) {
-    val retrieveCallCount = AtomicInteger(0)
+  @Test
+  fun `should handle single key MultiTile concurrent access`() =
+    runTest {
+      val retrieveCallCount = AtomicInteger(0)
 
-    override suspend fun retrieveForKeys(keys: List<String>): List<String> {
-      retrieveCallCount.incrementAndGet()
-      delay(5) // Simulate network call
-      return keys.map { it.replace("key", "value") }
+      val testTile =
+        multiTile { keys: Set<String> ->
+          retrieveCallCount.incrementAndGet()
+          delay(5) // Simulate network call
+          keys.associateWith { it.replace("key", "value") }
+        }
+
+      // Launch concurrent calls for single keys
+      val results =
+        coroutineScope {
+          listOf(
+            async { mosaic.compose(testTile, "key1") },
+            async { mosaic.compose(testTile, "key2") },
+            async { mosaic.compose(testTile, "key1") },
+          ).awaitAll()
+        }
+
+      // Verify all results are correct
+      assertEquals("value1", results[0])
+      assertEquals("value2", results[1])
+      assertEquals("value1", results[2]) // Same as first
+
+      assertEquals(2, retrieveCallCount.get())
     }
-
-    override fun normalize(
-      key: String,
-      response: List<String>,
-    ): String = key.replace("key", "value")
-  }
-
-  private class UnregisteredTile(mosaic: Mosaic) : SingleTile<String>(mosaic) {
-    override suspend fun retrieve(): String = "unregistered"
-  }
-
-  private class TestRequest : MosaicRequest
 }

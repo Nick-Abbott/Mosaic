@@ -1,14 +1,15 @@
-package org.buildmosaic.core.vtwo
+package org.buildmosaic.core
 
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
-import org.buildmosaic.core.vtwo.injection.Canvas
-import org.buildmosaic.core.vtwo.injection.CanvasKey
-import org.buildmosaic.core.vtwo.injection.source
+import org.buildmosaic.core.injection.Canvas
+import org.buildmosaic.core.injection.CanvasKey
+import org.buildmosaic.core.injection.source
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -171,7 +172,7 @@ class TileDslTest {
 
         suspend fun fetch(ids: List<String>): Map<String, String> {
           batches += ids.toList()
-          @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+          @OptIn(ExperimentalCoroutinesApi::class)
           starts += scope.currentTime
           delay(10)
           return ids.associateWith { "v_$it" }

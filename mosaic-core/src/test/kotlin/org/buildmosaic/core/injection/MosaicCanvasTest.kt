@@ -1,11 +1,13 @@
-package org.buildmosaic.core.vtwo.injection
+package org.buildmosaic.core.injection
 
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
-import org.buildmosaic.core.vtwo.exception.MosaicMissingKeyException
-import org.buildmosaic.core.vtwo.source
-import org.buildmosaic.core.vtwo.sourceOr
+import org.buildmosaic.core.exception.MosaicMissingKeyException
+import org.buildmosaic.core.source
+import org.buildmosaic.core.sourceOr
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -335,7 +337,7 @@ class MosaicCanvasTest {
   fun `should support suspend functions in dependency constructors`() =
     runTest {
       suspend fun createAsyncService(): TestService {
-        kotlinx.coroutines.delay(10) // Simulate async work
+        delay(10) // Simulate async work
         return TestServiceImpl("async-service")
       }
 
@@ -637,7 +639,7 @@ class MosaicCanvasTest {
 
       // Simulate concurrent access
       val results =
-        kotlinx.coroutines.coroutineScope {
+        coroutineScope {
           (1..10).map {
             async {
               testCanvas.source<TestService>()

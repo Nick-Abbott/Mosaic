@@ -4,7 +4,7 @@ import kotlinx.coroutines.test.runTest
 import org.buildmosaic.library.model.Address
 import org.buildmosaic.library.model.Logistics
 import org.buildmosaic.library.model.Quote
-import org.buildmosaic.test.vtwo.TestMosaicBuilder
+import org.buildmosaic.test.TestMosaicBuilder
 import kotlin.test.Test
 
 class LogisticsTileTest {

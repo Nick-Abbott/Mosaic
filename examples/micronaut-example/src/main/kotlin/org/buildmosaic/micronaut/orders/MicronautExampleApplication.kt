@@ -11,9 +11,9 @@ import io.micronaut.http.annotation.PathVariable
 import io.micronaut.runtime.Micronaut
 import jakarta.inject.Singleton
 import kotlinx.coroutines.runBlocking
-import org.buildmosaic.core.vtwo.injection.Canvas
-import org.buildmosaic.core.vtwo.injection.canvas
-import org.buildmosaic.core.vtwo.injection.create
+import org.buildmosaic.core.injection.Canvas
+import org.buildmosaic.core.injection.canvas
+import org.buildmosaic.core.injection.create
 import org.buildmosaic.library.OrderKey
 import org.buildmosaic.library.exception.OrderNotFoundException
 import org.buildmosaic.library.model.OrderPage

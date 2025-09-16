@@ -1,8 +1,8 @@
-package org.buildmosaic.core.vtwo.injection
+package org.buildmosaic.core.injection
 
-import org.buildmosaic.core.vtwo.Mosaic
-import org.buildmosaic.core.vtwo.MosaicImpl
-import org.buildmosaic.core.vtwo.exception.MosaicMissingKeyException
+import org.buildmosaic.core.Mosaic
+import org.buildmosaic.core.MosaicImpl
+import org.buildmosaic.core.exception.MosaicMissingKeyException
 import kotlin.reflect.KClass
 
 /**

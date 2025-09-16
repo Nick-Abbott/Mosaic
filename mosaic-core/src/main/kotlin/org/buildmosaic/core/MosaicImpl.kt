@@ -1,4 +1,4 @@
-package org.buildmosaic.core.vtwo
+package org.buildmosaic.core
 
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -8,7 +8,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import org.buildmosaic.core.vtwo.injection.Canvas
+import org.buildmosaic.core.injection.Canvas
 import kotlin.coroutines.CoroutineContext
 
 /**

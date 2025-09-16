@@ -1,161 +1,205 @@
-/*
- * Copyright 2025 Nicholas Abbott
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package org.buildmosaic.core
 
-import kotlin.test.BeforeTest
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.runTest
+import org.buildmosaic.core.injection.canvas
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertIs
-import kotlin.test.assertNotSame
-import kotlin.test.assertSame
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.measureTime
 
-@Suppress("FunctionOnlyReturningConstant", "FunctionMaxLength")
+@Suppress("LargeClass", "FunctionMaxLength")
 class MosaicTest {
-  private lateinit var registry: MosaicRegistry
-  private lateinit var mosaic: Mosaic
-
-  @BeforeTest
-  fun setUp() {
-    registry = MosaicRegistry()
-    mosaic = Mosaic(registry, TestRequest())
-  }
-
   @Test
-  fun `should create new tile instance on first call`() {
-    registry.register(TestSingleTile::class) { mosaic -> TestSingleTile(mosaic) }
-    registry.register(TestMultiTile::class) { mosaic -> TestMultiTile(mosaic) }
+  fun `should retrieve a singleTile asynchronously`() =
+    runTest {
+      val testDispatcher = StandardTestDispatcher(testScheduler)
+      val mosaic = MosaicImpl(canvas { }, testDispatcher)
 
-    val tile = mosaic.getTile<TestSingleTile>()
-    val tile2 = mosaic.getTile<TestMultiTile>()
+      val resultValue = "test-result"
+      val delayLength = 100L
+      val testTile =
+        singleTile {
+          delay(delayLength)
+          resultValue
+        }
 
-    assertIs<TestSingleTile>(tile)
-    assertIs<TestMultiTile>(tile2)
-  }
+      var result: Deferred<String>? = null
+      launch {
+        val workDuration =
+          testScheduler.timeSource.measureTime {
+            result = mosaic.composeAsync(testTile)
+          }
+        assertEquals(0.milliseconds, workDuration)
+      }
 
-  @Test
-  fun `should return cached tile on subsequent calls`() {
-    var constructorCallCount = 0
-    registry.register(TestSingleTile::class) { mosaic ->
-      constructorCallCount++
-      TestSingleTile(mosaic)
+      testScheduler.runCurrent()
+      assertNotNull(result)
+      assertFalse(result.isCompleted)
+      testScheduler.advanceTimeBy(delayLength.milliseconds)
+      testScheduler.runCurrent()
+      assertTrue(result.isCompleted)
+      assertEquals(resultValue, result.await())
     }
 
-    val tile1 = mosaic.getTile<TestSingleTile>()
-    val tile2 = mosaic.getTile<TestSingleTile>()
-    val tile3 = mosaic.getTile<TestSingleTile>()
-
-    assertEquals(1, constructorCallCount)
-    assertSame(tile1, tile2)
-    assertSame(tile1, tile3)
-  }
-
   @Test
-  fun `should handle different tile types separately`() {
-    var singleTileCallCount = 0
-    var multiTileCallCount = 0
+  fun `should retrieve a singleTile synchronously`() =
+    runTest {
+      val testDispatcher = StandardTestDispatcher(testScheduler)
+      val mosaic = MosaicImpl(canvas { }, testDispatcher)
 
-    registry.register(TestSingleTile::class) { mosaic ->
-      singleTileCallCount++
-      TestSingleTile(mosaic)
-    }
-    registry.register(TestMultiTile::class) { mosaic ->
-      multiTileCallCount++
-      TestMultiTile(mosaic)
-    }
+      val resultValue = "test-result"
+      val delayLength = 100L
+      val testTile =
+        singleTile {
+          delay(delayLength)
+          resultValue
+        }
 
-    val singleTile1 = mosaic.getTile<TestSingleTile>()
-    val singleTile2 = mosaic.getTile<TestSingleTile>()
-    val multiTile1 = mosaic.getTile<TestMultiTile>()
-    val multiTile2 = mosaic.getTile<TestMultiTile>()
+      var result: String? = null
+      launch {
+        val workDuration =
+          testScheduler.timeSource.measureTime {
+            result = mosaic.compose(testTile)
+          }
+        assertEquals(delayLength.milliseconds, workDuration)
+      }
 
-    assertEquals(1, singleTileCallCount)
-    assertEquals(1, multiTileCallCount)
-    assertSame(singleTile1, singleTile2)
-    assertSame(multiTile1, multiTile2)
-    assertNotSame<Tile>(singleTile1, multiTile1)
-  }
-
-  @Test
-  fun `should work with non-reified getTile method`() {
-    registry.register(TestSingleTile::class) { mosaic -> TestSingleTile(mosaic) }
-    registry.register(TestMultiTile::class) { mosaic -> TestMultiTile(mosaic) }
-
-    val tile1 = mosaic.getTile(TestSingleTile::class)
-    val tile2 = mosaic.getTile<TestSingleTile>()
-    val tile3 = mosaic.getTile(TestMultiTile::class)
-    val tile4 = mosaic.getTile<TestMultiTile>()
-
-    assertSame(tile1, tile2)
-    assertSame(tile3, tile4)
-  }
-
-  @Test
-  fun `should handle multiple mosaic instances independently`() {
-    val mosaic1 = Mosaic(registry, TestRequest())
-    val mosaic2 = Mosaic(registry, TestRequest())
-
-    registry.register(TestSingleTile::class) { mosaic -> TestSingleTile(mosaic) }
-
-    val tile1 = mosaic1.getTile<TestSingleTile>()
-    val tile2 = mosaic2.getTile<TestSingleTile>()
-
-    assertNotSame(tile1, tile2)
-  }
-
-  @Test
-  fun `should throw exception for unregistered tile type`() {
-    assertFailsWith<IllegalArgumentException> { mosaic.getTile<TestSingleTile>() }
-  }
-
-  @Test
-  fun `should cache tiles across different access patterns`() {
-    var callCount = 0
-    registry.register(TestSingleTile::class) { mosaic ->
-      callCount++
-      TestSingleTile(mosaic)
+      testScheduler.runCurrent()
+      assertNull(result)
+      testScheduler.advanceTimeBy(delayLength.milliseconds)
+      testScheduler.runCurrent()
+      assertEquals(resultValue, result)
     }
 
-    // Access via inline method
-    val tile1 = mosaic.getTile<TestSingleTile>()
-    // Access via non-inline method
-    val tile2 = mosaic.getTile(TestSingleTile::class)
-    // Access via inline method again
-    val tile3 = mosaic.getTile<TestSingleTile>()
+  @Test
+  fun `should retrieve a mutltiTile asynchronously`() =
+    runTest {
+      val testDispatcher = StandardTestDispatcher(testScheduler)
+      val mosaic = MosaicImpl(canvas { }, testDispatcher)
 
-    assertEquals(1, callCount)
-    assertSame(tile1, tile2)
-    assertSame(tile1, tile3)
-  }
+      val resultMap = mapOf("a" to "foo", "b" to "bar", "c" to "baz")
+      val delayLength = 100L
+      val testTile =
+        multiTile {
+          delay(delayLength)
+          resultMap
+        }
 
-  private class TestSingleTile(mosaic: Mosaic) : SingleTile<String>(mosaic) {
-    override suspend fun retrieve(): String = "test-value"
-  }
+      var result: Map<String, Deferred<String>>? = null
+      launch {
+        val workDuration =
+          testScheduler.timeSource.measureTime {
+            result = mosaic.composeAsync(testTile, resultMap.keys)
+          }
+        assertEquals(0.milliseconds, workDuration)
+      }
 
-  private class TestMultiTile(mosaic: Mosaic) : MultiTile<String, List<String>>(mosaic) {
-    override suspend fun retrieveForKeys(keys: List<String>): List<String> = keys.map { "value-$it" }
+      testScheduler.runCurrent()
+      assertNotNull(result)
+      assertTrue(result.filterValues { it.isCompleted }.isEmpty())
+      testScheduler.advanceTimeBy(delayLength.milliseconds)
+      testScheduler.runCurrent()
+      assertTrue(result.filterValues { !it.isCompleted }.isEmpty())
+      assertEquals(resultMap, result.mapValues { it.value.await() })
+    }
 
-    override fun normalize(
-      key: String,
-      response: List<String>,
-    ): String = "normalized-$key"
-  }
+  @Test
+  fun `should retrieve a multiTile synchronously`() =
+    runTest {
+      val testDispatcher = StandardTestDispatcher(testScheduler)
+      val mosaic = MosaicImpl(canvas { }, testDispatcher)
 
-  private class TestRequest : MosaicRequest {
-    // Simple test implementation
-  }
+      val resultMap = mapOf("a" to "foo", "b" to "bar", "c" to "baz")
+      val delayLength = 100L
+      val testTile =
+        multiTile {
+          delay(delayLength)
+          resultMap
+        }
+
+      var result: Map<String, String>? = null
+      launch {
+        val workDuration =
+          testScheduler.timeSource.measureTime {
+            result = mosaic.compose(testTile, resultMap.keys)
+          }
+        assertEquals(delayLength.milliseconds, workDuration)
+      }
+
+      testScheduler.runCurrent()
+      assertNull(result)
+      testScheduler.advanceTimeBy(delayLength.milliseconds)
+      testScheduler.runCurrent()
+      assertEquals(resultMap, result)
+    }
+
+  @Test
+  fun `should receive a single key from a multiTile asynchronously`() =
+    runTest {
+      val testDispatcher = StandardTestDispatcher(testScheduler)
+      val mosaic = MosaicImpl(canvas { }, testDispatcher)
+
+      val resultMap = mapOf("a" to "foo", "b" to "bar", "c" to "baz")
+      val delayLength = 100L
+      val testTile =
+        multiTile {
+          delay(delayLength)
+          resultMap
+        }
+
+      var result: Deferred<String>? = null
+      launch {
+        val workDuration =
+          testScheduler.timeSource.measureTime {
+            result = mosaic.composeAsync(testTile, "a")
+          }
+        assertEquals(0.milliseconds, workDuration)
+      }
+
+      testScheduler.runCurrent()
+      assertNotNull(result)
+      assertFalse(result.isCompleted)
+      testScheduler.advanceTimeBy(delayLength.milliseconds)
+      testScheduler.runCurrent()
+      assertTrue(result.isCompleted)
+      assertEquals(resultMap["a"], result.await())
+    }
+
+  @Test
+  fun `should receive a single key from a multiTile synchronously`() =
+    runTest {
+      val testDispatcher = StandardTestDispatcher(testScheduler)
+      val mosaic = MosaicImpl(canvas { }, testDispatcher)
+
+      val resultMap = mapOf("a" to "foo", "b" to "bar", "c" to "baz")
+      val delayLength = 100L
+      val testTile =
+        multiTile {
+          delay(delayLength)
+          resultMap
+        }
+
+      var result: String? = null
+      launch {
+        val workDuration =
+          testScheduler.timeSource.measureTime {
+            result = mosaic.compose(testTile, "a")
+          }
+        assertEquals(delayLength.milliseconds, workDuration)
+      }
+
+      testScheduler.runCurrent()
+      assertNull(result)
+      testScheduler.advanceTimeBy(delayLength.milliseconds)
+      testScheduler.runCurrent()
+      assertEquals(resultMap["a"], result)
+    }
 }

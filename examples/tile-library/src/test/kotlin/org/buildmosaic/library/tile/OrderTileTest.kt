@@ -5,7 +5,7 @@ import org.buildmosaic.library.OrderKey
 import org.buildmosaic.library.exception.OrderNotFoundException
 import org.buildmosaic.library.model.Order
 import org.buildmosaic.library.model.OrderLineItem
-import org.buildmosaic.test.vtwo.TestMosaicBuilder
+import org.buildmosaic.test.TestMosaicBuilder
 import kotlin.test.Test
 
 class OrderTileTest {

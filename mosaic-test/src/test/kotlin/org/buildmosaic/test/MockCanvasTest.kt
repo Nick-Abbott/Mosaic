@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-package org.buildmosaic.test.vtwo
+package org.buildmosaic.test
 
 import kotlinx.coroutines.test.runTest
-import org.buildmosaic.core.vtwo.injection.CanvasKey
+import org.buildmosaic.core.injection.CanvasKey
 import kotlin.test.Test
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull

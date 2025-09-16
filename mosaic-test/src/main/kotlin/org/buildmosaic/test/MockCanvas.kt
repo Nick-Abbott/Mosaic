@@ -1,10 +1,10 @@
-package org.buildmosaic.test.vtwo
+package org.buildmosaic.test
 
-import org.buildmosaic.core.vtwo.injection.Canvas
-import org.buildmosaic.core.vtwo.injection.CanvasBuilder
-import org.buildmosaic.core.vtwo.injection.CanvasKey
-import org.buildmosaic.core.vtwo.injection.MosaicCanvas
-import org.buildmosaic.core.vtwo.injection.canvas
+import org.buildmosaic.core.injection.Canvas
+import org.buildmosaic.core.injection.CanvasBuilder
+import org.buildmosaic.core.injection.CanvasKey
+import org.buildmosaic.core.injection.MosaicCanvas
+import org.buildmosaic.core.injection.canvas
 import kotlin.reflect.KClass
 
 /**

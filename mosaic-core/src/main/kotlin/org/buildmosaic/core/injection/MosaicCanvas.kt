@@ -1,6 +1,6 @@
-package org.buildmosaic.core.vtwo.injection
+package org.buildmosaic.core.injection
 
-import org.buildmosaic.core.vtwo.exception.MosaicMissingKeyException
+import org.buildmosaic.core.exception.MosaicMissingKeyException
 
 private fun missingKeyError(key: CanvasKey<*>): Nothing = throw MosaicMissingKeyException(key)
 

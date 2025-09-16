@@ -1,80 +1,118 @@
-/*
- * Copyright 2025 Nicholas Abbott
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package org.buildmosaic.core
 
-import java.util.concurrent.ConcurrentHashMap
-import kotlin.reflect.KClass
+import kotlinx.coroutines.Deferred
+import org.buildmosaic.core.injection.Canvas
+import org.buildmosaic.core.injection.CanvasKey
 
 /**
- * The main entry point for the Mosaic framework.
- * Responsible for managing the lifecycle and caching of [Tile] instances.
- *
- * Mosaic provides a request-scoped context for tile execution, handling concurrency and caching automatically.
- * Each request should create a new [Mosaic] instance, which will be used to resolve and execute tiles.
- *
- * @property request The [MosaicRequest] containing context and data for the current request.
- * @property registry The [MosaicRegistry] used to resolve tile instances.
- * @constructor Creates a new Mosaic instance for the given request and registry.
- * @throws IllegalArgumentException if registry or request is null
+ * Per-request context used to execute tiles and access dependencies.
  */
-class Mosaic(
-  private val registry: MosaicRegistry,
-  val request: MosaicRequest,
-) {
-  private val tileCache = ConcurrentHashMap<KClass<*>, Tile>()
-  private val lock = Any()
+interface Mosaic {
+  val canvas: Canvas
 
   /**
-   * Retrieves an instance of the specified [Tile] class, creating it if necessary.
-   * This method is thread-safe and will return the same instance for subsequent calls with the same tile class.
+   * Retrieve the value of a [Tile] wrapped in a deferred for awaiting later
    *
-   * @param T The type of tile to retrieve
-   * @param tileClass The [KClass] of the tile to retrieve
-   * @return An instance of the requested tile class
-   * @throws IllegalArgumentException if the tile is unregistered
-   * For a version that infers the type parameter, see [getTile] with reified type parameter
+   * @param V the type of the [Tile] return value
+   * @param tile the [Tile] to retrieve
    */
-  fun <T : Tile> getTile(tileClass: KClass<T>): T {
-    @Suppress("UNCHECKED_CAST")
-    tileCache[tileClass]?.let { return it as T }
-
-    synchronized(lock) {
-      @Suppress("UNCHECKED_CAST")
-      tileCache[tileClass]?.let { return it as T }
-
-      val newTile = registry.getInstance(tileClass, this)
-      tileCache[tileClass] = newTile
-      return newTile
-    }
-  }
+  suspend fun <V> composeAsync(tile: Tile<V>): Deferred<V>
 
   /**
-   * Retrieves an instance of the specified [Tile] class using reified type parameters.
-   * This is a convenience method that infers the tile class from the type parameter.
+   * Await the value of a [Tile]
    *
-   * ```kotlin
-   * val userTile = mosaic.getTile<UserTile>()
-   * ```
-   *
-   * @param T The type of tile to retrieve (inferred from the return type)
-   * @return An instance of the requested tile class
-   * @throws IllegalArgumentException if the tile is unregistered
+   * @param V the type of the [Tile] return value
+   * @param tile the [Tile] to retrieve
    */
-  inline fun <reified T : Tile> getTile(): T {
-    return getTile(T::class)
-  }
+  suspend fun <V> compose(tile: Tile<V>): V
+
+  /**
+   * Retrieve the value of a [MultiTile] wrapped in a deferred for awaiting later
+   *
+   * @param K the type of the [MultiTile] keys
+   * @param V the type of the [MultiTile] return value
+   * @param tile the [MultiTile] to retrieve
+   * @param keys the keys to be retrieved
+   */
+  suspend fun <K : Any, V> composeAsync(
+    tile: MultiTile<K, V>,
+    keys: Collection<K>,
+  ): Map<K, Deferred<V>>
+
+  /**
+   * Await the value of a [MultiTile]
+   *
+   * @param K the type of the [MultiTile] keys
+   * @param V the type of the [MultiTile] return value
+   * @param tile the [MultiTile] to retrieve
+   * @param keys the keys to be retrieved
+   */
+  suspend fun <K : Any, V> compose(
+    tile: MultiTile<K, V>,
+    keys: Collection<K>,
+  ): Map<K, V>
+
+  /**
+   * Retrieve a single value from a [MultiTile] wrapped in a deferred for awaiting later
+   *
+   * @param K the type of the [MultiTile] keys
+   * @param V the type of the [MultiTile] return value
+   * @param tile the [MultiTile] to retrieve
+   * @param key the single key to be retrieved
+   */
+  suspend fun <K : Any, V> composeAsync(
+    tile: MultiTile<K, V>,
+    key: K,
+  ): Deferred<V>
+
+  /**
+   * Await a single value from a [MultiTile]
+   *
+   * @param K the type of the [MultiTile] keys
+   * @param V the type of the [MultiTile] return value
+   * @param tile the [MultiTile] to retrieve
+   * @param key the single key to be retrieved
+   */
+  suspend fun <K : Any, V> compose(
+    tile: MultiTile<K, V>,
+    key: K,
+  ): V
 }
+
+/**
+ * Retrieves a dependency from the canvas using reified type parameters.
+ *
+ * @param T The type of the dependency to retrieve
+ * @param qualifier Optional qualifier to distinguish between multiple instances of the same type
+ * @return The dependency instance
+ * @throws MosaicMissingKeyException if the dependency is not found
+ */
+inline fun <reified T : Any> Mosaic.source(qualifier: String? = null) = canvas.source(T::class, qualifier)
+
+/**
+ * Retrieves a dependency from the canvas using a [CanvasKey].
+ *
+ * @param T The type of the dependency to retrieve
+ * @param key The canvas key identifying the dependency
+ * @return The dependency instance
+ * @throws MosaicMissingKeyException if the dependency is not found
+ */
+fun <T : Any> Mosaic.source(key: CanvasKey<T>) = canvas.source(key)
+
+/**
+ * Retrieves a dependency from the canvas using reified type parameters, returning null if not found.
+ *
+ * @param T The type of the dependency to retrieve
+ * @param qualifier Optional qualifier to distinguish between multiple instances of the same type
+ * @return The dependency instance or null if not found
+ */
+inline fun <reified T : Any> Mosaic.sourceOr(qualifier: String? = null) = canvas.sourceOr(T::class, qualifier)
+
+/**
+ * Retrieves a dependency from the canvas using a [CanvasKey], returning null if not found.
+ *
+ * @param T The type of the dependency to retrieve
+ * @param key The canvas key identifying the dependency
+ * @return The dependency instance or null if not found
+ */
+fun <T : Any> Mosaic.sourceOr(key: CanvasKey<T>) = canvas.sourceOr(key)

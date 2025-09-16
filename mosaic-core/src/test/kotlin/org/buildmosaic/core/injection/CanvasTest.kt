@@ -1,7 +1,7 @@
-package org.buildmosaic.core.vtwo.injection
+package org.buildmosaic.core.injection
 
 import kotlinx.coroutines.test.runTest
-import org.buildmosaic.core.vtwo.source
+import org.buildmosaic.core.source
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -86,14 +86,14 @@ class CanvasTest {
   fun `should test CanvasKey toString null qualifier branch`() {
     val key = CanvasKey(TestService::class, null)
     val result = key.toString()
-    assertEquals("org.buildmosaic.core.vtwo.injection.CanvasTest.TestService", result)
+    assertEquals("org.buildmosaic.core.injection.CanvasTest.TestService", result)
   }
 
   @Test
   fun `should test CanvasKey toString with non-null qualifier`() {
     val key = CanvasKey(TestService::class, "test-qualifier")
     val result = key.toString()
-    assertEquals("org.buildmosaic.core.vtwo.injection.CanvasTest.TestService[test-qualifier]", result)
+    assertEquals("org.buildmosaic.core.injection.CanvasTest.TestService[test-qualifier]", result)
   }
 
   @Test
