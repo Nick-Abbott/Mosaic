@@ -75,6 +75,8 @@ open class MosaicImpl(
         if (prev == null) {
           result[key] = placeholder
           winners.add(key)
+        } else {
+          result[key] = prev
         }
       }
     }
