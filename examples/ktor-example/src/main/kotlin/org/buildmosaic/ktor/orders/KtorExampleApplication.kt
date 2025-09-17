@@ -12,10 +12,9 @@ import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.response.respond
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
-import org.buildmosaic.core.Mosaic
-import org.buildmosaic.core.MosaicRegistry
-import org.buildmosaic.core.generated.registerGeneratedTiles
-import org.buildmosaic.library.OrderRequest
+import org.buildmosaic.core.injection.canvas
+import org.buildmosaic.core.injection.create
+import org.buildmosaic.library.OrderKey
 import org.buildmosaic.library.exception.OrderNotFoundException
 import org.buildmosaic.library.tile.OrderPageTile
 import org.buildmosaic.library.tile.OrderTotalTile
@@ -36,21 +35,26 @@ fun Application.module() {
     }
   }
 
-  val registry = MosaicRegistry()
-  registry.registerGeneratedTiles()
+  val canvas = kotlinx.coroutines.runBlocking { canvas { } }
 
   routing {
     get("/orders/{id}") {
       val orderId = call.parameters["id"] ?: error("Missing order ID")
-      val mosaic = Mosaic(registry, OrderRequest(orderId))
-      val orderPage = mosaic.getTile<OrderPageTile>().get()
+      val mosaic =
+        canvas.withLayer {
+          single(OrderKey.qualifier) { orderId }
+        }.create()
+      val orderPage = mosaic.compose(OrderPageTile)
       call.respond(orderPage)
     }
 
     get("/orders/{id}/total") {
       val orderId = call.parameters["id"] ?: error("Missing order ID")
-      val mosaic = Mosaic(registry, OrderRequest(orderId))
-      val total = mosaic.getTile<OrderTotalTile>().get()
+      val mosaic =
+        canvas.withLayer {
+          single(OrderKey.qualifier) { orderId }
+        }.create()
+      val total = mosaic.compose(OrderTotalTile)
       call.respond(mapOf("total" to total))
     }
   }

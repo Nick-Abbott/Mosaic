@@ -1,6 +1,6 @@
 package org.buildmosaic.library.tile
 
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import org.buildmosaic.library.model.Address
 import org.buildmosaic.library.model.Logistics
 import org.buildmosaic.library.model.Quote
@@ -10,7 +10,7 @@ import kotlin.test.Test
 class LogisticsTileTest {
   @Test
   fun `logistics tile combines address and quotes`() =
-    runBlocking {
+    runTest {
       val address = Address("123 Main St", "Springfield")
       val quotes =
         mapOf(
@@ -20,22 +20,22 @@ class LogisticsTileTest {
         )
       val expected = Logistics(address, quotes)
       val testMosaic =
-        TestMosaicBuilder()
-          .withMockTile(AddressTile::class, address)
-          .withMockTile(CarrierQuotesTile::class, quotes)
+        TestMosaicBuilder(this)
+          .withMockTile(AddressTile, address)
+          .withMockTile(CarrierQuotesTile, quotes)
           .build()
-      testMosaic.assertEquals(LogisticsTile::class, expected)
+      testMosaic.assertEquals(LogisticsTile, expected)
     }
 
   @Test
   fun `logistics tile fails when quotes tile fails`() =
-    runBlocking {
+    runTest {
       val address = Address("123 Main St", "Springfield")
       val testMosaic =
-        TestMosaicBuilder()
-          .withMockTile(AddressTile::class, address)
-          .withFailedTile(CarrierQuotesTile::class, RuntimeException("boom"))
+        TestMosaicBuilder(this)
+          .withMockTile(AddressTile, address)
+          .withFailedTile(CarrierQuotesTile, RuntimeException("boom"))
           .build()
-      testMosaic.assertThrows(LogisticsTile::class, RuntimeException::class)
+      testMosaic.assertThrows(LogisticsTile, RuntimeException::class)
     }
 }

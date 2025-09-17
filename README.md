@@ -28,30 +28,11 @@ Mosaic is a Kotlin framework that transforms backend development through **compo
 Add Mosaic to your Gradle project:
 
 ```kotlin
-// For applications using tiles
-plugins {
-  kotlin("jvm")                                                    // Kotlin JVM plugin
-  id("com.google.devtools.ksp")                                    // Kotlin Symbol Processing
-  id("org.buildmosaic.consumer") version "0.1.0"                   // Applies mosaic dependencies and KSP processors
-}
-
 dependencies {
-  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")  // Recommended for advanced coroutine usage
-  testImplementation(kotlin("test"))                               // Kotlin test framework
-}
-```
-
-```kotlin
-// For tile libraries
-plugins {
-  kotlin("jvm")                                                    // Kotlin JVM plugin
-  id("com.google.devtools.ksp")                                    // Kotlin Symbol Processing
-  id("org.buildmosaic.catalog") version "0.1.0"                    // Applies mosaic dependencies and KSP processors
-}
-
-dependencies {
-  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")  // Recommended for advanced coroutine usage
-  testImplementation(kotlin("test"))                               // Kotlin test framework
+  implementation("org.buildmosaic:mosaic-core:0.2.0")
+  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")
+  testImplementation("org.buildmosaic:mosaic-test:0.2.0")
+  testImplementation(kotlin("test"))
 }
 ```
 
@@ -59,40 +40,34 @@ dependencies {
 
 ```kotlin
 // A simple tile that fetches and caches data
-class CustomerTile(mosaic: Mosaic) : SingleTile<Customer>(mosaic) {
-  override suspend fun retrieve(): Customer {
-    val customerId = (mosaic.request as OrderRequest).customerId
-    return CustomerService.fetchCustomer(customerId)
-  }
+val CustomerTile = singleTile {
+  val customerId = source(CustomerIdKey) // Or source<String>("customerId")
+  CustomerService.getCustomer(customerId)
 }
 
 // Parallel composition: These tiles run concurrently
-class OrderSummaryTile(mosaic: Mosaic) : SingleTile<OrderSummary>(mosaic) {
-  override suspend fun retrieve(): OrderSummary = coroutineScope {
-    // These run in parallel automatically!
-    val orderDeferred = async { mosaic.getTile<OrderTile>().get() }
-    val customerDeferred = async { mosaic.getTile<CustomerTile>().get() }
-    val lineItemsDeferred = async { mosaic.getTile<LineItemsTile>().get() }
-    
-    OrderSummary(
-      order = orderDeferred.await(),
-      customer = customerDeferred.await(),
-      lineItems = lineItemsDeferred.await()
-    )
-  }
+val OrderSummaryTile = singleTile {
+  // These run in parallel automatically!
+  val orderDeferred = composeAsync(OrderTile)
+  val customerDeferred = composeAsync(CustomerTile)
+  val lineItemsDeferred = composeAsync(LineItemsTile)
+  
+  OrderSummary(
+    order = orderDeferred.await(),
+    customer = customerDeferred.await(),
+    lineItems = lineItemsDeferred.await()
+  )
 }
 
 // Sequential composition: Choose tiles based on previous results
-class PaymentProcessorTile(mosaic: Mosaic) : SingleTile<PaymentProcessor>(mosaic) {
-  override suspend fun retrieve(): PaymentProcessor {
-    val customer = mosaic.getTile<CustomerTile>().get()
-    
-    // Choose processor based on customer tier
-    return when (customer.tier) {
-      CustomerTier.PREMIUM -> mosaic.getTile<PremiumProcessorTile>().get()
-      CustomerTier.BUSINESS -> mosaic.getTile<BusinessProcessorTile>().get()
-      else -> mosaic.getTile<StandardProcessorTile>().get()
-    }
+val PaymentProcessorTile = singleTile {
+  val customer = compose(CustomerTile)
+  
+  // Choose processor based on customer tier
+  when (customer.tier) {
+    CustomerTier.PREMIUM -> compose(PremiumProcessorTile)
+    CustomerTier.BUSINESS -> compose(BusinessProcessorTile)
+    else -> compose(StandardProcessorTile)
   }
 }
 ```
@@ -119,31 +94,27 @@ val logistics = calculateLogistics(order, customer, enrichedItems)
 ### **Mosaic Approach (Response Up)**
 ```kotlin
 // Declarative: tiles retrieve their own dependencies - no data passing!
-class OrderPageTile(mosaic: Mosaic) : SingleTile<OrderPage>(mosaic) {
-  override suspend fun retrieve(): OrderPage = coroutineScope {
-    val summaryDeferred = async { mosaic.getTile<OrderSummaryTile>().get() }
-    val logisticsDeferred = async { mosaic.getTile<LogisticsTile>().get() }
-    
-    OrderPage(
-      summary = summaryDeferred.await(),
-      logistics = logisticsDeferred.await()
-    )
-  }
+val OrderPageTile = singleTile {
+  val summaryDeferred = composeAsync(OrderSummaryTile)
+  val logisticsDeferred = composeAsync(LogisticsTile)
+  
+  OrderPage(
+    summary = summaryDeferred.await(),
+    logistics = logisticsDeferred.await()
+  )
 }
 
 // Each tile knows how to get what it needs - no coupling!
-class OrderSummaryTile(mosaic: Mosaic) : SingleTile<OrderSummary>(mosaic) {
-  override suspend fun retrieve(): OrderSummary = coroutineScope {
-    val orderDeferred = async { mosaic.getTile<OrderTile>().get() }
-    val customerDeferred = async { mosaic.getTile<CustomerTile>().get() }
-    val lineItemsDeferred = async { mosaic.getTile<LineItemsTile>().get() }
-    
-    OrderSummary(
-      order = orderDeferred.await(),
-      customer = customerDeferred.await(),
-      lineItems = lineItemsDeferred.await()
-    )
-  }
+val OrderSummaryTile = singleTile {
+  val orderDeferred = composeAsync(OrderTile)
+  val customerDeferred = composeAsync(CustomerTile)
+  val lineItemsDeferred = composeAsync(LineItemsTile)
+  
+  OrderSummary(
+    order = orderDeferred.await(),
+    customer = customerDeferred.await(),
+    lineItems = lineItemsDeferred.await()
+  )
 }
 ```
 
@@ -153,55 +124,44 @@ Mosaic shines when composing tiles multiple levels deep. Each tile focuses on on
 
 ```kotlin
 // Level 1: Entry point tile
-class OrderPageTile(mosaic: Mosaic) : SingleTile<OrderPage>(mosaic) {
-  override suspend fun retrieve(): OrderPage = coroutineScope {
-    // Parallel execution of two major components
-    val summaryDeferred = async { mosaic.getTile<OrderSummaryTile>().get() }
-    val logisticsDeferred = async { mosaic.getTile<LogisticsTile>().get() }
-    
-    OrderPage(summaryDeferred.await(), logisticsDeferred.await())
-  }
+val OrderPageTile = singleTile {
+  // Parallel execution of two major components
+  val summaryDeferred = composeAsync(OrderSummaryTile)
+  val logisticsDeferred = composeAsync(LogisticsTile)
+  
+  OrderPage(summaryDeferred.await(), logisticsDeferred.await())
 }
 
 // Level 2: Summary aggregates order data
-class OrderSummaryTile(mosaic: Mosaic) : SingleTile<OrderSummary>(mosaic) {
-  override suspend fun retrieve(): OrderSummary = coroutineScope {
-    // These three tiles run in parallel
-    val orderDeferred = async { mosaic.getTile<OrderTile>().get() }
-    val customerDeferred = async { mosaic.getTile<CustomerTile>().get() }
-    val lineItemsDeferred = async { mosaic.getTile<LineItemsTile>().get() }
-    
-    OrderSummary(
-      order = orderDeferred.await(),
-      customer = customerDeferred.await(),
-      lineItems = lineItemsDeferred.await()
-    )
-  }
+val OrderSummaryTile = singleTile {
+  // These three tiles run in parallel
+  val orderDeferred = composeAsync(OrderTile)
+  val customerDeferred = composeAsync(CustomerTile)
+  val lineItemsDeferred = composeAsync(LineItemsTile)
+  
+  OrderSummary(
+    order = orderDeferred.await(),
+    customer = customerDeferred.await(),
+    lineItems = lineItemsDeferred.await()
+  )
 }
 
 // Level 3: Line items enriches with product and pricing data
-class LineItemsTile(mosaic: Mosaic) : SingleTile<List<LineItemDetail>>(mosaic) {
-  override suspend fun retrieve(): List<LineItemDetail> {
-    val order = mosaic.getTile<OrderTile>().get()
-    
-    // Batch fetch products and prices in parallel
-    val (products, prices) = coroutineScope {
-      val productsDeferred = async { 
-        mosaic.getTile<ProductsByIdTile>().getByKeys(order.productIds) 
-      }
-      val pricesDeferred = async { 
-        mosaic.getTile<PricingBySkuTile>().getByKeys(order.skus) 
-      }
-      productsDeferred.await() to pricesDeferred.await()
-    }
-        
-    return order.items.map { item ->
-      LineItemDetail(
-        product = products[item.productId],
-        price = prices[item.sku],
-        quantity = item.quantity
-      )
-    }
+val LineItemsTile = singleTile {
+  val order = compose(OrderTile)
+  
+  // Batch fetch products and prices in parallel
+  val productsDeferred = composeAsync(ProductsByIdTile, order.productIds)
+  val pricesDeferred = composeAsync(PricingBySkuTile, order.skus)
+  val products = productsDeferred.await()
+  val prices = pricesDeferred.await()
+      
+  order.items.map { item ->
+    LineItemDetail(
+      product = products[item.productId],
+      price = prices[item.sku],
+      quantity = item.quantity
+    )
   }
 }
 ```
@@ -211,29 +171,151 @@ class LineItemsTile(mosaic: Mosaic) : SingleTile<List<LineItemDetail>>(mosaic) {
 Call the same tile from multiple places without redundant fetches:
 
 ```kotlin
-class OrderTotalTile(mosaic: Mosaic) : SingleTile<Double>(mosaic) {
-  override suspend fun retrieve(): Double {
-    // This calls LineItemsTile
-    val lineItems = mosaic.getTile<LineItemsTile>().get()
-    return lineItems.sumOf { it.price.amount * it.quantity }
-  }
+val OrderTotalTile = singleTile {
+  // This calls LineItemsTile
+  val lineItems = compose(LineItemsTile)
+  lineItems.sumOf { it.price.amount * it.quantity }
 }
 
-class TaxCalculatorTile(mosaic: Mosaic) : SingleTile<Tax>(mosaic) {
-  override suspend fun retrieve(): Tax {
-    // Also calls LineItemsTile - but it's already cached!
-    val lineItems = mosaic.getTile<LineItemsTile>().get()
-    val address = mosaic.getTile<AddressTile>().get()
-    return TaxService.calculate(lineItems, address)
-  }
+val TaxCalculatorTile = singleTile {
+  // Also calls LineItemsTile - but it's already cached!
+  val lineItems = compose(LineItemsTile)
+  val address = compose(AddressTile)
+  TaxService.calculate(lineItems, address)
 }
 
 // In your controller:
-val orderPage = mosaic.getTile<OrderPageTile>().get()    // Fetches LineItemsTile
-val orderTotal = mosaic.getTile<OrderTotalTile>().get()  // Uses cached LineItemsTile
-val tax = mosaic.getTile<TaxCalculatorTile>().get()      // Uses cached LineItemsTile
+val orderPage = mosaic.compose(OrderPageTile)    // Fetches LineItemsTile
+val orderTotal = mosaic.compose(OrderTotalTile)  // Uses cached LineItemsTile
+val tax = mosaic.compose(TaxCalculatorTile)      // Uses cached LineItemsTile
 // LineItemsTile was only fetched ONCE!
 ```
+
+## 🏗️ **Dependency Injection with Canvas**
+
+Canvas provides hierarchical dependency injection that separates application-level dependencies from request-specific data. This enables clean separation of concerns and efficient resource management.
+
+### **Creating the Application Canvas**
+
+```kotlin
+// Create your main application canvas with long-lived dependencies
+val applicationCanvas = canvas {
+  // Database connections
+  single<DataSource> { 
+    HikariDataSource().apply {
+      jdbcUrl = "jdbc:postgresql://localhost:5432/myapp"
+      username = "user"
+      password = "password"
+    }
+  }
+  
+  // Services that depend on the database
+  single<UserService> { 
+    UserServiceImpl(source<DataSource>()) 
+  }
+  
+  single<OrderService> { 
+    OrderServiceImpl(source<DataSource>()) 
+  }
+  
+  // External API clients
+  single<PaymentClient> {
+    PaymentClientImpl(apiKey = System.getenv("PAYMENT_API_KEY"))
+  }
+  
+  // Configuration
+  single<AppConfig> { loadAppConfig() }
+}
+```
+
+### **Adding Request-Specific Layers**
+
+```kotlin
+// In your controller/handler, add request-specific data as a layer
+suspend fun handleOrderRequest(orderId: String, userId: String) {
+  val requestMosaic = applicationCanvas.withLayer {
+    // Request-specific data
+    single<String>("orderId") { orderId }
+    single<String>("userId") { userId }
+    single<Instant>("requestTime") { Instant.now() }
+    
+    // You can also override application dependencies for testing
+    // single<PaymentClient> { MockPaymentClient() }
+  }.create()
+  
+  // Use the mosaic with both application and request dependencies
+  val orderPage = requestMosaic.compose(OrderPageTile)
+  return orderPage
+}
+```
+
+### **Accessing Dependencies in Tiles**
+
+```kotlin
+// Tiles can access both application and request dependencies
+val OrderTile = singleTile {
+  val orderId = source<String>("orderId")
+  val orderService = source<OrderService>()  // From application canvas
+  orderService.getOrder(orderId)
+}
+
+val CustomerTile = singleTile {
+  val userId = source<String>("userId")
+  val userService = source<UserService>()    // From application canvas
+  userService.getUser(userId)
+}
+
+val PaymentTile = singleTile {
+  val order = compose(OrderTile)
+  val paymentClient = source<PaymentClient>() // From application canvas
+  val requestTime = source<Instant>("requestTime") // From request layer
+  
+  paymentClient.getPaymentStatus(order.paymentId, requestTime)
+}
+
+// Complex tile that uses multiple dependencies
+val OrderSummaryTile = singleTile {
+  val orderDeferred = composeAsync(OrderTile)
+  val customerDeferred = composeAsync(CustomerTile) 
+  val paymentDeferred = composeAsync(PaymentTile)
+  
+  // All tiles have access to the same dependency context
+  OrderSummary(
+    order = orderDeferred.await(),
+    customer = customerDeferred.await(),
+    payment = paymentDeferred.await()
+  )
+}
+```
+
+### **Typed Keys for Better Safety**
+
+```kotlin
+// Define typed keys for better compile-time safety
+object OrderIdKey : CanvasKey<String>(String::class, "orderId")
+object UserIdKey : CanvasKey<String>(String::class, "userId")
+
+// Use in canvas configuration
+val requestMosaic = applicationCanvas.withLayer {
+  single(OrderIdKey) { orderId }
+  single(UserIdKey) { userId }
+}.create()
+
+// Use in tiles
+val OrderTile = singleTile {
+  val orderId = source(OrderIdKey)  // Type-safe!
+  val orderService = source<OrderService>()
+  orderService.getOrder(orderId)
+}
+```
+
+### **Canvas Hierarchy Benefits**
+
+- **Separation of Concerns**: Application dependencies separate from request data
+- **Resource Efficiency**: Database connections and services created once, reused across requests
+- **Testing Flexibility**: Override any dependency at any layer for testing
+- **Type Safety**: Compile-time guarantees for dependency resolution
+- **Automatic Cleanup**: Canvas implements `AutoCloseable` for resource management
 
 ## 🔧 **Batch Operations with MultiTile**
 
@@ -241,46 +323,26 @@ MultiTile abstracts batching strategy from consumers. **Key insight: if you requ
 
 ```kotlin
 // Strategy 1: Large batch operations (efficient for bulk APIs)
-class PricingBySkuTile(mosaic: Mosaic) : MultiTile<Price, Map<String, Price>>(mosaic) {
-  override suspend fun retrieveForKeys(skus: List<String>): Map<String, Price> {
-    // Single bulk API call - efficient for services that support batch operations
-    return PricingService.getBulkPrices(skus)
-  }
-  
-  override fun normalize(sku: String, response: Map<String, Price>): Price = response.getValue(sku)
+val PricingBySkuTile = multiTile { skus ->
+  // Single bulk API call - efficient for services that support batch operations
+  PricingService.getBulkPrices(skus.toList())
 }
 
 // Strategy 2: Individual requests (for APIs without batch support)
-class ProductByIdTile(mosaic: Mosaic) : MultiTile<Product, List<Product>>(mosaic) {
-  override suspend fun retrieveForKeys(productIds: List<String>): List<Product> {
-    // Make individual calls concurrently when no batch API exists
-    return coroutineScope {
-      productIds.map { id ->
-        async { ProductService.getProduct(id) }
-      }.awaitAll()
-    }
-  }
-  
-  override fun normalize(productId: String, response: List<Product>): Product {
-    return response.first { it.id == productId }
-  }
+val ProductByIdTile = perKeyTile { productId ->
+  // Make individual calls concurrently when no batch API exists
+  ProductService.getProduct(productId)
 }
 
 // Strategy 3: Chunked requests (respect API rate limits)
-class InventoryBySkuTile(mosaic: Mosaic) : MultiTile<Inventory, Map<String, Inventory>>(mosaic) {
-  override suspend fun retrieveForKeys(skus: List<String>): Map<String, Inventory> {
-    // API only allows 10 items per request - chunk to respect limits
-    return skus.chunked(10).map { chunk ->
-      InventoryService.getInventory(chunk)
-    }.reduce { acc, map -> acc + map }
-  }
-    
-  override fun normalize(sku: String, response: Map<String, Inventory>): Inventory = response.getValue(sku)
+val InventoryBySkuTile = chunkedMultiTile(10) { skus ->
+  // API only allows 10 items per request - chunk to respect limits
+  InventoryService.getInventory(skus)
 }
 
 // Consumer code - batching is completely abstracted:
-val prices1 = mosaic.getTile<PricingBySkuTile>().getByKeys(listOf("SKU1", "SKU2"))
-val prices2 = mosaic.getTile<PricingBySkuTile>().getByKeys(listOf("SKU2", "SKU3"))
+val prices1 = mosaic.compose(PricingBySkuTile, listOf("SKU1", "SKU2"))
+val prices2 = mosaic.compose(PricingBySkuTile, listOf("SKU2", "SKU3"))
 // SKU2 is only fetched ONCE - automatically deduplicated!
 ```
 
@@ -293,44 +355,44 @@ In traditional backends, testing requires intricate mocking of repositories, ser
 ```kotlin
 // Test a complex 3-level composition by mocking just the dependencies
 @Test
-fun `order page composes correctly`() = runBlocking {
-  val testMosaic = TestMosaicBuilder()
-    .withMockTile(OrderSummaryTile::class, mockSummary)
-    .withMockTile(LogisticsTile::class, mockLogistics)
+fun `order page composes correctly`() = runTest {
+  val testMosaic = TestMosaicBuilder(this)
+    .withMockTile(OrderSummaryTile, mockSummary)
+    .withMockTile(LogisticsTile, mockLogistics)
     .build()
   
   // Test the composition logic without any external dependencies
   testMosaic.assertEquals(
-    tileClass = OrderPageTile::class,
+    tile = OrderPageTile,
     expected = OrderPage(mockSummary, mockLogistics)
   )
 }
 
 // Test error propagation through the composition chain
 @Test
-fun `handles service failures gracefully`() = runBlocking {
-  val testMosaic = TestMosaicBuilder()
-    .withMockTile(OrderTile::class, mockOrder)
-    .withFailedTile(CustomerTile::class, CustomerServiceException("Service down"))
-    .withMockTile(LineItemsTile::class, mockLineItems)
+fun `handles service failures gracefully`() = runTest {
+  val testMosaic = TestMosaicBuilder(this)
+    .withMockTile(OrderTile, mockOrder)
+    .withFailedTile(CustomerTile, CustomerServiceException("Service down"))
+    .withMockTile(LineItemsTile, mockLineItems)
     .build()
   
   // Verify the error bubbles up correctly
   testMosaic.assertThrows(
-    tileClass = OrderSummaryTile::class,
-    expectedException = CustomerServiceException::class.java
+    tile = OrderSummaryTile,
+    expectedException = CustomerServiceException::class
   )
 }
 
 // Test performance characteristics and timeouts
 @Test  
-fun `handles slow external services`() = runBlocking {
-  val testMosaic = TestMosaicBuilder()
-    .withDelayedTile(ExternalApiTile::class, mockData, delayMs = 500)
+fun `handles slow external services`() = runTest {
+  val testMosaic = TestMosaicBuilder(this)
+    .withDelayedTile(ExternalApiTile, mockData, delayMs = 500)
     .build()
   
   val startTime = System.currentTimeMillis()
-  testMosaic.assertEquals(ExternalApiTile::class, mockData)
+  testMosaic.assertEquals(ExternalApiTile, mockData)
   val elapsed = System.currentTimeMillis() - startTime
   
   assertTrue(elapsed >= 500, "Should respect external service latency")
@@ -347,26 +409,31 @@ fun `handles slow external services`() = runBlocking {
 @Configuration
 class MosaicConfig {
   @Bean
-  fun mosaicRegistry(): MosaicRegistry {
-    val registry = MosaicRegistry()
-    // Auto-registers all tiles via KSP-generated code
-    registry.registerGeneratedTiles()
-    return registry
+  fun mosaicCanvas(): Canvas = runBlocking {
+    canvas {
+      // Register your dependencies here
+      single<UserService> { UserServiceImpl() }
+      single<DatabaseConfig> { loadConfig() }
+    }
   }
 }
 
 @RestController
-class OrderController(private val registry: MosaicRegistry) {
+class OrderController(private val canvas: Canvas) {
   @GetMapping("/orders/{id}")
   fun getOrder(@PathVariable id: String): OrderPage = runBlocking {
-    val mosaic = Mosaic(registry, OrderRequest(id))
-    mosaic.getTile<OrderPageTile>().get()
+    val mosaic = canvas.withLayer {
+      single(OrderKey.qualifier) { id }
+    }.create()
+    mosaic.compose(OrderPageTile)
   }
     
   @GetMapping("/orders/{id}/total")
   fun getOrderTotal(@PathVariable id: String): Double = runBlocking {
-    val mosaic = Mosaic(registry, OrderRequest(id))
-    mosaic.getTile<OrderTotalTile>().get()
+    val mosaic = canvas.withLayer {
+      single(OrderKey.qualifier) { id }
+    }.create()
+    mosaic.compose(OrderTotalTile)
   }
 }
 ```
@@ -377,21 +444,30 @@ class OrderController(private val registry: MosaicRegistry) {
 fun Application.module() {
   install(ContentNegotiation) { json() }
   
-  val registry = MosaicRegistry()
-  registry.registerGeneratedTiles()
+  val canvas = runBlocking {
+    canvas {
+      // Register your dependencies here
+      single<UserService> { UserServiceImpl() }
+      single<DatabaseConfig> { loadConfig() }
+    }
+  }
   
   routing {
     get("/orders/{id}") {
       val orderId = call.parameters["id"] ?: error("Missing order ID")
-      val mosaic = Mosaic(registry, OrderRequest(orderId))
-      val orderPage = mosaic.getTile<OrderPageTile>().get()
+      val mosaic = canvas.withLayer {
+        single(OrderKey.qualifier) { orderId }
+      }.create()
+      val orderPage = mosaic.compose(OrderPageTile)
       call.respond(orderPage)
     }
     
     get("/orders/{id}/total") {
       val orderId = call.parameters["id"] ?: error("Missing order ID")
-      val mosaic = Mosaic(registry, OrderRequest(orderId))
-      val total = mosaic.getTile<OrderTotalTile>().get()
+      val mosaic = canvas.withLayer {
+        single(OrderKey.qualifier) { orderId }
+      }.create()
+      val total = mosaic.compose(OrderTotalTile)
       call.respond(mapOf("total" to total))
     }
   }
@@ -405,26 +481,32 @@ fun Application.module() {
 class MosaicConfiguration {
   @Bean
   @Singleton
-  fun mosaicRegistry(): MosaicRegistry {
-    val registry = MosaicRegistry()
-    registry.registerGeneratedTiles()
-    return registry
+  fun mosaicCanvas(): Canvas = runBlocking {
+    canvas {
+      // Register your dependencies here
+      single<UserService> { UserServiceImpl() }
+      single<DatabaseConfig> { loadConfig() }
+    }
   }
 }
 
 @Controller("/orders")
-class OrderController(private val registry: MosaicRegistry) {
+class OrderController(private val canvas: Canvas) {
     
   @Get("/{id}")
   fun getOrder(@PathVariable id: String): OrderPage = runBlocking {
-    val mosaic = Mosaic(registry, OrderRequest(id))
-    mosaic.getTile<OrderPageTile>().get()
+    val mosaic = canvas.withLayer {
+      single(OrderKey.qualifier) { id }
+    }.create()
+    mosaic.compose(OrderPageTile)
   }
   
   @Get("/{id}/total")
   fun getOrderTotal(@PathVariable id: String): Map<String, Double> = runBlocking {
-    val mosaic = Mosaic(registry, OrderRequest(id))
-    val total = mosaic.getTile<OrderTotalTile>().get()
+    val mosaic = canvas.withLayer {
+      single(OrderKey.qualifier) { id }
+    }.create()
+    val total = mosaic.compose(OrderTotalTile)
     mapOf("total" to total)
   }
 }

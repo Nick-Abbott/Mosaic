@@ -16,11 +16,13 @@
 
 package org.buildmosaic.test
 
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.test.TestDispatcher
 import org.buildmosaic.core.Mosaic
-import org.buildmosaic.core.MosaicRequest
+import org.buildmosaic.core.MosaicImpl
 import org.buildmosaic.core.MultiTile
-import org.buildmosaic.core.SingleTile
 import org.buildmosaic.core.Tile
+import org.buildmosaic.core.injection.Canvas
 import kotlin.reflect.KClass
 import kotlin.test.assertEquals as testAssertEquals
 import kotlin.test.assertFailsWith as testAssertFailsWith
@@ -50,115 +52,82 @@ import kotlin.test.assertFailsWith as testAssertFailsWith
  * ```
  *
  */
-class TestMosaic(private val mosaic: Mosaic) {
+class TestMosaic(
+  canvas: Canvas,
+  private val mockTileCache: Map<Tile<*>, Tile<*>>,
+  private val mockMultiTileCache: Map<MultiTile<*, *>, MultiTile<*, *>>,
+  dispatcher: TestDispatcher,
+) : MosaicImpl(canvas, dispatcher) {
   /**
-   * The [MosaicRequest] associated with this test instance.
+   * Asserts that a [Tile] returns the expected value.
    *
-   * This provides access to the request context being used in the test.
-   */
-  val request: MosaicRequest get() = mosaic.request
-
-  /**
-   * Retrieves an instance of the specified [Tile] class.
-   *
-   * @param T The type of tile to retrieve
-   * @param tileClass The [KClass] of the tile to retrieve
-   * @return An instance of the requested tile class
-   * @throws IllegalArgumentException if the tile is not registered
-   */
-  fun <T : Tile> getTile(tileClass: KClass<T>): T = mosaic.getTile(tileClass)
-
-  /**
-   * Retrieves an instance of the specified [Tile] class using reified type parameters.
-   *
-   * This is a convenience method that infers the tile class from the type parameter.
-   *
-   * @param T The type of tile to retrieve (inferred from the return type)
-   * @return An instance of the requested tile class
-   * @throws IllegalArgumentException if the tile is not registered
-   */
-  inline fun <reified T : Tile> getTile(): T = getTile(T::class)
-
-  /**
-   * Asserts that a [SingleTile] returns the expected value.
-   *
-   * @param R The type of value the tile returns
-   * @param tileClass The class of the tile to test
+   * @param V The type of value the tile returns
+   * @param tile The tile to test
    * @param expected The expected value
    * @throws AssertionError if the actual value doesn't match the expected value
    *
    * ```kotlin
-   * testMosaic.assertEquals(MyTile::class, "expected value")
+   * testMosaic.assertEquals(MyTile, "expected value")
    * ```
    */
-  suspend fun <R> assertEquals(
-    tileClass: KClass<out SingleTile<R>>,
-    expected: R,
-  ) {
-    val tile = getTile(tileClass)
-    val actual = tile.get()
-    testAssertEquals(expected, actual)
-  }
+  suspend fun <V> assertEquals(
+    tile: Tile<V>,
+    expected: V,
+  ) = testAssertEquals(expected, compose(tile))
 
   /**
-   * Asserts that a [SingleTile] returns the expected value with a custom failure message.
+   * Asserts that a [Tile] returns the expected value with a custom failure message.
    *
-   * @param R The type of value the tile returns
-   * @param tileClass The class of the tile to test
+   * @param V The type of value the tile returns
+   * @param tile The tile to test
    * @param expected The expected value
    * @param message The message to include in case of assertion failure
    * @throws AssertionError if the actual value doesn't match the expected value
    *
    * ```kotlin
    * testMosaic.assertEquals(
-   *   tileClass = MyTile::class,
+   *   tile = MyTile,
    *   expected = "expected value",
    *   message = "The tile did not return the expected value"
    * )
    * ```
    */
-  suspend fun <R> assertEquals(
-    tileClass: KClass<out SingleTile<R>>,
-    expected: R,
+  suspend fun <V> assertEquals(
+    tile: Tile<V>,
+    expected: V,
     message: String,
-  ) {
-    val tile = getTile(tileClass)
-    val actual = tile.get()
-    testAssertEquals(expected, actual, message)
-  }
+  ) = testAssertEquals(expected, compose(tile), message)
 
   /**
    * Asserts that a [MultiTile] returns the expected values for the given keys.
    *
-   * @param R The type of values in the response map
-   * @param tileClass The class of the tile to test
+   * @param K The type of keys in the response map
+   * @param V The type of values in the response map
+   * @param tile The tile to test
    * @param keys The list of keys to request from the tile
    * @param expected The expected map of keys to values
    * @throws AssertionError if the actual values don't match the expected values
    *
    * ```kotlin
    * testMosaic.assertEquals(
-   *   tileClass = UserTile::class,
+   *   tile = UserTile,
    *   keys = listOf("user1", "user2"),
    *   expected = mapOf("user1" to User("user1"), "user2" to User("user2"))
    * )
    * ```
    */
-  suspend fun <R> assertEquals(
-    tileClass: KClass<out MultiTile<R, *>>,
-    keys: List<String>,
-    expected: Map<String, R>,
-  ) {
-    val tile = getTile(tileClass)
-    val actual = tile.getByKeys(keys)
-    testAssertEquals(expected, actual)
-  }
+  suspend fun <K : Any, V> assertEquals(
+    tile: MultiTile<K, V>,
+    keys: Collection<K>,
+    expected: Map<K, V>,
+  ) = testAssertEquals(expected, compose(tile, keys))
 
   /**
    * Asserts that a [MultiTile] returns the expected values for the given keys with a custom failure message.
    *
-   * @param R The type of values in the response map
-   * @param tileClass The class of the tile to test
+   * @param K The type of keys in the response map
+   * @param V The type of values in the response map
+   * @param tile The tile to test
    * @param keys The list of keys to request from the tile
    * @param expected The expected map of keys to values
    * @param message The message to include in case of assertion failure
@@ -166,127 +135,100 @@ class TestMosaic(private val mosaic: Mosaic) {
    *
    * ```kotlin
    * testMosaic.assertEquals(
-   *   tileClass = UserTile::class,
+   *   tile = UserTile,
    *   keys = listOf("user1", "user2"),
    *   expected = mapOf("user1" to User("user1"), "user2" to User("user2")),
    *   message = "User data does not match expected values"
    * )
    * ```
    */
-  suspend fun <R> assertEquals(
-    tileClass: KClass<out MultiTile<R, *>>,
-    keys: List<String>,
-    expected: Map<String, R>,
+  suspend fun <K : Any, V> assertEquals(
+    tile: MultiTile<K, V>,
+    keys: List<K>,
+    expected: Map<K, V>,
     message: String,
-  ) {
-    val tile = getTile(tileClass)
-    val actual = tile.getByKeys(keys)
-    testAssertEquals(expected, actual, message)
-  }
+  ) = testAssertEquals(expected, compose(tile, keys), message)
 
   /**
-   * Asserts that a [SingleTile] throws the expected exception when its [SingleTile.get] is called.
+   * Asserts that a [Tile] throws the expected exception when retrieved.
    *
-   * @param T The type of the tile
-   * @param tileClass The class of the tile to test
+   * @param tile The tile to test
    * @param expectedException The exception class that is expected to be thrown
    * @throws AssertionError if the tile does not throw the expected exception
    *
    * ```kotlin
    * testMosaic.assertThrows(
-   *   tileClass = FailingTile::class,
+   *   tile = FailingTile,
    *   expectedException = IllegalStateException::class
    * )
    * ```
    */
-  suspend fun <T : SingleTile<*>> assertThrows(
-    tileClass: KClass<out T>,
+  suspend fun assertThrows(
+    tile: Tile<*>,
     expectedException: KClass<out Throwable>,
-  ) {
-    val tile = getTile(tileClass)
-    testAssertFailsWith(expectedException) { tile.get() }
-  }
+  ) = testAssertFailsWith(expectedException) { compose(tile) }
 
   /**
-   * Asserts that a [SingleTile] throws the expected exception with a custom failure message.
+   * Asserts that a [Tile] throws the expected exception with a custom failure message.
    *
-   * @param T The type of the tile
-   * @param tileClass The class of the tile to test
+   * @param tile The tile to test
    * @param expectedException The exception class that is expected to be thrown
    * @param message The message to include in case of assertion failure
    * @throws AssertionError if the tile does not throw the expected exception
    *
    * ```kotlin
    * testMosaic.assertThrows(
-   *   tileClass = FailingTile::class,
+   *   tile = FailingTile,
    *   expectedException = IllegalStateException::class,
    *   message = "Expected IllegalStateException but got a different exception"
    * )
    * ```
    */
-  suspend fun <T : SingleTile<*>> assertThrows(
-    tileClass: KClass<out T>,
+  suspend fun assertThrows(
+    tile: Tile<*>,
     expectedException: KClass<out Throwable>,
     message: String,
-  ) {
-    val tile = getTile(tileClass)
-    testAssertFailsWith(expectedException, message) { tile.get() }
-  }
+  ) = testAssertFailsWith(expectedException, message) { compose(tile) }
 
   /**
-   * Asserts that a [MultiTile] throws the expected exception when [MultiTile.getByKeys] is called.
+   * Asserts that a [MultiTile] throws the expected exception when retrieved with the given keys.
    *
-   * @param T The type of the tile
-   * @param R The type of values in the response map
-   * @param tileClass The class of the tile to test
+   * @param K The type of keys in the response map
+   * @param tile The tile to test
    * @param keys The list of keys to request from the tile
    * @param expectedException The exception class that is expected to be thrown
    * @throws AssertionError if the tile does not throw the expected exception
    *
    * ```kotlin
    * testMosaic.assertThrows(
-   *   tileClass = FailingUserTile::class,
+   *   tile = FailingUserTile,
    *   keys = listOf("user1", "user2"),
    *   expectedException = IllegalStateException::class
    * )
    * ```
    */
-  suspend fun <T : MultiTile<R, *>, R> assertThrows(
-    tileClass: KClass<out T>,
-    keys: List<String>,
+  suspend fun <K : Any> assertThrows(
+    tile: MultiTile<K, *>,
+    keys: List<K>,
     expectedException: KClass<out Throwable>,
-  ) {
-    val tile = getTile(tileClass)
-    testAssertFailsWith(expectedException) { tile.getByKeys(keys) }
+  ) = testAssertFailsWith(expectedException) { compose(tile, keys) }
+
+  // Mosaic interface passthroughs
+  @Suppress("UNCHECKED_CAST")
+  override suspend fun <V> compose(tile: Tile<V>): V {
+    return super.compose(cacheOrTile(tile))
   }
 
-  /**
-   * Asserts that a [MultiTile] throws the expected exception with a custom failure message.
-   *
-   * @param T The type of the tile
-   * @param R The type of values in the response map
-   * @param tileClass The class of the tile to test
-   * @param keys The list of keys to request from the tile
-   * @param expectedException The exception class that is expected to be thrown
-   * @param message The message to include in case of assertion failure
-   * @throws AssertionError if the tile does not throw the expected exception
-   *
-   * ```kotlin
-   * testMosaic.assertThrows(
-   *   tileClass = FailingUserTile::class,
-   *   keys = listOf("user1", "user2"),
-   *   expectedException = IllegalStateException::class,
-   *   message = "Expected IllegalStateException but got a different exception"
-   * )
-   * ```
-   */
-  suspend fun <T : MultiTile<R, *>, R> assertThrows(
-    tileClass: KClass<out T>,
-    keys: List<String>,
-    expectedException: KClass<out Throwable>,
-    message: String,
-  ) {
-    val tile = getTile(tileClass)
-    testAssertFailsWith(expectedException, message) { tile.getByKeys(keys) }
-  }
+  override fun <V> composeAsync(tile: Tile<V>): Deferred<V> = super.composeAsync(cacheOrTile(tile))
+
+  override fun <K : Any, V> composeAsync(
+    tile: MultiTile<K, V>,
+    keys: Collection<K>,
+  ): Map<K, Deferred<V>> = super.composeAsync(cacheOrTile(tile), keys)
+
+  @Suppress("UNCHECKED_CAST")
+  private fun <V> cacheOrTile(tile: Tile<V>): Tile<V> = mockTileCache[tile] as Tile<V>? ?: tile
+
+  @Suppress("UNCHECKED_CAST")
+  private fun <K : Any, V> cacheOrTile(tile: MultiTile<K, V>) = mockMultiTileCache[tile] as MultiTile<K, V>? ?: tile
 }

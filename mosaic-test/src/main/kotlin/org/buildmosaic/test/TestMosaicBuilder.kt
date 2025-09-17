@@ -16,17 +16,15 @@
 
 package org.buildmosaic.test
 
-import io.mockk.coEvery
-import io.mockk.every
-import io.mockk.mockkClass
-import io.mockk.spyk
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import org.buildmosaic.core.Mosaic
-import org.buildmosaic.core.MosaicRegistry
-import org.buildmosaic.core.MosaicRequest
 import org.buildmosaic.core.MultiTile
-import org.buildmosaic.core.SingleTile
 import org.buildmosaic.core.Tile
+import org.buildmosaic.core.injection.CanvasKey
+import org.buildmosaic.core.multiTile
+import org.buildmosaic.core.singleTile
 import kotlin.jvm.JvmName
 import kotlin.reflect.KClass
 
@@ -34,23 +32,23 @@ import kotlin.reflect.KClass
  * A builder for creating [TestMosaic] instances with mocked [Tile] implementations.
  *
  * This class provides a fluent API for setting up test scenarios by configuring mock tiles
- * with various behaviors. It supports both [SingleTile] and [MultiTile] mocks with
+ * with various behaviors. It supports both [Tile] and [MultiTile] mocks with
  * different behaviors like success, failure, delays, and custom logic.
  *
  * ### Basic Usage
  * ```kotlin
  * val testMosaic = TestMosaicBuilder()
- *   .withMockTile<MyTile>("test data")
- *   .withFailedTile<OtherTile>(RuntimeException("Test error"))
- *   .withDelayedTile<SlowTile>("delayed data", 1000) // 1 second delay
+ *   .withMockTile(MyTile, "test data")
+ *   .withFailedTile(OtherTile, RuntimeException("Test error"))
+ *   .withDelayedTile(SlowTile, "delayed data", 1000) // 1 second delay
  *   .build()
  * ```
  *
  * ### MultiTile Usage
  * ```kotlin
  * val testMosaic = TestMosaicBuilder()
- *   .withMockTile<UserTile>(mapOf("user1" to user1, "user2" to user2))
- *   .withCustomTile<ProfileTile> { keys ->
+ *   .withMockTile(UserTile, mapOf("user1" to user1, "user2" to user2))
+ *   .withCustomTile(ProfileTile) { keys ->
  *     // Custom logic based on requested keys
  *     keys.associateWith { key -> createMockProfile(key) }
  *   }
@@ -58,124 +56,121 @@ import kotlin.reflect.KClass
  * ```
  */
 @Suppress("LargeClass")
-class TestMosaicBuilder {
-  private val internalRegistry = spyk(MosaicRegistry())
-  private var request: MosaicRequest = MockMosaicRequest()
-  private val mockTiles = mutableMapOf<KClass<*>, Tile>()
+class TestMosaicBuilder(testContext: TestScope) {
+  private val canvas = MockCanvas()
+  private var dispatcher = StandardTestDispatcher(testContext.testScheduler)
+
+  private val mockTileCache: MutableMap<Tile<*>, Tile<*>> = mutableMapOf()
+  private val mockMultiTileCache: MutableMap<MultiTile<*, *>, MultiTile<*, *>> = mutableMapOf()
 
   /**
-   * Adds a mock [SingleTile] that returns the specified response.
+   * Adds a mock [Tile] that returns the specified response.
    *
-   * @param R The type of data the tile returns
-   * @param T The type of tile to mock
-   * @param tileClass The [KClass] of the tile to mock
-   * @param response The response to return when the tile's [SingleTile.get] is called
+   * @param V The type of data the tile returns
+   * @param tile The [Tile] to mock
+   * @param response The response to return when the tile is retrieved
    * @return This builder for method chaining
    *
    * ```kotlin
    * val testMosaic = TestMosaicBuilder()
-   *   .withMockTile(MyTile::class, "test data")
+   *   .withMockTile(MyTile, "test data")
    *   .build()
    * ```
    */
-  fun <R, T : SingleTile<R>> withMockTile(
-    tileClass: KClass<T>,
-    response: R,
-  ): TestMosaicBuilder {
-    val mock = createSingleTileMock(tileClass, response, MockBehavior.SUCCESS)
-    mockTiles[tileClass] = mock
-    return this
-  }
+  fun <V> withMockTile(
+    tile: Tile<V>,
+    response: V,
+  ): TestMosaicBuilder =
+    apply {
+      mockTileCache[tile] = singleTile { response }
+    }
 
   /**
-   * Adds a mock [SingleTile] that fails with the specified exception.
+   * Adds a mock [Tile] that fails with the specified exception.
    *
-   * @param R The type of data the tile would return if successful
-   * @param T The type of tile to mock
-   * @param tileClass The [KClass] of the tile to mock
-   * @param throwable The exception to throw when the tile's [SingleTile.get] is called
+   * @param tile The [Tile] to mock
+   * @param throwable The exception to throw when the tile is retrieved
    * @return This builder for method chaining
    *
    * ```kotlin
    * val testMosaic = TestMosaicBuilder()
-   *   .withFailedTile(MyTile::class, RuntimeException("Test error"))
+   *   .withFailedTile(MyTile, RuntimeException("Test error"))
    *   .build()
    * ```
    */
-  fun <R, T : SingleTile<R>> withFailedTile(
-    tileClass: KClass<T>,
+  fun withFailedTile(
+    tile: Tile<*>,
     throwable: Throwable,
-  ): TestMosaicBuilder {
-    val mock = createSingleTileMock(tileClass, null, MockBehavior.ERROR, throwable = throwable)
-    mockTiles[tileClass] = mock
-    return this
-  }
+  ): TestMosaicBuilder =
+    apply {
+      mockTileCache[tile] = singleTile<Any> { throw throwable }
+    }
 
   /**
-   * Adds a mock [SingleTile] that delays before returning the response.
+   * Adds a mock [Tile] that delays before returning the response.
    *
-   * @param R The type of data the tile returns
-   * @param T The type of tile to mock
-   * @param tileClass The [KClass] of the tile to mock
+   * @param V The type of data the tile returns
+   * @param tile The [Tile] to mock
    * @param response The response to return after the delay
    * @param delayMs The delay in milliseconds before returning the response
    * @return This builder for method chaining
    *
    * ```kotlin
    * val testMosaic = TestMosaicBuilder()
-   *   .withDelayedTile(MyTile::class, "delayed data", 1000) // 1 second delay
+   *   .withDelayedTile(MyTile, "delayed data", 1000) // 1 second delay
    *   .build()
    * ```
    */
-  fun <R, T : SingleTile<R>> withDelayedTile(
-    tileClass: KClass<T>,
-    response: R,
+  fun <V> withDelayedTile(
+    tile: Tile<V>,
+    response: V,
     delayMs: Long,
-  ): TestMosaicBuilder {
-    val mock = createSingleTileMock(tileClass, response, MockBehavior.DELAY, delay = delayMs)
-    mockTiles[tileClass] = mock
-    return this
-  }
+  ): TestMosaicBuilder =
+    apply {
+      mockTileCache[tile] =
+        singleTile {
+          delay(delayMs)
+          response
+        }
+    }
 
   /**
-   * Adds a mock [SingleTile] with custom behavior.
+   * Adds a mock [Tile] with custom behavior.
    *
-   * @param R The type of data the tile returns
-   * @param T The type of tile to mock
-   * @param tileClass The [KClass] of the tile to mock
+   * @param V The type of data the tile returns
+   * @param tile The [Tile] to mock
    * @param provider A suspending lambda that provides the response
    * @return This builder for method chaining
    *
    * ```kotlin
    * val testMosaic = TestMosaicBuilder()
-   *   .withCustomTile(MyTile::class) {
+   *   .withCustomTile(MyTile) {
    *     // Custom logic here
    *     if (condition) "result1" else "result2"
    *   }
    *   .build()
    * ```
    */
-  fun <R, T : SingleTile<R>> withCustomTile(
-    tileClass: KClass<T>,
-    provider: suspend () -> R,
-  ): TestMosaicBuilder {
-    val mock = createSingleTileMock(tileClass, null, MockBehavior.CUSTOM, custom = provider)
-    mockTiles[tileClass] = mock
-    return this
-  }
+  fun <V> withCustomTile(
+    tile: Tile<V>,
+    provider: suspend Mosaic.() -> V,
+  ): TestMosaicBuilder =
+    apply {
+      mockTileCache[tile] = singleTile(provider)
+    }
 
   /**
    * Adds a mock [MultiTile] that returns the specified responses for given keys.
    *
-   * @param S The type of individual values in the response
-   * @param T The type of tile to mock
-   * @param tileClass The [KClass] of the tile to mock
+   * @param K The type of keys in the response
+   * @param V The type of individual values in the response
+   * @param tile The [Tile] to mock
    * @param response Map of keys to their corresponding values
    * @return This builder for method chaining
    *
    * ```kotlin
    * val testMosaic = TestMosaicBuilder()
-   *   .withMockTile(UserTile::class, mapOf(
+   *   .withMockTile(UserTile, mapOf(
    *     "user1" to User("user1"),
    *     "user2" to User("user2")
    *   ))
@@ -183,21 +178,19 @@ class TestMosaicBuilder {
    * ```
    */
   @JvmName("withMockMultiTile")
-  fun <S, T : MultiTile<S, *>> withMockTile(
-    tileClass: KClass<T>,
-    response: Map<String, S>,
-  ): TestMosaicBuilder {
-    val mock = createMultiTileMock(tileClass, response, MockBehavior.SUCCESS)
-    mockTiles[tileClass] = mock
-    return this
-  }
+  fun <K : Any, V> withMockTile(
+    tile: MultiTile<K, V>,
+    response: Map<K, V>,
+  ): TestMosaicBuilder =
+    apply {
+      mockMultiTileCache[tile] = multiTile { response }
+    }
 
   /**
    * Adds a mock [MultiTile] that fails with the specified exception.
    *
-   * @param S The type of individual values in the response
-   * @param T The type of tile to mock
-   * @param tileClass The [KClass] of the tile to mock
+   * @param K The type of keys in the response
+   * @param tile The [Tile] to mock
    * @param throwable The exception to throw when the tile's methods are called
    * @return This builder for method chaining
    *
@@ -208,54 +201,56 @@ class TestMosaicBuilder {
    * ```
    */
   @JvmName("withFailedMultiTile")
-  fun <S, T : MultiTile<S, *>> withFailedTile(
-    tileClass: KClass<T>,
+  fun withFailedTile(
+    tile: MultiTile<*, *>,
     throwable: Throwable,
-  ): TestMosaicBuilder {
-    val mock = createMultiTileMock(tileClass, null, MockBehavior.ERROR, throwable = throwable)
-    mockTiles[tileClass] = mock
-    return this
-  }
+  ): TestMosaicBuilder =
+    apply {
+      mockMultiTileCache[tile] = multiTile<Any, Any> { throw throwable }
+    }
 
   /**
    * Adds a mock [MultiTile] that delays before returning responses.
    *
-   * @param S The type of individual values in the response
-   * @param T The type of tile to mock
-   * @param tileClass The [KClass] of the tile to mock
+   * @param K The type of keys in the response
+   * @param V The type of values in the response
+   * @param tile The [MultiTile] to mock
    * @param response Map of keys to their corresponding values
    * @param delayMs The delay in milliseconds before returning the response
    * @return This builder for method chaining
    *
    * ```kotlin
    * val testMosaic = TestMosaicBuilder()
-   *   .withDelayedTile(UserTile::class, mapOf("user1" to User("user1")), 500)
+   *   .withDelayedTile(UserTile, mapOf("user1" to User("user1")), 500)
    *   .build()
    * ```
    */
   @JvmName("withDelayedMultiTile")
-  fun <S, T : MultiTile<S, *>> withDelayedTile(
-    tileClass: KClass<T>,
-    response: Map<String, S>,
+  fun <K : Any, V> withDelayedTile(
+    tile: MultiTile<K, V>,
+    response: Map<K, V>,
     delayMs: Long,
-  ): TestMosaicBuilder {
-    val mock = createMultiTileMock(tileClass, response, MockBehavior.DELAY, delay = delayMs)
-    mockTiles[tileClass] = mock
-    return this
-  }
+  ): TestMosaicBuilder =
+    apply {
+      mockMultiTileCache[tile] =
+        multiTile {
+          delay(delayMs)
+          response
+        }
+    }
 
   /**
    * Adds a mock [MultiTile] with custom behavior.
    *
-   * @param S The type of individual values in the response
-   * @param T The type of tile to mock
-   * @param tileClass The [KClass] of the tile to mock
+   * @param K The type of keys in the response
+   * @param V The type of values in the response
+   * @param tile The [MultiTile] to mock
    * @param provider A suspending lambda that provides responses based on requested keys
    * @return This builder for method chaining
    *
    * ```kotlin
    * val testMosaic = TestMosaicBuilder()
-   *   .withCustomTile(UserTile::class) { keys ->
+   *   .withCustomTile(UserTile) { keys ->
    *     // Custom logic based on requested keys
    *     keys.associateWith { key ->
    *       if (key.startsWith("admin")) createAdminUser(key)
@@ -266,33 +261,116 @@ class TestMosaicBuilder {
    * ```
    */
   @JvmName("withCustomMultiTile")
-  fun <S, T : MultiTile<S, *>> withCustomTile(
-    tileClass: KClass<T>,
-    provider: suspend (List<String>) -> Map<String, S>,
-  ): TestMosaicBuilder {
-    val mock = createMultiTileMock(tileClass, null, MockBehavior.CUSTOM, custom = provider)
-    mockTiles[tileClass] = mock
-    return this
-  }
+  fun <K : Any, V> withCustomTile(
+    tile: MultiTile<K, V>,
+    provider: suspend Mosaic.(Set<K>) -> Map<K, V>,
+  ): TestMosaicBuilder =
+    apply {
+      mockMultiTileCache[tile] = multiTile(provider)
+    }
 
   /**
-   * Sets the [MosaicRequest] to be used by the test mosaic.
-   * A [MockMosaicRequest] is provided by default if not called.
+   * Adds a source to the canvas with the specified class and object.
+   * Allows for passing in a superclass as the retrieval type.
    *
-   * @param request The request instance to use
+   * @param clazz The class of the object to register
+   * @param obj The object to register
    * @return This builder for method chaining
    *
    * ```kotlin
    * val testMosaic = TestMosaicBuilder()
-   *   .withRequest(MyCustomRequest())
-   *   .withMockTile<MyTile>("test data")
+   *   .withCanvasSource(User::class, User("test-user"))
+   *   .withMockTile(MyTile, "test data")
    *   .build()
    * ```
    */
-  fun withRequest(request: MosaicRequest): TestMosaicBuilder {
-    this.request = request
-    return this
-  }
+  fun <T : Any, V : T> withCanvasSource(
+    clazz: KClass<T>,
+    obj: V,
+  ): TestMosaicBuilder =
+    apply {
+      canvas.register(clazz, obj)
+    }
+
+  /**
+   * Adds a source to the canvas with the specified object.
+   *
+   * @param obj The object to register
+   * @return This builder for method chaining
+   *
+   * ```kotlin
+   * val testMosaic = TestMosaicBuilder()
+   *   .withCanvasSource(User("test-user"))
+   *   .withMockTile(MyTile, "test data")
+   *   .build()
+   * ```
+   */
+  inline fun <reified T : Any> withCanvasSource(obj: T): TestMosaicBuilder = withCanvasSource(T::class, obj)
+
+  /**
+   * Adds a source to the canvas with the specified class, qualifier, and object.
+   *
+   * @param clazz The class of the object to register
+   * @param qualifier The qualifier to distinguish this instance
+   * @param obj The object to register
+   * @return This builder for method chaining
+   *
+   * ```kotlin
+   * val testMosaic = TestMosaicBuilder()
+   *   .withCanvasSource(DatabaseService::class, "primary", primaryDb)
+   *   .withCanvasSource(DatabaseService::class, "secondary", secondaryDb)
+   *   .build()
+   * ```
+   */
+  fun <T : Any, V : T> withCanvasSource(
+    clazz: KClass<T>,
+    qualifier: String,
+    obj: V,
+  ): TestMosaicBuilder =
+    apply {
+      canvas.register(clazz, qualifier, obj)
+    }
+
+  /**
+   * Adds a source to the canvas with the specified object and qualifier.
+   *
+   * @param qualifier The qualifier to distinguish this instance
+   * @param obj The object to register
+   * @return This builder for method chaining
+   *
+   * ```kotlin
+   * val testMosaic = TestMosaicBuilder()
+   *   .withCanvasSource("primary", primaryDb)
+   *   .withCanvasSource("secondary", secondaryDb)
+   *   .build()
+   * ```
+   */
+  inline fun <reified T : Any> withCanvasSource(
+    qualifier: String,
+    obj: T,
+  ): TestMosaicBuilder = withCanvasSource(T::class, qualifier, obj)
+
+  /**
+   * Adds a source to the canvas using a CanvasKey.
+   *
+   * @param key The canvas key to register under
+   * @param obj The object to register
+   * @return This builder for method chaining
+   *
+   * ```kotlin
+   * val dbKey = CanvasKey(DatabaseService::class, "primary")
+   * val testMosaic = TestMosaicBuilder()
+   *   .withCanvasSource(dbKey, primaryDb)
+   *   .build()
+   * ```
+   */
+  fun <T : Any> withCanvasSource(
+    key: CanvasKey<T>,
+    obj: T,
+  ): TestMosaicBuilder =
+    apply {
+      canvas.register(key, obj)
+    }
 
   /**
    * Builds and returns a configured [TestMosaic] instance.
@@ -308,92 +386,7 @@ class TestMosaicBuilder {
    *   .build()
    * ```
    */
-  fun build(): TestMosaic {
-    val mosaic = Mosaic(internalRegistry, request)
-    every { internalRegistry.getInstance(any<KClass<out Tile>>(), any<Mosaic>()) } answers {
-      runCatching { callOriginal() }.getOrElse {
-        val clazz = firstArg<KClass<*>>().java
-        val ctor = clazz.declaredConstructors.get(0)
-        ctor.newInstance(mosaic) as Tile
-      }
-    }
-
-    @Suppress("UNCHECKED_CAST")
-    mockTiles.forEach { (clazz, tile) ->
-      internalRegistry.register(clazz as KClass<Tile>) { tile }
-    }
-
-    return TestMosaic(mosaic)
-  }
-
-  private fun <R, T : SingleTile<R>> createSingleTileMock(
-    tileClass: KClass<T>,
-    returnData: R?,
-    behavior: MockBehavior,
-    throwable: Throwable? = null,
-    delay: Long = 0,
-    custom: (suspend () -> R)? = null,
-  ): T {
-    val mock = mockkClass(tileClass)
-    setupSingleTileMock(mock, returnData, behavior, throwable, delay, custom)
-    return mock
-  }
-
-  @Suppress("LongParameterList")
-  private fun <R> setupSingleTileMock(
-    mock: SingleTile<R>,
-    returnData: R?,
-    behavior: MockBehavior,
-    throwable: Throwable?,
-    delay: Long,
-    custom: (suspend () -> R)?,
-  ) {
-    coEvery { mock.get() } coAnswers {
-      when (behavior) {
-        MockBehavior.SUCCESS -> returnData!!
-        MockBehavior.ERROR -> throw throwable!!
-        MockBehavior.DELAY -> {
-          delay(delay)
-          returnData!!
-        }
-        MockBehavior.CUSTOM -> custom!!.invoke()
-      }
-    }
-  }
-
-  private fun <S, T : MultiTile<S, *>> createMultiTileMock(
-    tileClass: KClass<T>,
-    returnData: Map<String, S>?,
-    behavior: MockBehavior,
-    throwable: Throwable? = null,
-    delay: Long = 0,
-    custom: (suspend (List<String>) -> Map<String, S>)? = null,
-  ): T {
-    val mock = mockkClass(tileClass)
-    setupMultiTileMock(mock, returnData, behavior, throwable, delay, custom)
-    return mock
-  }
-
-  @Suppress("LongParameterList")
-  private fun <S> setupMultiTileMock(
-    mock: MultiTile<S, *>,
-    returnData: Map<String, S>?,
-    behavior: MockBehavior,
-    throwable: Throwable?,
-    delay: Long,
-    custom: (suspend (List<String>) -> Map<String, S>)?,
-  ) {
-    coEvery { mock.getByKeys(any<List<String>>()) } coAnswers {
-      val keys = firstArg<List<String>>()
-      when (behavior) {
-        MockBehavior.SUCCESS -> returnData!!.filterKeys { it in keys }
-        MockBehavior.ERROR -> throw throwable!!
-        MockBehavior.DELAY -> {
-          delay(delay)
-          returnData!!.filterKeys { it in keys }
-        }
-        MockBehavior.CUSTOM -> custom!!.invoke(keys)
-      }
-    }
-  }
+  fun build(): TestMosaic = TestMosaic(canvas, mockTileCache, mockMultiTileCache, dispatcher)
 }
+
+fun TestScope.mosaicBuilder() = TestMosaicBuilder(this)

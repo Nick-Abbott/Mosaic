@@ -1,7 +1,7 @@
 package org.buildmosaic.library.tile
 
-import kotlinx.coroutines.runBlocking
-import org.buildmosaic.library.OrderRequest
+import kotlinx.coroutines.test.runTest
+import org.buildmosaic.library.OrderKey
 import org.buildmosaic.library.model.Address
 import org.buildmosaic.test.TestMosaicBuilder
 import kotlin.test.Test
@@ -9,20 +9,23 @@ import kotlin.test.Test
 class AddressTileTest {
   @Test
   fun `address tile uses request id`() =
-    runBlocking {
+    runTest {
       System.out.println("FOO")
-      val testMosaic = TestMosaicBuilder().withRequest(OrderRequest("order-1")).build()
+      val testMosaic =
+        TestMosaicBuilder(this)
+          .withCanvasSource(OrderKey, "order-1")
+          .build()
       val expected = Address("123 Main St", "Springfield")
-      testMosaic.assertEquals(AddressTile::class, expected)
+      testMosaic.assertEquals(AddressTile, expected)
     }
 
   @Test
   fun `address tile propagates failures`() =
-    runBlocking {
+    runTest {
       val testMosaic =
-        TestMosaicBuilder()
-          .withFailedTile(AddressTile::class, RuntimeException("boom"))
+        TestMosaicBuilder(this)
+          .withFailedTile(AddressTile, RuntimeException("boom"))
           .build()
-      testMosaic.assertThrows(AddressTile::class, RuntimeException::class)
+      testMosaic.assertThrows(AddressTile, RuntimeException::class)
     }
 }

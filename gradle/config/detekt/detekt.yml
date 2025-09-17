@@ -179,8 +179,7 @@ naming:
     active: true
     enumEntryPattern: '[A-Z][_A-Z0-9]*'
   ForbiddenClassName:
-    active: true
-    forbiddenName: ['Boolean', 'Byte', 'Char', 'Double', 'Float', 'Int', 'Long', 'Short', 'Void']
+    active: false
   FunctionMaxLength:
     active: true
     maximumFunctionNameLength: 50
@@ -252,9 +251,7 @@ potential-bugs:
   IteratorNotThrowingNoSuchElementException:
     active: true
   LateinitUsage:
-    active: true
-    ignoreAnnotated: []
-    ignoreOnClassesPattern: ''
+    active: false
   MapGetWithNotNullAssertionOperator:
     active: true
   UnsafeCallOnNullableType:
