@@ -8,6 +8,7 @@ import kotlinx.coroutines.test.runTest
 import org.buildmosaic.core.injection.canvas
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -201,5 +202,48 @@ class MosaicTest {
       testScheduler.advanceTimeBy(delayLength.milliseconds)
       testScheduler.runCurrent()
       assertEquals(resultMap["a"], result)
+    }
+
+  @Test
+  fun `should bubble up the error if a single tile fails`() =
+    runTest {
+      class MyFakeException : Exception("test")
+
+      val testDispatcher = StandardTestDispatcher(testScheduler)
+      val mosaic = MosaicImpl(canvas { }, testDispatcher)
+      assertFailsWith<MyFakeException> {
+        mosaic.compose(singleTile<String> { throw MyFakeException() })
+      }
+    }
+
+  @Test
+  fun `should bubble up the error if a multi tile fails`() =
+    runTest {
+      class MyFakeException : Exception("test")
+
+      val testDispatcher = StandardTestDispatcher(testScheduler)
+      val mosaic = MosaicImpl(canvas { }, testDispatcher)
+      assertFailsWith<MyFakeException> {
+        mosaic.compose(multiTile<String, String> { throw MyFakeException() }, listOf("abc"))
+      }
+    }
+
+  @Test
+  fun `should fail if a key is missing from the response`() =
+    runTest {
+      val testDispatcher = StandardTestDispatcher(testScheduler)
+      val mosaic = MosaicImpl(canvas { }, testDispatcher)
+      val tile = multiTile { mapOf("a" to "a") }
+
+      assertFailsWith<NoSuchElementException> { mosaic.compose(tile, listOf("a", "b")) }
+    }
+
+  @Test
+  fun `should return empty response if no keys are provided`() =
+    runTest {
+      val testDispatcher = StandardTestDispatcher(testScheduler)
+      val mosaic = MosaicImpl(canvas { }, testDispatcher)
+      val tile = multiTile { mapOf("a" to "a", "b" to "b", "c" to "c") }
+      assertEquals(emptyMap(), mosaic.compose(tile, emptyList()))
     }
 }

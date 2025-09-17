@@ -10,6 +10,7 @@ import org.buildmosaic.core.source
 import org.buildmosaic.core.sourceOr
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
@@ -381,49 +382,84 @@ class MosaicCanvasTest {
   @Test
   fun `should prevent duplicate bindings for both qualified and unqualified dependencies`() =
     runTest {
-      // Test duplicate unqualified bindings
-      var exceptionThrown = false
-      try {
+      assertFailsWith<IllegalStateException> {
         canvas {
           single<TestService> { TestServiceImpl("first") }
           single<TestService> { TestServiceImpl("duplicate") }
         }
-      } catch (e: IllegalStateException) {
-        exceptionThrown = true
-        assertEquals(true, e.message?.contains("Duplicate binding"))
       }
-      assertEquals(true, exceptionThrown)
 
-      // Test duplicate qualified bindings
-      exceptionThrown = false
-      try {
+      assertFailsWith<IllegalStateException> {
+        canvas {
+          single(CanvasKey(TestService::class)) { TestServiceImpl("first") }
+          single(CanvasKey(TestService::class)) { TestServiceImpl("duplicate") }
+        }
+      }
+
+      assertFailsWith<IllegalStateException> {
+        canvas {
+          single<TestService>(null) { TestServiceImpl("first") }
+          single<TestService>(null) { TestServiceImpl("duplicate") }
+        }
+      }
+
+      assertFailsWith<IllegalStateException> {
         canvas {
           single<TestService>("same-qualifier") { TestServiceImpl("first") }
           single<TestService>("same-qualifier") { TestServiceImpl("duplicate") }
         }
-      } catch (e: IllegalStateException) {
-        exceptionThrown = true
-        assertEquals(true, e.message?.contains("Duplicate binding"))
       }
-      assertEquals(true, exceptionThrown)
+
+      assertFailsWith<IllegalStateException> {
+        canvas {
+          single(CanvasKey(TestService::class, "same-qualifier")) { TestServiceImpl("first") }
+          single(CanvasKey(TestService::class, "same-qualifier")) { TestServiceImpl("duplicate") }
+        }
+      }
     }
 
   @Test
   fun `should allow same type with different qualifiers`() =
     runTest {
-      val testCanvas =
-        canvas {
-          single<TestService>("first") { TestServiceImpl("first-service") }
-          single<TestService>("second") { TestServiceImpl("second-service") }
-        }
+      canvas {
+        single<TestService>("first") { TestServiceImpl("first-service") }
+        single<TestService>("second") { TestServiceImpl("second-service") }
+      }
 
-      val firstService = testCanvas.source(TestService::class, "first")
-      val secondService = testCanvas.source(TestService::class, "second")
+      canvas {
+        single(CanvasKey(TestService::class, "first")) { TestServiceImpl("first-service") }
+        single(CanvasKey(TestService::class, "second")) { TestServiceImpl("second-service") }
+      }
 
-      assertNotNull(firstService)
-      assertNotNull(secondService)
-      assertEquals("first-service", firstService.getValue())
-      assertEquals("second-service", secondService.getValue())
+      canvas {
+        single<TestService>("first") { TestServiceImpl("first-service") }
+        single<TestService> { TestServiceImpl("second-service") }
+      }
+
+      canvas {
+        single<TestService>("first") { TestServiceImpl("first-service") }
+        single<TestService>(null) { TestServiceImpl("second-service") }
+      }
+
+      canvas {
+        single(CanvasKey(TestService::class, "first")) { TestServiceImpl("first-service") }
+        single(CanvasKey(TestService::class)) { TestServiceImpl("second-service") }
+      }
+
+      canvas {
+        single<TestService> { TestServiceImpl("first-service") }
+        single<TestService>("second") { TestServiceImpl("second-service") }
+      }
+
+      canvas {
+        single<TestService>(null) { TestServiceImpl("first-service") }
+        single<TestService>("second") { TestServiceImpl("second-service") }
+      }
+
+      canvas {
+        single(CanvasKey(TestService::class)) { TestServiceImpl("first-service") }
+        single(CanvasKey(TestService::class, "second")) { TestServiceImpl("second-service") }
+      }
     }
 
   // Test interfaces for complex dependency graph
@@ -502,10 +538,7 @@ class MosaicCanvasTest {
   @Test
   fun `should handle circular dependencies gracefully`() =
     runTest {
-      // This test verifies that circular dependencies are detected and handled
-      var exceptionThrown = false
-      var exceptionMessage = ""
-      try {
+      assertFailsWith<IllegalStateException> {
         canvas {
           single<TestService> {
             val repo = paint<TestRepository>()
@@ -516,15 +549,7 @@ class MosaicCanvasTest {
             TestRepositoryImpl("repo-${service.getValue()}")
           }
         }
-      } catch (e: IllegalStateException) {
-        exceptionThrown = true
-        exceptionMessage = e.message ?: ""
-      } catch (e: Exception) {
-        exceptionThrown = true
-        exceptionMessage = e.message ?: ""
       }
-      assertEquals(true, exceptionThrown)
-      assertEquals(true, exceptionMessage.contains("Circular dependency"))
     }
 
   @Test

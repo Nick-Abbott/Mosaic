@@ -64,7 +64,7 @@ interface Mosaic {
   fun <K : Any, V> composeAsync(
     tile: MultiTile<K, V>,
     key: K,
-  ): Deferred<V>
+  ): Deferred<V> = composeAsync(tile, listOf(key))[key]!!
 
   /**
    * Await a single value from a [MultiTile]

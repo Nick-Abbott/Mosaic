@@ -75,8 +75,6 @@ open class MosaicImpl(
         if (prev == null) {
           result[key] = placeholder
           winners.add(key)
-        } else {
-          result[key] = prev
         }
       }
     }
@@ -89,26 +87,21 @@ open class MosaicImpl(
         runCatching {
           val values = tile.block(this@MosaicImpl, immutableWinners)
           immutableWinners.forEach { key ->
-            val deferred = inner[key] as? CompletableDeferred<V>
+            val deferred = inner[key] as CompletableDeferred<V>
             val v = values[key]
             if (v != null) {
-              deferred?.complete(v)
+              deferred.complete(v)
             } else {
-              deferred?.completeExceptionally(NoSuchElementException("Batch result missing key $key"))
+              deferred.completeExceptionally(NoSuchElementException("Batch result missing key $key"))
             }
           }
         }.onFailure { cause ->
           immutableWinners.forEach { key ->
-            (inner[key] as? CompletableDeferred<V>)?.completeExceptionally(cause)
+            (inner[key] as CompletableDeferred<V>).completeExceptionally(cause)
           }
         }
       }
     }
     return result
   }
-
-  override fun <K : Any, V> composeAsync(
-    tile: MultiTile<K, V>,
-    key: K,
-  ): Deferred<V> = composeAsync(tile, listOf(key))[key]!!
 }

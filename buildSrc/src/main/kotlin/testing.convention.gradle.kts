@@ -20,6 +20,15 @@ dependencies {
 
 kover {
   reports {
+    filters {
+      excludes {
+        classes(
+          "kotlin.jvm.internal.*",
+          "**\$DefaultImpls",
+        )
+      }
+    }
+
     verify {
       rule {
         minBound(80, CoverageUnit.LINE, AggregationType.COVERED_PERCENTAGE)

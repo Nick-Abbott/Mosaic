@@ -219,27 +219,12 @@ class TestMosaic(
     return super.compose(cacheOrTile(tile))
   }
 
-  override suspend fun <V> composeAsync(tile: Tile<V>): Deferred<V> = super.composeAsync(cacheOrTile(tile))
+  override fun <V> composeAsync(tile: Tile<V>): Deferred<V> = super.composeAsync(cacheOrTile(tile))
 
-  override suspend fun <K : Any, V> compose(
-    tile: MultiTile<K, V>,
-    keys: Collection<K>,
-  ): Map<K, V> = super.compose(cacheOrTile(tile), keys)
-
-  override suspend fun <K : Any, V> composeAsync(
+  override fun <K : Any, V> composeAsync(
     tile: MultiTile<K, V>,
     keys: Collection<K>,
   ): Map<K, Deferred<V>> = super.composeAsync(cacheOrTile(tile), keys)
-
-  override suspend fun <K : Any, V> compose(
-    tile: MultiTile<K, V>,
-    key: K,
-  ): V = super.compose(cacheOrTile(tile), key)
-
-  override suspend fun <K : Any, V> composeAsync(
-    tile: MultiTile<K, V>,
-    key: K,
-  ): Deferred<V> = super.composeAsync(cacheOrTile(tile), key)
 
   @Suppress("UNCHECKED_CAST")
   private fun <V> cacheOrTile(tile: Tile<V>): Tile<V> = mockTileCache[tile] as Tile<V>? ?: tile

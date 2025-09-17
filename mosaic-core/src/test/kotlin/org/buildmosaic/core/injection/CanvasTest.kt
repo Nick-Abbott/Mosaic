@@ -1,10 +1,13 @@
 package org.buildmosaic.core.injection
 
 import kotlinx.coroutines.test.runTest
+import org.buildmosaic.core.exception.MosaicMissingKeyException
 import org.buildmosaic.core.source
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 @Suppress("FunctionMaxLength")
 class CanvasTest {
@@ -51,12 +54,16 @@ class CanvasTest {
     }
 
   @Test
-  fun `should test Canvas source with CanvasKey directly`() =
+  fun `should return a source if requested`() =
     runTest {
-      val testCanvas =
+      val testValue = TestServiceImpl("direct-test")
+      val testCanvas: Canvas =
         canvas {
-          single<TestService>("direct-key") { TestServiceImpl("direct-test") }
+          single<TestService>("direct-key") { testValue }
         }
+
+      assertEquals(testCanvas.source(TestService::class, "direct-key"), testValue)
+      assertEquals(testCanvas.source(CanvasKey(TestService::class, "direct-key")), testValue)
 
       // Test direct CanvasKey usage
       val key = CanvasKey(TestService::class, "direct-key")
@@ -64,6 +71,30 @@ class CanvasTest {
 
       assertNotNull(service)
       assertEquals("direct-test", service.getValue())
+    }
+
+  @Test
+  fun `should throw error when source is not found`() =
+    runTest {
+      val testCanvas: Canvas =
+        canvas {
+          single<TestService>("direct-key") { TestServiceImpl("direct-test") }
+        }
+
+      assertFailsWith(MosaicMissingKeyException::class) { testCanvas.source<String>() }
+      assertFailsWith(MosaicMissingKeyException::class) { testCanvas.source(CanvasKey(String::class)) }
+    }
+
+  @Test
+  fun `should return null when source is not found in sourceOr`() =
+    runTest {
+      val testCanvas: Canvas =
+        canvas {
+          single<TestService>("direct-key") { TestServiceImpl("direct-test") }
+        }
+
+      assertNull(testCanvas.sourceOr<String>())
+      assertNull(testCanvas.sourceOr(CanvasKey(String::class)))
     }
 
   @Test
@@ -97,11 +128,17 @@ class CanvasTest {
   }
 
   @Test
-  fun `should test CanvasKey toString with and without qualifier`() {
-    val keyWithQualifier = CanvasKey(TestService::class, "test-qualifier")
-    val keyWithoutQualifier = CanvasKey(TestService::class, null)
+  fun `should test CanvasKey toString with an anonymous class`() {
+    class Local
 
-    assertEquals(true, keyWithQualifier.toString().contains("test-qualifier"))
-    assertEquals(true, keyWithoutQualifier.toString().contains("TestService"))
+    assertEquals(
+      "anonymous[test-qualifier]",
+      CanvasKey(Local::class, "test-qualifier").toString(),
+    )
+
+    assertEquals(
+      "anonymous",
+      CanvasKey(Local::class).toString(),
+    )
   }
 }

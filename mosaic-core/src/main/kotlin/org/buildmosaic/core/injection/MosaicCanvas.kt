@@ -17,16 +17,25 @@ class CanvasBuilder internal constructor() {
    * Registers a singleton dependency in the canvas.
    *
    * @param T The type of the dependency
+   * @param key The [CanvasKey] associated with your dependency
+   * @param ctor Constructor function that creates the dependency instance
+   */
+  fun <T : Any> single(
+    key: CanvasKey<T>,
+    ctor: suspend CanvasFactory.() -> T,
+  ) = check(bindings.put(key, SingleStub(ctor)) == null) { "Duplicate binding for $key" }
+
+  /**
+   * Registers a singleton dependency in the canvas.
+   *
+   * @param T The type of the dependency
    * @param qualifier Optional qualifier to distinguish between multiple instances of the same type
    * @param ctor Constructor function that creates the dependency instance
    */
   inline fun <reified T : Any> single(
     qualifier: String? = null,
     noinline ctor: suspend CanvasFactory.() -> T,
-  ) {
-    val k = CanvasKey(T::class, qualifier)
-    check(bindings.put(k, SingleStub(ctor)) == null) { "Duplicate binding for $k" }
-  }
+  ) = single(CanvasKey(T::class, qualifier), ctor)
 }
 
 /**

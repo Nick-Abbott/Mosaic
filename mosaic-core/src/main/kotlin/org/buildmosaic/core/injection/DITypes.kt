@@ -32,11 +32,11 @@ sealed interface Stub<T : Any> : MosaicDI {
  * @param ctor The constructor function that creates the dependency instance
  */
 class SingleStub<T : Any>(private val ctor: suspend CanvasFactory.() -> T) : Stub<T> {
-  internal val initLock = Mutex()
+  private val initLock = Mutex()
 
-  @Volatile lateinit var instance: T
+  @Volatile private lateinit var instance: T
 
-  @Volatile var isInitializing = false
+  @Volatile private var isInitializing = false
 
   override suspend fun create(canvas: CanvasFactory): T {
     if (::instance.isInitialized) return instance
