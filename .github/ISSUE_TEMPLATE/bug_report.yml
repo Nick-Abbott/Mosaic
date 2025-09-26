@@ -1,0 +1,20 @@
+name: 🐛 Bug Report
+description: Report a bug in Mosaic
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: textarea
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce the bug?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Expected Behavior
+  - type: textarea
+    attributes:
+      label: Actual Behavior
+  - type: textarea
+    attributes:
+      label: Additional Context
