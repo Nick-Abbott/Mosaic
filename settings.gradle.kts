@@ -10,3 +10,4 @@ pluginManagement {
 include("mosaic-core")
 include("mosaic-test")
 include("mosaic-bom")
+include("mosaic-analysis-core")
