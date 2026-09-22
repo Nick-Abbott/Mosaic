@@ -13,6 +13,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 
 @Suppress("LargeClass", "FunctionMaxLength")
 class MosaicCanvasTest {
@@ -32,6 +33,32 @@ class MosaicCanvasTest {
 
   class TestRepositoryImpl(private val data: String) : TestRepository {
     override fun getData(): String = data
+  }
+
+  class DependentService(private val repository: TestRepository) : TestService {
+    override fun getValue(): String = repository.getData()
+  }
+
+  class BorrowingRepository(private val service: TestService) : TestRepository, AutoCloseable {
+    var isClosed = false
+      private set
+
+    override fun getData(): String = service.getValue()
+
+    override fun close() {
+      isClosed = true
+    }
+  }
+
+  class CustomCanvas(private val service: TestService) : Canvas {
+    var lookupCount = 0
+      private set
+
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : Any> sourceOr(key: CanvasKey<T>): T? {
+      lookupCount++
+      return if (key == CanvasKey(TestService::class)) service as T else null
+    }
   }
 
   @Test
@@ -123,6 +150,139 @@ class MosaicCanvasTest {
       val service = testCanvas.source<TestService>()
       assertNotNull(service)
       assertEquals("service-with-injected-data", service.getValue())
+    }
+
+  @Test
+  fun `should paint exact parent instances using reified and qualified keys`() =
+    runTest {
+      val parentService = TestServiceImpl("parent-service")
+      val parentRepository = TestRepositoryImpl("parent-repository")
+      val childCanvas =
+        canvas(
+          canvas {
+            single<TestService> { parentService }
+            single<TestRepository>("qualified") { parentRepository }
+          },
+        ) {
+          single<TestService>("consumer") {
+            val service = paint<TestService>()
+            val repository = paint(CanvasKey(TestRepository::class, "qualified"))
+            TestServiceImpl("${service.getValue()}-${repository.getData()}")
+          }
+        }
+
+      val consumer = childCanvas.source(TestService::class, "consumer")
+
+      assertEquals("parent-service-parent-repository", consumer.getValue())
+      assertSame(parentService, childCanvas.source<TestService>())
+      assertSame(parentRepository, childCanvas.source(TestRepository::class, "qualified"))
+    }
+
+  @Test
+  fun `should paint through ancestors and custom Canvas parents`() =
+    runTest {
+      val grandparentService = TestServiceImpl("grandparent-service")
+      val nearestService = TestServiceImpl("nearest-service")
+      val grandparentCanvas = canvas { single<TestService> { grandparentService } }
+      val parentCanvas =
+        grandparentCanvas.withLayer {
+          single<TestService> { nearestService }
+        }
+      val childCanvas =
+        canvas(parentCanvas) {
+          single<TestRepository> { TestRepositoryImpl(paint<TestService>().getValue()) }
+        }
+
+      assertEquals("nearest-service", childCanvas.source<TestRepository>().getData())
+
+      val customService = TestServiceImpl("custom-service")
+      val customParent = CustomCanvas(customService)
+      val customChild =
+        canvas(customParent) {
+          single<TestRepository> { TestRepositoryImpl(paint<TestService>().getValue()) }
+        }
+
+      assertEquals("custom-service", customChild.source<TestRepository>().getData())
+      assertEquals(1, customParent.lookupCount)
+    }
+
+  @Test
+  fun `should prefer local paint binding even when registered after its consumer`() =
+    runTest {
+      val parentRepository = TestRepositoryImpl("parent-repository")
+      val parentCanvas =
+        canvas {
+          single<TestRepository> { parentRepository }
+          single<TestService> { DependentService(paint<TestRepository>()) }
+        }
+      val parentService = parentCanvas.source<TestService>()
+      val childService = TestServiceImpl("child-service")
+      val childCanvas =
+        canvas(parentCanvas) {
+          single<TestRepository>("consumer") {
+            TestRepositoryImpl(paint<TestService>().getValue())
+          }
+          single<TestService> { childService }
+        }
+
+      assertSame(childService, childCanvas.source<TestService>())
+      assertEquals("child-service", childCanvas.source(TestRepository::class, "consumer").getData())
+      assertSame(parentService, parentCanvas.source<TestService>())
+      assertEquals("parent-repository", parentService.getValue())
+    }
+
+  @Test
+  fun `should preserve missing key details and local constructor failures`() =
+    runTest {
+      val requestedKey = CanvasKey(TestService::class, "missing")
+      val parentCanvas = canvas { single<TestService> { TestServiceImpl("parent") } }
+      val missingException =
+        assertFailsWith<MosaicMissingKeyException> {
+          canvas(parentCanvas) {
+            single<TestRepository> {
+              paint(requestedKey)
+              TestRepositoryImpl("unreachable")
+            }
+          }
+        }
+      assertEquals(requestedKey, missingException.key)
+
+      var constructorContinued = false
+      val customParent = CustomCanvas(TestServiceImpl("parent"))
+      val failure =
+        assertFailsWith<IllegalStateException> {
+          canvas(customParent) {
+            single<TestRepository> {
+              paint<TestService>()
+              constructorContinued = true
+              TestRepositoryImpl("unreachable")
+            }
+            single<TestService> { error("local failure") }
+          }
+        }
+
+      assertEquals("local failure", failure.message)
+      assertEquals(false, constructorContinued)
+      assertEquals(0, customParent.lookupCount)
+    }
+
+  @Test
+  fun `should not transfer ownership when child paints parent AutoCloseable`() =
+    runTest {
+      val parentService = CloseableTestService("parent-service")
+      val parentCanvas = canvas { single<TestService> { parentService } }
+      val childCanvas =
+        canvas(parentCanvas) {
+          single<TestRepository> { BorrowingRepository(paint<TestService>()) }
+        }
+
+      val childRepository = childCanvas.source<TestRepository>() as BorrowingRepository
+      childCanvas.close()
+      assertEquals(false, parentService.isClosed)
+      assertEquals(true, childRepository.isClosed)
+
+      parentCanvas.close()
+      assertEquals(true, parentService.isClosed)
     }
 
   // Hierarchical resolution tests

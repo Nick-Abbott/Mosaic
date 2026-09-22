@@ -77,7 +77,10 @@ interface Canvas {
   /**
    * A DSL method to create another layer on your [Canvas]
    * The returned object will be a new [Canvas] depending on the sources of the parent
-   * This does not modify the parent in any way
+   * This does not modify the parent in any way. Child bindings are constructed eagerly;
+   * a child constructor can use [CanvasFactory.paint] to resolve local bindings first and
+   * then fall back to the parent. Child overrides do not rewire services already created
+   * by the parent.
    *
    * @param build A block of code registering all sources for your [Canvas] layer
    */
