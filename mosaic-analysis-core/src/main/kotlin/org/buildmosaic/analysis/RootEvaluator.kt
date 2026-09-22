@@ -150,7 +150,7 @@ internal class RootEvaluator(
       addLookupFinding(effect, outcome.context, key, resolution)
       val blocked =
         outcome.context.blocked ||
-          effect.kind == LookupKind.PAINT && resolution.certainty == Certainty.MISSING
+          effect.kind == LookupKind.PAINT && rawResolution.certainty == Certainty.MISSING
       outcome.context.copy(blocked = blocked)
     }
   }

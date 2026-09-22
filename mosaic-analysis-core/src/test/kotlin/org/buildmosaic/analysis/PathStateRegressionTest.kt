@@ -7,6 +7,7 @@ import org.buildmosaic.analysis.AnalysisFixtures.lookup
 import org.buildmosaic.analysis.AnalysisFixtures.metrics
 import org.buildmosaic.analysis.AnalysisFixtures.platform
 import org.buildmosaic.analysis.AnalysisFixtures.report
+import org.buildmosaic.analysis.AnalysisFixtures.service
 import org.buildmosaic.analysis.AnalysisFixtures.site
 import org.buildmosaic.analysis.AnalysisFixtures.tile
 import kotlin.test.Test
@@ -27,26 +28,28 @@ class PathStateRegressionTest {
   @Test
   fun `F2 aborting opaque alternative leaves conditional continuation`() {
     listOf(false, true).forEach { asChoice ->
-      listOf(duplicate() to CanvasExpression.Empty, CanvasExpression.Empty to duplicate()).forEach { (yes, no) ->
-        val result = continuationReport(yes, no, asChoice)
-        val later = result.findings.single { it.key == platform }
-
-        assertEquals(Certainty.UNVERIFIED, later.certainty)
-        assertTrue(later.pathCondition.isNotEmpty())
-        assertFalse(result.findings.any { it.certainty == Certainty.MISSING })
+      invalidCanvases().forEach { (invalid, kind) ->
+        listOf(invalid to CanvasExpression.Empty, CanvasExpression.Empty to invalid).forEach { (yes, no) ->
+          assertConditionalContinuation(continuationReport(yes, no, asChoice), kind)
+        }
       }
     }
   }
 
   @Test
   fun `F3 unknown MultiTile execution retains zero execution continuation`() {
-    val result = multiReport(MultiTileExecution.UNKNOWN)
-    val later = result.findings.single { it.key == platform }
+    invalidCanvases().forEach { (invalid, kind) ->
+      val result = multiReport(MultiTileExecution.UNKNOWN, invalid = invalid)
+      val later = result.findings.single { it.key == platform }
 
-    assertEquals(Certainty.UNVERIFIED, later.certainty)
-    assertTrue(later.pathCondition.isNotEmpty())
-    assertTrue(result.findings.any { it.kind == FindingKind.DUPLICATE_BINDING })
-    assertFalse(result.findings.any { it.certainty == Certainty.MISSING })
+      assertEquals(Certainty.UNVERIFIED, later.certainty)
+      assertTrue(later.pathCondition.isNotEmpty())
+      assertTrue(result.findings.any { it.kind == kind })
+      if (kind == FindingKind.CONSTRUCTION_LOOKUP) {
+        assertEquals(Certainty.UNVERIFIED, result.findings.single { it.kind == kind }.certainty)
+      }
+      assertFalse(result.findings.any { it.certainty == Certainty.MISSING })
+    }
   }
 
   @Test
@@ -97,6 +100,43 @@ class PathStateRegressionTest {
   fun `async body failure preserves launcher continuation`() {
     val result = multiReport(MultiTileExecution.KNOWN_NON_EMPTY, DiscoveryKind.COMPOSE_ASYNC)
 
+    assertEquals(Certainty.MISSING, result.findings.single { it.key == platform }.certainty)
+  }
+
+  @Test
+  fun `missing paint follows MultiTile execution and launch semantics`() {
+    val empty = multiReport(MultiTileExecution.KNOWN_EMPTY, invalid = missingPaint())
+    assertEquals(listOf(platform), empty.findings.map { it.key })
+    assertEquals(Certainty.MISSING, empty.findings.single().certainty)
+
+    val nonEmpty = multiReport(MultiTileExecution.KNOWN_NON_EMPTY, invalid = missingPaint())
+    assertEquals(listOf(FindingKind.CONSTRUCTION_LOOKUP), nonEmpty.findings.map { it.kind })
+    assertEquals(Certainty.MISSING, nonEmpty.findings.single().certainty)
+
+    val async = multiReport(MultiTileExecution.KNOWN_NON_EMPTY, DiscoveryKind.COMPOSE_ASYNC, invalid = missingPaint())
+    assertEquals(Certainty.MISSING, async.findings.single { it.key == platform }.certainty)
+  }
+
+  @Test
+  fun `unresolved paint does not assert a definite construction abort`() {
+    val unknownPaint =
+      Effect.Lookup(
+        "unknown-paint",
+        CanvasExpression.Current,
+        Fact.Unknown("dynamic key", site("dynamic-key")),
+        LookupKind.PAINT,
+        site("unknown-paint"),
+      )
+    val invalid =
+      CanvasExpression.Layer(
+        "unknown-paint-layer",
+        CanvasExpression.Empty,
+        listOf(binding(service, "unknown-service", listOf(unknownPaint))),
+        site = site("unknown-paint-layer"),
+      )
+    val result = continuationReport(invalid, CanvasExpression.Empty)
+
+    assertEquals(Certainty.UNVERIFIED, result.findings.single { it.kind == FindingKind.CONSTRUCTION_LOOKUP }.certainty)
     assertEquals(Certainty.MISSING, result.findings.single { it.key == platform }.certainty)
   }
 
@@ -359,8 +399,9 @@ class PathStateRegressionTest {
     discovery: DiscoveryKind = DiscoveryKind.COMPOSE,
     receiver: CanvasExpression = CanvasExpression.Empty,
     canvases: List<CanvasContract> = emptyList(),
+    invalid: CanvasExpression = duplicate(),
   ): AnalysisReport {
-    val invalidTile = tile("InvalidTile", Effect.ConstructCanvas("invalid", duplicate(), site("invalid")))
+    val invalidTile = tile("InvalidTile", Effect.ConstructCanvas("invalid", invalid, site("invalid")))
     return report(
       ModuleContract(
         "app",
@@ -372,6 +413,19 @@ class PathStateRegressionTest {
   }
 
   private fun later() = lookup("later", platform, canvas = CanvasExpression.Empty)
+
+  private fun assertConditionalContinuation(
+    result: AnalysisReport,
+    kind: FindingKind,
+  ) {
+    val later = result.findings.single { it.key == platform }
+    assertEquals(Certainty.UNVERIFIED, later.certainty)
+    assertTrue(later.pathCondition.isNotEmpty())
+    assertFalse(result.findings.any { it.certainty == Certainty.MISSING })
+    if (kind == FindingKind.CONSTRUCTION_LOOKUP) {
+      assertEquals(Certainty.UNVERIFIED, result.findings.single { it.kind == kind }.certainty)
+    }
+  }
 
   private fun populated() =
     CanvasExpression.Layer(
@@ -388,4 +442,15 @@ class PathStateRegressionTest {
       listOf(binding(metrics, "first"), binding(metrics, "second")),
       site = site("duplicate"),
     )
+
+  private fun missingPaint() =
+    CanvasExpression.Layer(
+      "missing-paint",
+      CanvasExpression.Empty,
+      listOf(binding(service, "service", listOf(lookup("paint", metrics, LookupKind.PAINT)))),
+      site = site("missing-paint"),
+    )
+
+  private fun invalidCanvases() =
+    listOf(duplicate() to FindingKind.DUPLICATE_BINDING, missingPaint() to FindingKind.CONSTRUCTION_LOOKUP)
 }
