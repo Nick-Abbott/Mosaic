@@ -21,14 +21,6 @@ dependencies {
     // Add Mosaic dependencies without version numbers
     implementation("org.buildmosaic:mosaic-core")
     testImplementation("org.buildmosaic:mosaic-test")
-    
-    // For KSP support
-    ksp("org.buildmosaic:mosaic-catalog-ksp")
-}
-
-// If you're using the Mosaic Gradle plugin
-plugins {
-    id("org.buildmosaic.mosaic-consumer-plugin") version "VERSION"
 }
 ```
 
@@ -49,14 +41,6 @@ dependencies {
     // Add Mosaic dependencies without version numbers
     implementation 'org.buildmosaic:mosaic-core'
     testImplementation 'org.buildmosaic:mosaic-test'
-    
-    // For KSP support
-    ksp 'org.buildmosaic:mosaic-catalog-ksp'
-}
-
-// If you're using the Mosaic Gradle plugin
-plugins {
-    id 'org.buildmosaic.mosaic-consumer-plugin' version 'VERSION'
 }
 ```
 
@@ -87,28 +71,6 @@ plugins {
             <scope>test</scope>
         </dependency>
     </dependencies>
-    
-    <!-- For KSP support -->
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.jetbrains.kotlin</groupId>
-                <artifactId>kotlin-maven-plugin</artifactId>
-                <configuration>
-                    <compilerPlugins>
-                        <compilerPlugin>ksp</compilerPlugin>
-                    </compilerPlugins>
-                </configuration>
-                <dependencies>
-                    <dependency>
-                        <groupId>org.buildmosaic</groupId>
-                        <artifactId>mosaic-catalog-ksp</artifactId>
-                        <version>${mosaic.version}</version>
-                    </dependency>
-                </dependencies>
-            </plugin>
-        </plugins>
-    </build>
 </project>
 ```
 
@@ -125,9 +87,9 @@ The BOM includes the following Mosaic artifacts:
 
 - `mosaic-core`: Core Mosaic functionality
 - `mosaic-test`: Testing utilities for Mosaic
-- `mosaic-catalog-ksp`: KSP processor for Mosaic catalogs
-- `mosaic-consumer-ksp`: KSP integration for Mosaic
-- `mosaic-consumer-plugin`: Gradle plugin for Mosaic
+
+Mosaic uses ordinary library dependencies. The BOM aligns `mosaic-core` and
+`mosaic-test`; no Mosaic-specific registration plugin or processor is needed.
 
 ## Versioning
 
