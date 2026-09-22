@@ -18,9 +18,14 @@ internal class RootEvaluator(
   private data class RecordedFinding(
     val finding: Finding,
     val feasibility: PathFeasibility,
-    val assignments: Map<String, Boolean>,
-    val supportedConditions: List<String>,
-  )
+    val assignments: Map<BooleanIdentity, Boolean>,
+    val conditions: List<PathCondition>,
+  ) {
+    val supportedConditions: List<PathCondition> get() =
+      conditions.filter {
+        it.kind == PathConditionKind.SUPPORTED_ASSIGNMENT
+      }
+  }
 
   private val recordedFindings = mutableListOf<RecordedFinding>()
   private val specializedContracts = sortedSetOf<String>()
@@ -91,7 +96,7 @@ internal class RootEvaluator(
           if (context.blocked && !evaluateBlocked) {
             listOf(context)
           } else {
-            evaluateEffect(effect, context).map { evaluated -> restoreEffectFeasibility(evaluated, context) }
+            joinEffectContinuations(evaluateEffect(effect, context))
           }
         }.distinct()
     }
@@ -176,22 +181,18 @@ internal class RootEvaluator(
     }
     return canvasOutcomes.flatMap { outcome ->
       val state = outcome.state ?: return@flatMap listOf(outcome.context.copy(blocked = true))
-      val executionContext =
-        if (effect.execution == MultiTileExecution.UNKNOWN) {
-          outcome.context.copy(
-            feasibility = PathFeasibility.OPAQUE,
-            conditions =
-              outcome.context.conditions +
-                PathCondition(
-                  effect.id,
-                  "${effect.id}: multi-tile execution is unknown",
-                  PathConditionKind.OPAQUE_ALTERNATIVE,
-                ),
-          )
-        } else {
-          outcome.context
+      if (effect.execution != MultiTileExecution.UNKNOWN) {
+        return@flatMap evaluateTile(effect, state, outcome.context)
+      }
+      splitOpaque(outcome.context, "${effect.id}: multi-tile executes", effect.id, effect.site)
+        .flatMap { (decision, executionContext) ->
+          if (decision == BranchDecision.Selected(true)) {
+            evaluateTile(effect, state, executionContext)
+          } else {
+            // Zero execution and incomplete expansion both leave a caller continuation.
+            listOf(executionContext)
+          }
         }
-      evaluateTile(effect, state, executionContext)
     }
   }
 
@@ -387,7 +388,7 @@ internal class RootEvaluator(
         CanvasAlternative(
           outcome.state,
           outcome.context.assignments,
-          outcome.context.conditions.drop(context.conditions.size),
+          outcome.context.conditions,
           outcome.context.feasibility,
           outcome.context.blocked,
         )
@@ -630,9 +631,9 @@ internal class RootEvaluator(
             ParameterKind.BOOLEAN ->
               RuntimeArgument.BooleanValue(
                 if (selectedInput && supplied == null) {
-                  RuntimeBoolean.Free("${root.id}:${parameter.name}")
+                  symbolicBoolean(parameter.name, PathConditionKind.SUPPORTED_ASSIGNMENT)
                 } else {
-                  RuntimeBoolean.Opaque("Missing or incompatible Boolean argument")
+                  opaqueBoolean("Missing or incompatible Boolean argument")
                 },
               )
           }
@@ -647,10 +648,10 @@ internal class RootEvaluator(
   ): RuntimeBoolean =
     when (expression) {
       is BooleanExpression.Constant -> RuntimeBoolean.Known(expression.value)
-      is BooleanExpression.Opaque -> RuntimeBoolean.Opaque(expression.reason)
+      is BooleanExpression.Opaque -> opaqueBoolean(expression.reason)
       is BooleanExpression.ParameterValue ->
         (context.values[expression.parameter] as? RuntimeArgument.BooleanValue)?.value
-          ?: RuntimeBoolean.Opaque("Unresolved Boolean parameter ${expression.parameter.name}")
+          ?: opaqueBoolean("Unresolved Boolean parameter ${expression.parameter.name}")
     }
 
   private fun branch(
@@ -673,58 +674,51 @@ internal class RootEvaluator(
   ): List<Pair<BranchDecision, EvaluationContext>> {
     val value =
       (context.values[guard.parameter] as? RuntimeArgument.BooleanValue)?.value
-        ?: RuntimeBoolean.Opaque("Unresolved Boolean parameter ${guard.parameter.name}")
+        ?: opaqueBoolean("Unresolved Boolean parameter ${guard.parameter.name}")
     return when (value) {
       is RuntimeBoolean.Known -> listOf(BranchDecision.Selected(value.value == guard.expected) to context)
-      is RuntimeBoolean.Opaque -> splitOpaque(context, value.reason, obligationId, site)
-      is RuntimeBoolean.Free -> {
-        val assigned = context.assignments[value.symbol]
-        if (assigned != null) {
-          listOf(BranchDecision.Selected(assigned == guard.expected) to context)
-        } else if (!budget.reserveAlternative()) {
-          addIncomplete(context, obligationId, site, "Alternative expansion budget exceeded")
-          listOf(BranchDecision.Skipped to context)
-        } else {
-          listOf(false, true).map { actual ->
-            val selected = actual == guard.expected
-            BranchDecision.Selected(selected) to
-              context.copy(
-                assignments = context.assignments + (value.symbol to actual),
-                conditions =
-                  context.conditions +
-                    PathCondition(
-                      value.symbol,
-                      "${guard.parameter.name}=$actual",
-                      PathConditionKind.SUPPORTED_ASSIGNMENT,
-                    ),
-              )
-          }
-        }
-      }
+      is RuntimeBoolean.Symbolic -> splitBoolean(value, guard.expected, context, obligationId, site)
     }
   }
+
+  private fun symbolicBoolean(
+    label: String,
+    kind: PathConditionKind,
+  ) = RuntimeBoolean.Symbolic(BooleanIdentity(kind, label))
+
+  private fun opaqueBoolean(reason: String) = symbolicBoolean("opaque($reason)", PathConditionKind.OPAQUE_ALTERNATIVE)
 
   private fun splitOpaque(
     context: EvaluationContext,
     reason: String,
     obligationId: String,
     site: SourceLocation,
+  ): List<Pair<BranchDecision, EvaluationContext>> =
+    splitBoolean(opaqueBoolean(reason), true, context, obligationId, site)
+
+  private fun splitBoolean(
+    value: RuntimeBoolean.Symbolic,
+    expected: Boolean,
+    context: EvaluationContext,
+    obligationId: String,
+    site: SourceLocation,
   ): List<Pair<BranchDecision, EvaluationContext>> {
-    if (!budget.reserveAlternative()) {
+    val assigned = context.assignments[value.identity]
+    val alternatives = if (assigned == null) listOf(false, true) else listOf(assigned)
+    if (assigned == null && !budget.reserveAlternative()) {
       addIncomplete(context, obligationId, site, "Alternative expansion budget exceeded")
       return listOf(BranchDecision.Skipped to context)
     }
-    return listOf(false, true).map { selected ->
-      BranchDecision.Selected(selected) to
+    return alternatives.map { actual ->
+      val condition = PathCondition(value.identity, actual)
+      BranchDecision.Selected(actual == expected) to
         context.copy(
-          feasibility = PathFeasibility.OPAQUE,
-          conditions =
-            context.conditions +
-              PathCondition(
-                "$obligationId:${site.owner}:${site.line}:${site.column}",
-                "opaque($reason)=$selected",
-                PathConditionKind.OPAQUE_ALTERNATIVE,
-              ),
+          assignments = context.assignments + (value.identity to actual),
+          // Reading a previously assigned opaque value reestablishes its guard even
+          // when an earlier effect joined both alternatives at its continuation.
+          conditions = (context.conditions + condition).distinct(),
+          feasibility =
+            if (condition.kind == PathConditionKind.OPAQUE_ALTERNATIVE) PathFeasibility.OPAQUE else context.feasibility,
         )
     }
   }
@@ -976,10 +970,8 @@ internal class RootEvaluator(
       RecordedFinding(
         finding,
         context.feasibility,
-        context.assignments,
-        context.conditions
-          .filter { it.kind == PathConditionKind.SUPPORTED_ASSIGNMENT }
-          .map { it.display },
+        context.assignments.filterKeys { it.kind == PathConditionKind.SUPPORTED_ASSIGNMENT },
+        context.conditions,
       )
   }
 
@@ -1000,7 +992,7 @@ internal class RootEvaluator(
           record.finding.kind,
           record.finding.key,
           record.finding.dependencyPath,
-          record.assignments.toSortedMap(),
+          record.assignments,
           record.supportedConditions,
         )
       }.values.map { alternatives -> mergeOpaqueLookupAlternatives(alternatives) }
@@ -1010,9 +1002,10 @@ internal class RootEvaluator(
   private fun mergeOpaqueLookupAlternatives(alternatives: List<RecordedFinding>): Finding {
     val findings = alternatives.map { it.finding }
     val first = findings.first()
+    val pathCondition = describeAlternativePaths(alternatives)
     if (findings.all { it.certainty == Certainty.VERIFIED }) {
       return first.copy(
-        pathCondition = alternatives.first().supportedConditions,
+        pathCondition = pathCondition,
         capturedOrigins = findings.flatMapTo(mutableSetOf()) { it.capturedOrigins },
         evidence = findings.flatMapTo(mutableSetOf()) { it.evidence },
         assumptionIds = findings.flatMapTo(mutableSetOf()) { it.assumptionIds },
@@ -1025,12 +1018,23 @@ internal class RootEvaluator(
       bindingSite = null,
       bindingFactProvenance = null,
       bindingCapturedOrigins = findings.flatMapTo(mutableSetOf()) { it.bindingCapturedOrigins },
-      pathCondition = alternatives.first().supportedConditions,
+      pathCondition = pathCondition,
       capturedOrigins = findings.flatMapTo(mutableSetOf()) { it.capturedOrigins },
       evidence = findings.flatMapTo(mutableSetOf()) { it.evidence },
       assumptionIds = findings.flatMapTo(mutableSetOf()) { it.assumptionIds },
-      reason = "Canvas availability differs across opaque alternatives",
+      reason = "Canvas availability is not established on every opaque path",
     )
+  }
+
+  private fun describeAlternativePaths(alternatives: List<RecordedFinding>): List<String> {
+    val paths = alternatives.map { it.conditions }.distinct()
+    val common = paths.first().filter { condition -> paths.all { condition in it } }
+    val remaining = paths.map { it - common.toSet() }.distinct()
+    if (remaining.any { it.isEmpty() }) return common.map { it.display }
+    return common.map { it.display } +
+      remaining.joinToString(" OR ") { path ->
+        path.joinToString(" AND ", prefix = "(", postfix = ")") { it.display }
+      }
   }
 
   private fun unknownCurrent(context: EvaluationContext): CanvasState.Unknown {
@@ -1052,19 +1056,38 @@ internal class RootEvaluator(
       blocked = caller.blocked || propagateBlocked && nested.blocked,
     )
 
-  private fun restoreEffectFeasibility(
-    evaluated: EvaluationContext,
-    beforeEffect: EvaluationContext,
-  ): EvaluationContext {
-    if (evaluated.feasibility == beforeEffect.feasibility) return evaluated
-    val retainedConditions =
-      evaluated.conditions
-        .drop(beforeEffect.conditions.size)
-        .filter { it.kind == PathConditionKind.SUPPORTED_ASSIGNMENT }
-    return evaluated.copy(
-      feasibility = beforeEffect.feasibility,
-      conditions = beforeEffect.conditions + retainedConditions,
-    )
+  private fun joinEffectContinuations(outcomes: List<EvaluationContext>): List<EvaluationContext> {
+    var joined = outcomes
+    do {
+      val previous = joined
+      joined =
+        previous.map { context ->
+          if (context.blocked) return@map context
+          val removable =
+            context.conditions.firstOrNull { condition ->
+              condition.kind == PathConditionKind.OPAQUE_ALTERNATIVE &&
+                previous.any { other ->
+                  !other.blocked && other.values == context.values && other.currentCanvas == context.currentCanvas &&
+                    other.conditions.any { it.identity == condition.identity && it.value != condition.value } &&
+                    other.conditions.filterNot { it.identity == condition.identity }.toSet() ==
+                    context.conditions.filterNot { it.identity == condition.identity }.toSet()
+                }
+            }
+          val conditions = context.conditions - listOfNotNull(removable).toSet()
+          context.copy(
+            conditions = conditions,
+            feasibility =
+              if (conditions.any { it.kind == PathConditionKind.OPAQUE_ALTERNATIVE }) {
+                PathFeasibility.OPAQUE
+              } else {
+                PathFeasibility.SUPPORTED
+              },
+          )
+        }
+    } while (joined != previous)
+    // Assignments remain available for immutable Boolean correlation. Aliases retain
+    // their own value conditions and reapply them when the Canvas is read.
+    return joined
   }
 
   private fun rootSite(): SourceLocation = root.site ?: SourceLocation(root.target, "<contract>", 1, 1)

@@ -10,11 +10,16 @@ internal enum class PathConditionKind {
   OPAQUE_ALTERNATIVE,
 }
 
+// Allocated per evaluated value, never derived from source or diagnostic text.
+internal class BooleanIdentity(val kind: PathConditionKind, val label: String)
+
 internal data class PathCondition(
-  val identity: String,
-  val display: String,
-  val kind: PathConditionKind,
-)
+  val identity: BooleanIdentity,
+  val value: Boolean,
+) {
+  val display: String get() = "${identity.label}=$value"
+  val kind: PathConditionKind get() = identity.kind
+}
 
 internal sealed interface RuntimeArgument {
   data class CanvasValue(val state: CanvasState) : RuntimeArgument
@@ -30,9 +35,7 @@ internal data class EvaluatedArguments(
 internal sealed interface RuntimeBoolean {
   data class Known(val value: Boolean) : RuntimeBoolean
 
-  data class Free(val symbol: String) : RuntimeBoolean
-
-  data class Opaque(val reason: String) : RuntimeBoolean
+  data class Symbolic(val identity: BooleanIdentity) : RuntimeBoolean
 }
 
 internal data class EvaluationContext(
@@ -40,7 +43,7 @@ internal data class EvaluationContext(
   // Declaration-keyed slots and aliases belong to this invocation, not to a path condition.
   val activation: Int = 0,
   val aliases: Map<String, List<CanvasAlternative>> = emptyMap(),
-  val assignments: Map<String, Boolean> = emptyMap(),
+  val assignments: Map<BooleanIdentity, Boolean> = emptyMap(),
   val conditions: List<PathCondition> = emptyList(),
   val feasibility: PathFeasibility = PathFeasibility.SUPPORTED,
   val currentCanvas: CanvasState? = null,
@@ -95,7 +98,7 @@ internal data class CanvasOutcome(
 
 internal data class CanvasAlternative(
   val state: CanvasState?,
-  val assignments: Map<String, Boolean>,
+  val assignments: Map<BooleanIdentity, Boolean>,
   val conditions: List<PathCondition>,
   val feasibility: PathFeasibility,
   val blocked: Boolean,
