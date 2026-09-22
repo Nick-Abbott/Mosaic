@@ -77,6 +77,7 @@ sealed interface ArgumentExpression {
   data class BooleanValue(val expression: BooleanExpression) : ArgumentExpression
 }
 
+/** Supplied expressions in caller evaluation order; use an iteration-ordered map. */
 data class CallArguments(
   val values: Map<ContractParameter, ArgumentExpression> = emptyMap(),
 )
@@ -365,6 +366,9 @@ data class Finding(
   val evidence: Set<EvidenceKind> = emptySet(),
   val assumptionIds: Set<String> = emptySet(),
   val reason: String,
+  /** Provider-key evidence, separate from the lookup key in [factProvenance]. */
+  val bindingFactProvenance: SourceLocation? = null,
+  val bindingCapturedOrigins: Set<CaptureOrigin> = emptySet(),
 )
 
 enum class RootStatus {

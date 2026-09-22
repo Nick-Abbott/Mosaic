@@ -22,6 +22,11 @@ internal sealed interface RuntimeArgument {
   data class BooleanValue(val value: RuntimeBoolean) : RuntimeArgument
 }
 
+internal data class EvaluatedArguments(
+  val context: EvaluationContext,
+  val values: Map<ContractParameter, RuntimeArgument> = emptyMap(),
+)
+
 internal sealed interface RuntimeBoolean {
   data class Known(val value: Boolean) : RuntimeBoolean
 
@@ -32,6 +37,9 @@ internal sealed interface RuntimeBoolean {
 
 internal data class EvaluationContext(
   val values: Map<ContractParameter, RuntimeArgument> = emptyMap(),
+  // Declaration-keyed slots and aliases belong to this invocation, not to a path condition.
+  val activation: Int = 0,
+  val aliases: Map<String, List<CanvasAlternative>> = emptyMap(),
   val assignments: Map<String, Boolean> = emptyMap(),
   val conditions: List<PathCondition> = emptyList(),
   val feasibility: PathFeasibility = PathFeasibility.SUPPORTED,
@@ -49,6 +57,8 @@ internal data class KnownBinding(
   val key: CanvasKeyIdentity,
   val site: SourceLocation,
   val evidence: EvidenceKind,
+  val provenance: SourceLocation?,
+  val capturedOrigin: CaptureOrigin?,
 )
 
 internal sealed interface CanvasState {
@@ -83,14 +93,6 @@ internal data class CanvasOutcome(
   val state: CanvasState?,
 )
 
-internal data class CanvasAliasContext(
-  val aliasId: String,
-  val scope: String,
-  val dependencyPath: List<DependencyPathNode>,
-  val assignments: Map<String, Boolean>,
-  val conditions: List<PathCondition>,
-)
-
 internal data class CanvasAlternative(
   val state: CanvasState?,
   val assignments: Map<String, Boolean>,
@@ -113,6 +115,8 @@ internal data class LookupResolution(
   val assumptionIds: Set<String> = emptySet(),
   val capturedOrigins: Set<CaptureOrigin> = emptySet(),
   val reason: String,
+  val bindingFactProvenance: SourceLocation? = null,
+  val bindingCapturedOrigins: Set<CaptureOrigin> = emptySet(),
 )
 
 internal sealed interface TileResolution {
