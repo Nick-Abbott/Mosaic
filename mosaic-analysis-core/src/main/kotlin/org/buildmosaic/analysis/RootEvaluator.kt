@@ -284,15 +284,30 @@ internal class RootEvaluator(
         addIncomplete(caller, effect.id, effect.site, "Callable expansion depth limit reached")
         return@flatMap listOf(caller)
       }
-      when (val target = registry.callable(effect.target)) {
+      val resolvedTarget = registry.directOverride(caller.knownReceiverType, effect.target) ?: effect.target
+      when (val target = registry.callable(resolvedTarget)) {
         is Resolution.Found -> {
           specializedContracts += target.value.id
-          val callee = bindArguments(evaluated, target.value.parameters, effect.site)
+          val transferred =
+            if (resolvedTarget == effect.target) {
+              evaluated
+            } else {
+              evaluated.copy(
+                values =
+                  evaluated.values.mapKeys { (parameter, _) ->
+                    target.value.parameters.singleOrNull {
+                      it.name == parameter.name && it.kind == parameter.kind
+                    } ?: parameter
+                  },
+              )
+            }
+          val callee = bindArguments(transferred, target.value.parameters, effect.site)
           val nested =
             callee.copy(
               dependencyPath = caller.dependencyPath + DependencyPathNode("call:${effect.target}", effect.site),
               scope = effect.target,
               depth = caller.depth + 1,
+              knownReceiverType = effect.knownReceiverType ?: caller.knownReceiverType,
             )
           evaluateEffects(listOf(nested), target.value.effects).map { restoreCaller(it, caller) }
         }

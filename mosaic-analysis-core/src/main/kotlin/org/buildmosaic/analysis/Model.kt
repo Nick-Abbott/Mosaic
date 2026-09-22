@@ -1,5 +1,7 @@
 package org.buildmosaic.analysis
 
+import com.fasterxml.jackson.annotation.JsonTypeInfo
+
 /** A stable source location supplied by a future extractor or a hand-authored fixture. */
 data class SourceLocation(
   val owner: String,
@@ -15,6 +17,7 @@ enum class EvidenceKind {
   EXTERNAL_ASSUMPTION,
 }
 
+@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface Fact<out T> {
   data class Known<T>(
     val value: T,
@@ -46,6 +49,7 @@ data class ContractParameter(
   val kind: ParameterKind,
 )
 
+@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface BooleanExpression {
   data class Constant(val value: Boolean) : BooleanExpression
 
@@ -57,6 +61,7 @@ sealed interface BooleanExpression {
   ) : BooleanExpression
 }
 
+@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface Guard {
   data class Constant(val value: Boolean) : Guard
 
@@ -71,6 +76,7 @@ sealed interface Guard {
   ) : Guard
 }
 
+@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface ArgumentExpression {
   data class Canvas(val expression: CanvasExpression) : ArgumentExpression
 
@@ -82,6 +88,7 @@ data class CallArguments(
   val values: Map<ContractParameter, ArgumentExpression> = emptyMap(),
 )
 
+@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface CanvasExpression {
   data object Empty : CanvasExpression
 
@@ -147,6 +154,7 @@ data class UnknownRegistration(
   val site: SourceLocation,
 )
 
+@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface CaptureOrigin {
   val declaration: String
   val artifact: String
@@ -164,6 +172,7 @@ sealed interface CaptureOrigin {
   ) : CaptureOrigin
 }
 
+@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface TileReference {
   data class Stable(
     val contractId: String,
@@ -202,6 +211,7 @@ enum class MultiTileExecution {
   UNKNOWN,
 }
 
+@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface Effect {
   val id: String
   val site: SourceLocation
@@ -234,6 +244,8 @@ sealed interface Effect {
     val target: String,
     val arguments: CallArguments = CallArguments(),
     override val site: SourceLocation,
+    /** Final concrete receiver proven at this call site; used only for direct override transfer. */
+    val knownReceiverType: String? = null,
   ) : Effect
 
   data class Branch(
@@ -288,6 +300,13 @@ data class ModuleContract(
   val canvases: List<CanvasContract> = emptyList(),
   val tiles: List<TileContract> = emptyList(),
   val callables: List<CallableContract> = emptyList(),
+  val overrides: List<ResolvedOverride> = emptyList(),
+)
+
+data class ResolvedOverride(
+  val receiverType: String,
+  val baseId: String,
+  val implementationId: String,
 )
 
 data class SelectedRoot(

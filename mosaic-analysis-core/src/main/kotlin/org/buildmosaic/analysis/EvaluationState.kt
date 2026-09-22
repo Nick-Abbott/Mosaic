@@ -47,6 +47,7 @@ internal data class EvaluationContext(
   val conditions: List<PathCondition> = emptyList(),
   val feasibility: PathFeasibility = PathFeasibility.SUPPORTED,
   val currentCanvas: CanvasState? = null,
+  val knownReceiverType: String? = null,
   val dependencyPath: List<DependencyPathNode> = emptyList(),
   val activeTiles: Set<String> = emptySet(),
   val scope: String,

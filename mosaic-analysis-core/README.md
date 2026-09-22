@@ -73,13 +73,18 @@ Reusable contracts are only reported as deferred until a selected root reaches
 and specializes them. Public visibility does not select a root, and selecting no
 roots produces an `UNCONFIGURED` report.
 
+The internal `SummaryCodec` now round-trips complete, hashed, provisional JSON
+contracts for the compiler and Gradle prototypes. It rejects malformed,
+partial, incompatible-major, or hash-mismatched summaries. This serialization
+remains independent of Kotlin compiler and Gradle APIs.
+
 The model intentionally supports only the expressions needed by the semantic
 fixtures. It does not parse Kotlin source, inspect JARs, discover roots, infer
 framework lifecycles or arbitrary dispatch, check generic types/subtypes, model
 cache occupancy, or diagnose deadlocks. Unsupported represented behavior stays
 explicitly `UNVERIFIED`. Callback or override transfers require an explicitly
 resolved target; these fixtures do not prove Kotlin override inference. There is
-no metadata or wire format yet, and this API is provisional.
+the wire format and API are provisional.
 
 The in-memory tests validate only these kernel semantics. They do not prove
 source extraction, binary linking, or incremental-build invalidation.

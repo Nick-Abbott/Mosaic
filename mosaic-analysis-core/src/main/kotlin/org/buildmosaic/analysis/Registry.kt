@@ -12,12 +12,18 @@ internal class SelectedContractRegistry(modules: List<ModuleContract>) {
   private val canvases = index(modules, { it.canvases }, CanvasContract::id)
   private val tiles = index(modules, { it.tiles }, TileContract::id)
   private val callables = index(modules, { it.callables }, CallableContract::id)
+  private val overrides = modules.flatMap { it.overrides }.groupBy { it.receiverType to it.baseId }
 
   fun canvas(id: String): Resolution<CanvasContract> = resolve(canvases[id])
 
   fun tile(id: String): Resolution<TileContract> = resolve(tiles[id])
 
   fun callable(id: String): Resolution<CallableContract> = resolve(callables[id])
+
+  fun directOverride(
+    receiverType: String?,
+    baseId: String,
+  ): String? = receiverType?.let { type -> overrides[type to baseId]?.singleOrNull()?.implementationId }
 
   fun reusableContractIds(): List<String> =
     buildList {
