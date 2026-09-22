@@ -69,6 +69,9 @@ class CanvasFactory internal constructor(
 
   /**
    * Creates a dependency instance during the canvas building phase.
+   * Local bindings are resolved first. If this canvas does not contain [key], lookup falls
+   * back through the parent canvas. Construction is eager, so parent-owned instances are
+   * reused and child overrides do not rewire services already created by the parent.
    *
    * @param T The type of the dependency
    * @param key The canvas key identifying the dependency
@@ -76,8 +79,9 @@ class CanvasFactory internal constructor(
    */
   suspend fun <T : Any> paint(key: CanvasKey<T>): T {
     @Suppress("UNCHECKED_CAST")
-    val stub = bindings[key] as Stub<T>? ?: missingKeyError(key)
-    return stub.create(this)
+    val local = bindings[key] as Stub<T>?
+    if (local != null) return local.create(this)
+    return parent?.sourceOr(key) ?: missingKeyError(key)
   }
 
   /**
