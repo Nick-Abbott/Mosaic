@@ -134,14 +134,31 @@ data class Binding(val key: Fact<Key>, val constructor: List<Effect>, val site: 
 data class TileContract(val id: Id, val canvas: Parameter, val effects: List<Effect>)
 data class CanvasContract(val id: Id, val result: CanvasExpr, val effects: List<Effect>)
 data class ConsumerContract(val id: Id, val parameters: List<Parameter>, val effects: List<Effect>)
+sealed interface Reference {
+  data class RuntimeCall(val target: Id, val arguments: List<Fact<Id>>, val site: Site) : Reference
+  data class RuntimeProperty(val getter: Id, val receiver: Fact<Id>, val site: Site) : Reference
+  data class Captured(val owner: Id, val origin: CapturedOrigin, val effects: List<Effect>) : Reference
+  data class Unknown(val reason: String, val site: Site) : Reference
+}
+sealed interface CapturedOrigin {
+  data class Inline(val declaration: Id, val artifact: String, val contractHash: String) : CapturedOrigin
+  data class Const(val declaration: Id, val literal: String, val artifact: String) : CapturedOrigin
+}
 ```
 
 Guards nest to express conjunction; constant false branches are removed. The
 wire format also carries callback/override transfers, call substitutions,
 allocation templates, construction-site references, result provenance for
-Mosaic values, completeness, and source evidence described below. `Effect`
-lists preserve sequencing for diagnostics; they are not sets of class names.
-An unknown body is `Effect.Unknown`, never `effects = emptyList()`.
+Mosaic values, references, completeness, and source evidence described below.
+`Effect` lists preserve sequencing for diagnostics; they are not sets of class
+names. An unknown body is `Effect.Unknown`, never `effects = emptyList()`.
+
+`Reference.RuntimeCall` and `RuntimeProperty` preserve the target symbol and
+argument/result substitutions; they are resolved against the artifacts selected
+by the consuming application. `Captured` belongs to the compiled caller, even
+when its origin was another artifact. It may contain ordinary nested runtime
+references, which still use the selected-artifact rule. A `Captured` record is
+not an unconditional flattened copy of a dependency's Canvas facts.
 
 ### Key identity
 
@@ -261,7 +278,10 @@ alone has a symbolic precondition on `parent`, not a missing binding error.
 Evaluation rules:
 
 1. Substitute actual Canvas, constant-key, Tile, receiver, and supported callback
-   arguments into the callee's summary. Never insert unrelated providers.
+   arguments into the callee's summary. Resolve ordinary runtime calls/properties
+   by their preserved symbols against the selected dependency summary, after
+   compatibility checks. Never insert unrelated providers or replace a runtime
+   reference with a fact copied when its caller was compiled.
 2. Validate each reached Canvas construction in order. A layer is created only
    after its parent expression is evaluated. All registered local constructors
    are checked even if no Tile ever reads their values.
@@ -279,6 +299,64 @@ Evaluation rules:
 6. Memoize by contract plus substituted arguments/provenance, not Tile result
    type. A recursion/work limit preserves discovered obligations and adds an
    unknown-expansion marker; it does not certify the unexplored remainder.
+
+### Runtime references and captured compile-time facts
+
+**Decision:** summaries link ordinary external calls and property accesses;
+they do not bake their dependency's result into the caller. For example:
+
+```kotlin
+// platform.jar
+suspend fun platformCanvas(): Canvas = canvas { single<PlatformConfig> { PlatformConfig() } }
+
+// adapter.jar, compiled once against platform.jar
+suspend fun applicationBase(): Canvas = platformCanvas()
+
+// app, compiled against adapter.jar and the selected platform.jar
+suspend fun entry() = applicationBase().create().compose(EnterpriseTile)
+```
+
+`applicationBase` exports a runtime reference to `platformCanvas`, with the
+result substitution, rather than a PlatformConfig binding attributed to adapter.
+If an updated selected `platform.jar` removes PlatformConfig, verification of
+`entry` follows that unchanged adapter reference and reports the missing lookup.
+The adapter need not be recompiled. The reference must resolve to the selected
+artifact's compatible symbol; a missing, incompatible, or conflicting target is
+UNVERIFIED at that boundary, while independent local facts remain available.
+
+Inline expansion and constants differ. Kotlin documents that an `inline`
+function and its inlinable lambdas are inlined at call sites, including calls
+from other modules, and warns about changing an inline module without recompiling
+callers ([Kotlin inline functions](https://kotlinlang.org/docs/inline-functions.html)).
+Kotlin also documents that every `const val` reference is replaced by its actual
+value at compile time ([Kotlin compile-time constants](https://kotlinlang.org/docs/properties.html#compile-time-constants)).
+Therefore an unchanged compiled caller retains the captured behavior/value it
+was built with; analysis must not silently substitute the newest helper body or
+constant from a selected dependency.
+
+```kotlin
+// qualifier.jar v1, then later v2 changes both declarations
+const val PRIMARY = "primary"
+suspend inline fun addPlatform(parent: Canvas) = parent.withLayer {
+  single<Metrics>(PRIMARY) { Metrics() }
+}
+
+// app.jar compiled against v1
+suspend fun entry() = addPlatform(canvas { }).create()
+  .compose(singleTile { source<Metrics>(PRIMARY) })
+```
+
+The compiled app's captured qualifier remains `"primary"`, even if the newest
+qualifier JAR says `"secondary"`. The captured inline expansion belongs to
+`entry`, records `addPlatform` v1 as provenance, and preserves any ordinary
+runtime call nested inside that expansion as a symbolic reference. The initial
+prototype only needs to capture the pinned Mosaic reified DSL wrappers as
+modeled intrinsics (`source<T>`, `single<T>`, `paint<T>` and their supported
+forms). It must not accidentally mark those wrappers unknown merely because
+they are inline. Broad external-inline extraction is not MVP: if faithful
+capture of an external inline body or constant cannot be established, report
+`UNVERIFIED: external inline/constant behavior not faithfully captured` at the
+affected boundary rather than assume the latest dependency semantics.
 
 For each exact key, a layer's local registration state is present, absent or
 unknown under the current guard. Only definite local absence permits a definite
@@ -370,14 +448,37 @@ The MVP does not prove cache occupancy or use caching to discard requirements.
 
 ### Build policy and boundary assumptions
 
-Default policy: fail on MISSING and definite invalid construction; warn on
-UNVERIFIED; display verified counts and assumption counts. Library contracts
-with symbolic parameters are valid deferred requirements, not warnings merely
-for needing consumer bindings. A concrete application root using an unknown
-external input is UNVERIFIED. Export mode reports deferred obligations; verify
-mode reports each concrete composition/construction and any externally callable
-consumer whose input preconditions remain undischargeable. The report states
-which roots were checked, which remain parameterized, and any discovery gaps.
+Default policy: fail selected roots on MISSING and definite invalid construction;
+warn on UNVERIFIED; display verified counts and assumption counts. Extracting a
+reusable declaration produces a parameterized, deferred contract. It does not
+execute construction effects or turn a symbolic Canvas parameter into an
+application failure. This is equally true for library and application helpers:
+public visibility alone does not select a helper as an unknown-input root.
+
+Verification has three separate operations: extract a reusable declaration's
+parameterized summary; specialize it at a supported invocation/transfer; and
+select application boundaries to verify. For the initial prototype roots are
+explicit Gradle configuration, expressed as stable callable IDs (with supported
+receiver/arguments where needed). `entry()` in the enterprise example is the
+selected root. Verification follows supported calls/transfers from each selected
+root and checks all reached Canvas construction/composition obligations. A helper
+explicitly selected as an entry boundary with an unresolved Canvas input yields
+UNVERIFIED for affected requirements. A selected framework handler with an
+unknown injected Canvas also remains UNVERIFIED; it is not hidden as deferred.
+
+An independently reached bad invocation remains a finding even if another
+specialization of the same helper verifies. A declared-but-uninvoked helper
+contributes only its deferred contract. Standalone contract consistency checks
+(malformed references, incompatible schemas, conflicting ownership) always run,
+but are distinct from invocation-specific lookup findings.
+
+Reports list selected roots and their outcomes, deferred reusable contracts,
+unchecked/discovery boundaries, assumptions, limits, and any explicit root
+selection filters. A passing report says only that the selected roots passed;
+it never claims whole-application verification. With no roots configured it
+reports `UNCONFIGURED: no verification roots selected` and no verified
+application roots. Export mode reports contracts; verify mode evaluates only
+selected roots plus standalone consistency checks.
 
 Strict mode additionally fails on UNVERIFIED and on unapproved external
 assumptions for selected application roots. Mode changes severity/exit status,
@@ -403,13 +504,10 @@ editing an assumption invalidates that approval. Reports never remove the
 assumption label. An assumption contradicting extracted facts is a contract
 conflict, not an override of evidence.
 
-For the first implementation, application verification roots are every extracted
-composition and Canvas-construction site, specialized where supported call
-summaries reach them, plus unresolved externally callable consumer boundaries.
-The report deduplicates the same specialized obligation but retains its caller
-paths. Explicit root selection may narrow a report; it must list that selection
-and must not claim whole-application coverage. Unrecognized capability-bearing
-calls remain discovery gaps even when no concrete Tile can be named.
+The report deduplicates the same specialized obligation within a selected root
+but retains its caller paths. Unrecognized capability-bearing calls reached from
+a selected root remain discovery gaps even when no concrete Tile can be named.
+They do not turn every extracted site elsewhere into a root.
 
 ## Binary libraries and the enterprise component
 
@@ -520,11 +618,14 @@ block(platformCanvas())`. The latter specializes at the known lambda argument.
 Do not infer arbitrary overriding getters, multi-stage lifecycle ordering,
 reflection-based dispatch, or callbacks stored for later execution.
 
-The hook's standalone summary stays parameterized. A different subclass or an
-unknown `PlatformComponent` receiver does not inherit the application's proof.
-If `respond` is made publicly callable with arbitrary Canvases, its additional
-call sites must be checked separately. An override itself is not globally
-certified because one inherited call site supplies a good Canvas.
+The selected verification root is `entry()`. `applicationLayer(parent)` remains
+a public, reusable parameterized contract: it is specialized with the known
+platform Canvas only at its reached invocation from `entry`, so strict checking
+of that root can pass without requiring every possible parent. A different
+subclass or an unknown `PlatformComponent` receiver does not inherit this proof.
+If `respond` or `applicationLayer` is explicitly selected with arbitrary Canvas
+inputs, its affected requirements are UNVERIFIED. An override is not globally
+certified because one selected inherited call site supplies a good Canvas.
 
 This mutable lifecycle is deliberately outside automatic MVP inference:
 
@@ -570,12 +671,23 @@ data class SummaryEnvelope(
   val sourceSet: String,
   val sourceInventoryHash: String,
   val compilerOptionsHash: String,
-  val dependencyContractHashes: Map<String, String>,
+  val dependencyContractHashes: Map<String, String>, // recorded build provenance only
+  val factDependencies: List<FactDependency>,
+  val runtimeReferences: List<Reference>,
   val declarations: List<DeclarationSummary>,
   val completeSnapshot: Boolean,
   val unknownSites: List<Site>,
   val payloadHash: String,
 )
+```
+
+```kotlin
+data class FactDependency(
+  val owner: Id,
+  val dependency: CapturedOrigin,
+  val role: FactDependencyRole,
+)
+enum class FactDependencyRole { CAPTURED_INLINE, CAPTURED_CONST, DERIVED_SUPPORTED }
 ```
 
 `DeclarationSummary` is a tagged Tile/Canvas/consumer/transfer/alias record with
@@ -586,6 +698,27 @@ relative file/line/column, source content hash and optional repository revision
 for diagnostics. Binary consumers do not need source archives. Offsets are
 provenance, not public symbol identity. The runtime semantics version initially
 means this post-#34 local-first eager Canvas behavior and this Tile API.
+
+`dependencyContractHashes` records the resolved dependency contract hashes used
+when this producer was built. It is build provenance for diagnosis and producer
+re-extraction; it is not an assertion that every exported fact depends on every
+listed hash, and a changed hash does not automatically invalidate every local
+fact. `factDependencies` identifies the actual dependency assumption used to
+derive a captured/derived fact. `runtimeReferences` are deliberately different:
+they are symbolic links resolved by the consumer against its selected artifacts.
+
+On verification, keep unaffected local declarations. Keep a faithfully captured
+inline/const fact as behavior of the compiled caller even when its origin hash
+differs; report the origin/version difference as provenance, not as permission
+to rewrite it. Re-resolve every runtime reference against the application's
+selected artifact universe. If a supported derived fact has a changed required
+assumption, recompute it from the referenced selected summary; if that is
+unsupported or cannot be established, mark only that affected fact boundary
+UNVERIFIED. Never certify an unchanged complete local snapshot as current merely
+because it was complete at production time, and never discard independent local
+facts merely because an unrelated dependency changed. This format is provisional
+until the binary extraction experiment demonstrates that its identities,
+references, and captured facts can be produced faithfully.
 
 `completeSnapshot` means all declarations/files in the declared compilation
 inventory were visited, **not** that every body was understood. Unknown sites
@@ -608,6 +741,8 @@ its JAR never injects those defaults into other Canvases.
 | New minor schema with only optional fields | Accept only if all required features are understood |
 | Duplicate competing symbol ownership or conflicting summaries | Report `CONTRACT_CONFLICT`; never union providers or choose the richest contract |
 | Malformed, unreadable, bad checksum, partial snapshot, or unresolved referenced ID | Report the artifact and reason, treat affected facts as unknown; producer task must fail if it generated this output |
+| Runtime reference resolves to a changed selected dependency | Re-resolve the preserved symbol/substitutions; use its current compatible summary, never a flattened producer-era copy |
+| Captured inline/const/derived fact has changed provenance | Keep the compiled caller's captured behavior if faithfully recorded; otherwise report only that boundary UNVERIFIED, never substitute the latest helper body/value |
 | Valid deferred library requirements | Export successfully even with no matching bindings in that library |
 
 For consumers, metadata problems follow UNVERIFIED policy (warning by default,
@@ -655,9 +790,11 @@ No IR transformation is needed. FIR checkers are not a prerequisite.
 for `singleTile`, all three MultiTile DSL forms, `source`/`paint` reification,
 default qualifiers, immutable captured locals and override transfers. Prove
 symbol matching between separately compiled Kotlin artifacts, including fake
-overrides and suspend methods. If IR loses necessary information, report that
-specific gap and review a small FIR collector; do not claim a functioning
-extractor based solely on these extension interfaces.
+overrides and suspend methods. Also prove which ordinary calls/properties remain
+symbolic, and whether external inline bodies and const substitutions can be
+captured with their producer provenance. If IR loses necessary information,
+report that specific gap and review a small FIR collector; do not claim a
+functioning extractor based solely on these extension interfaces.
 
 ### Complete extraction first
 
@@ -735,12 +872,16 @@ with equivalence tests.
 
 If a dependency factory removes a binding without changing its signature, its
 producer extraction reruns because source contents changed, `jar` incorporates
-the new summary, and consumer extraction and verification rerun because resolved
-artifact bytes changed. This must work even if ordinary application Kotlin
-compilation is UP-TO-DATE under ABI avoidance. A contract-only sidecar edit has
-the same invalidation path. Changing which artifact/variant is selected also
-invalidates analysis. Resolving a republished same-version remote artifact still
-obeys Gradle dependency-cache refresh rules: use a new version or
+the new summary, and consumer verification reruns because selected artifact
+bytes changed. An unchanged intermediate adapter that preserved a runtime call
+to that factory need not be recompiled: verification re-resolves the adapter's
+symbolic reference through the newly selected platform summary. This must work
+even if ordinary application Kotlin compilation is UP-TO-DATE under ABI
+avoidance. Conversely, a caller's faithfully captured inline/constant fact is
+not rewritten just because the dependency artifact changes. A contract-only
+sidecar edit has the same invalidation path. Changing which artifact/variant is
+selected also invalidates analysis. Resolving a republished same-version remote
+artifact still obeys Gradle dependency-cache refresh rules: use a new version or
 `--refresh-dependencies` when necessary; analysis cannot see bytes Gradle has
 not resolved.
 
@@ -820,9 +961,13 @@ types and DSL. Outcomes are relative to the stated root/inputs.
 
 | Concrete input | Expected result | Reason |
 | --- | --- | --- |
-| `platformCanvas()` `{G,M,P}` → `applicationLayer` `{S paint M}` → request `{R}` → `EnterpriseTile` | VERIFIED construction and all five lookups | Three linked layers, including binary defaults |
+| Selected `entry()` → `platformCanvas()` `{G,M,P}` → public `applicationLayer` `{S paint M}` → request `{R}` → `EnterpriseTile` | VERIFIED construction and all five lookups; strict passes | `applicationLayer` is specialized at this known invocation, not selected merely because it is public |
 | Same input, remove platform `single<PlatformConfig>` | MISSING P at EnterpriseTile | Complete Canvas chain proves absence |
 | Same input, remove platform `single<Metrics>` | MISSING PAINT M constructing S | Eager app-layer failure precedes composition |
+| `adapter.applicationBase()` has an ordinary runtime call to `platformCanvas()`; adapter stays unchanged while selected platform removes P | Selected app root is MISSING P through adapter | Runtime call is resolved against the selected platform summary, not an adapter-owned old binding |
+| App compiled with `const val PRIMARY = "primary"`; selected qualifier artifact later changes it to `"secondary"` | Lookup uses captured `"primary"` provenance | A const reference was replaced at compile time in the unchanged caller |
+| External inline helper changed since caller compilation | Faithfully captured caller behavior, or explicit UNVERIFIED | Never silently use the latest external helper body |
+| An unrelated dependency artifact changes while selected root has local `{R}` and requires R | R remains VERIFIED | Recorded dependency provenance is not a global invalidation of local facts |
 | `other = canvas { single<Metrics> { Metrics() } }`; `canvas { }.create().compose(MetricsTile)` | MISSING M | Unrelated Canvas is never an ancestor |
 | `canvas { single<Metrics> { Metrics() } }.withLayer { single<Repository> { Repository(paint<Metrics>()) } }` | VERIFIED PAINT M | Child constructor uses ancestor |
 | Parent `{M=old, Repository paint M}`, child `{M=new}` | VERIFIED; child M=new, inherited Repository.metrics=old | Local precedence without parent rewiring |
@@ -840,6 +985,13 @@ types and DSL. Outcomes are relative to the stated root/inputs.
 | Unknown parent plus definite local `{R}`, Tile requires R and M | R VERIFIED; M UNVERIFIED | Preserve known local fact and unknown obligation |
 | Known empty Canvas, Tile composes an external Tile with missing metadata | UNVERIFIED unknown dependency effect | Unknown requirements never become an empty set |
 | Tile library exports `T{G,M,P,S,R}`, no Canvas construction/root | Valid deferred contract, export succeeds | Application must discharge library requirements |
+| Public `applicationLayer(parent)` is extracted but not reached from a selected root | Deferred contract only; no execution finding | Extraction is distinct from specialization and root selection |
+| Selected `entry()` reaches `applicationLayer(knownPlatformCanvas)` | Strict VERIFIED | Known invocation discharges public helper's symbolic parent precondition |
+| `applicationLayer(knownBase)` and `applicationLayer(empty)` are both reached from independently selected roots | First VERIFIED; second MISSING PAINT M | Each invocation gets its own Canvas substitution and finding |
+| Explicitly select `applicationLayer(parent)` as an entry boundary with unresolved parent | UNVERIFIED affected requirements | Explicit unknown-input boundary is checked, not hidden as deferred |
+| Explicitly select a framework handler with injected unknown Canvas | UNVERIFIED affected requirements | Selected handler is a real verification boundary |
+| Deferred helper requirements with no selected invocation/root | No selected-root failure; report deferred contract | Deferred contract alone does not fail selected-root checking |
+| No roots configured | `UNCONFIGURED`, no verified application roots | Exported contracts do not imply an application was checked |
 | Complete `{R}`, one root requires R and another composes unknown external Tile | VERIFIED R plus UNVERIFIED dependency | Independent success remains visible |
 | Complete empty Canvas, one root requires P and another composes unknown external Tile | MISSING P plus UNVERIFIED dependency | Unknown graph cannot hide an independent proven absence |
 | `ApplicationComponent().handle("r")` with binary template transfer | VERIFIED specialization | Known receiver and explicit Canvas transfer |
@@ -851,36 +1003,46 @@ types and DSL. Outcomes are relative to the stated root/inputs.
 ### First real cross-module integration test
 
 Use Gradle TestKit (or an equivalent subprocess harness) with separately built
-platform, Tile-library and application projects, pinned Kotlin 2.2.10/Gradle
-8.14.3. This is the minimum compiler/build acceptance test, not a fixture made
-from hand-authored contracts:
+platform, adapter, Tile-library and application projects, pinned Kotlin
+2.2.10/Gradle 8.14.3. This is the minimum compiler/build acceptance test, not a
+fixture made from hand-authored contracts:
 
 1. Compile platform with `platformCanvas` and the final inherited `handle` /
-   abstract `respond` pattern above. Compile the Tile library against that JAR.
-   Verify each JAR includes extracted metadata. Make dependency sources
-   inaccessible to the application compiler; do not put source archives on its
-   inputs. Application initialization must never run. Include a variant with a
-   throwing initializer in `GlobalContext`, which the platform factory would
-   construct if executed; extraction and lookup verification must still work.
-   Constructor exception safety remains outside the claimed guarantee.
-2. Compile/verify the application against just those binaries. Inspect the
-   report: defaults resolve through the inherited method transfer, Service paints
-   platform Metrics, and request R resolves locally. Strict verification passes
-   with no external assumptions. Store task outcomes and artifact/report hashes.
+   abstract `respond` pattern above. Compile an adapter against it whose
+   `applicationBase()` makes an ordinary call to `platformCanvas()`. Compile the
+   Tile library separately. Verify each JAR includes extracted metadata. Make
+   their sources inaccessible to the application compiler; do not put source
+   archives on its inputs. Application initialization must never run. Include a
+   variant with a throwing initializer in `GlobalContext`, which the platform
+   factory would construct if executed; extraction and lookup verification must
+   still work. Constructor exception safety remains outside the guarantee.
+2. Select application `entry()` explicitly and compile/verify it against only
+   those binaries. Its reached call invokes `applicationLayer(adapter.applicationBase())`.
+   Inspect the report: defaults resolve through the adapter and inherited method
+   transfer, Service paints platform Metrics, and request R resolves locally.
+   Strict verification passes with no external assumptions. The public helper is
+   listed as deferred and as specialized at `entry`, not as a separate unknown
+   root. Store task outcomes and artifact/report hashes.
 3. Remove only `single<PlatformConfig>` from the platform factory body; keep its
-   signature, class names and public ABI unchanged. Rebuild its JAR, then rebuild
-   the application **without clean**, in the same workspace. Use a local resolved
-   file artifact or refreshed local repository to ensure the changed JAR is what
-   Gradle resolves. The unchanged Tile-library JAR can be reused.
-4. Assert that platform extraction/JAR production and application extraction /
-   verification rerun. Application ordinary Kotlin compilation may be
-   UP-TO-DATE; that must not affect analysis. Verification fails with MISSING P,
-   identifies the platform provenance and Tile source site, and no stale P
-   binding remains. Restore P and rebuild without clean: verification passes.
-5. Add deletion/rename and contract-only-edit variants, plus main/test isolation:
-   a test-only P provider cannot fix main. Removing dependency metadata produces
-   UNVERIFIED, never a false success or a guessed MISSING. Record these task
-   outcomes as assertions, not observations in a README.
+   signature, class names and public ABI unchanged. Rebuild platform, then rebuild
+   the application **without clean**, in the same workspace. Keep adapter and
+   Tile-library JARs unchanged. Use a local resolved file artifact or refreshed
+   local repository to ensure the changed platform JAR is what Gradle resolves.
+4. Assert that platform extraction/JAR production and application verification
+   rerun. The adapter extraction and ordinary application Kotlin compilation may
+   be UP-TO-DATE; that must not affect analysis. Verification follows the
+   adapter's preserved runtime reference, fails with MISSING P, identifies the
+   platform provenance and Tile source site, and contains no stale P binding.
+   Restore P and rebuild without clean: verification passes.
+5. Add captured-fact variants: compile a caller using a const qualifier, change
+   the provider constant without recompiling the caller, and assert the report
+   retains the captured qualifier/provenance. Change an external inline helper;
+   assert faithful captured behavior or explicit UNVERIFIED, never the latest
+   body by assumption. Add deletion/rename, contract-only-edit, unrelated-
+   dependency, root-selection, and main/test-isolation variants. A test-only P
+   provider cannot fix main. Removing dependency metadata produces UNVERIFIED,
+   never a false success or guessed MISSING. Record task outcomes as assertions,
+   not observations in a README.
 
 Hand-authored in-memory summaries establish model semantics only. They prove
 neither extraction nor binary consumption, inheritance inference, compiler
@@ -890,7 +1052,8 @@ version compatibility, artifact packaging, or no-clean invalidation.
 
 Runtime claims were checked against the files/tests linked above. This
 documentation-only change adds no production code, dependencies, modules,
-configuration, or runtime tests. On the baseline with this proposal in progress:
+configuration, or runtime tests. The following full-build results were recorded
+for the earlier reviewed head `1a05dd7e1e088d1cc4f4616d63afaf474f180aac`:
 
 * `./gradlew clean build` passed, including tests, ktlint, detekt and Kover
   verification. HTML coverage reports show core line 98.6% / branch 88.5%, test
@@ -898,6 +1061,11 @@ configuration, or runtime tests. On the baseline with this proposal in progress:
 * `./gradlew clean build -p examples` passed for the separate example build.
 * Proposal snippets were reviewed against runtime signatures. They are design
   examples, not compiled analyzer integration tests.
+
+For this revision, `./gradlew clean build` and `./gradlew clean build -p examples`
+passed again after this documentation correction. The final diff, whitespace,
+repository links, code fences, and changed rules were also reviewed again. No
+analyzer snippets or binary scenarios are claimed compiled.
 
 These builds validate the unchanged repository, not a working analyzer.
 
@@ -913,11 +1081,13 @@ Use explicit contract fixtures, not compiler mocks pretending to extract code.
 Acceptance criteria: execute every semantic row of the matrix that needs no
 compiler; distinguish unknown from empty; preserve branch correlation; pass
 different parents through the same layer helper; keep parent constructor scope;
-retain VERIFIED/MISSING alongside independent UNVERIFIED findings; round-trip
-the versioned format and reject unsupported/conflicting inputs. Add negative
-fixtures for duplicate keys, fresh versus stable Tiles, unknown registrations,
-and optional lookups. No framework lifecycle inference, graph UI, or general
-purpose program-analysis engine. Runtime tests/APIs remain unchanged.
+apply selected-root scope separately from deferred contracts; preserve runtime
+references while retaining captured facts; retain VERIFIED/MISSING alongside
+independent UNVERIFIED findings; round-trip the provisional versioned format and
+reject unsupported/conflicting inputs. Add negative fixtures for duplicate keys,
+fresh versus stable Tiles, unknown registrations, optional lookups, and unknown
+external-inline capture. No framework lifecycle inference, graph UI, linker, or
+general purpose program-analysis engine. Runtime tests/APIs remain unchanged.
 
 Review first: approve the conditional MISSING definition (a supported feasible
 path, not guaranteed execution), default/strict assumption policy, and the
@@ -933,16 +1103,19 @@ factory/layer calls. Use dedicated full CLI extraction and content-tracked JAR
 inputs; preserve ordinary runtime compilation. No broad framework integration.
 
 Acceptance criteria: run the real cross-module test above, with actual extracted
-JAR metadata and no dependency sources; verify inherited defaults; prove body-only
-binding removal invalidates analysis without clean; restore and pass; reject
-stale/deleted facts; separate main/test; report source and Canvas paths. Also
-compile small fixtures for exact overload/reified key resolution, aliases,
-fresh Tile factories, callback transfer and unsupported mutable lifecycle
-diagnostics. Do not certify any unimplemented matrix case: emit UNVERIFIED.
+JAR metadata and no dependency sources; verify inherited defaults through an
+unchanged ordinary-call adapter; prove body-only binding removal invalidates
+analysis without clean; preserve captured constant/inline provenance; restore
+and pass; reject stale/deleted facts; separate main/test; and report selected
+roots, deferred contracts, source paths and Canvas paths. Also compile small
+fixtures for exact overload/reified key resolution, aliases, fresh Tile factories,
+callback transfer and unsupported mutable lifecycle diagnostics. Do not certify
+any unimplemented matrix case: emit UNVERIFIED.
 
 Experiment gates: validate IR visibility and binary symbol/override mapping;
-validate full CLI argument/plugin mirroring and task/artifact wiring on the
-pinned versions. If these fail, bring back the specific evidence and revised
-integration choice for review before expanding the implementation. Performance
-and incremental extraction can wait. Neither slice begins before this proposal
-is reviewed.
+validate ordinary runtime-reference resolution versus captured inline/constant
+facts; and validate full CLI argument/plugin mirroring and task/artifact wiring
+on the pinned versions. If these fail, bring back the specific evidence and
+revised integration choice for review before expanding the implementation.
+Performance and incremental extraction can wait. Neither slice begins before
+this proposal is reviewed.
