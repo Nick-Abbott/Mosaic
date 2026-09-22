@@ -36,6 +36,20 @@ dependencies {
 }
 ```
 
+For version alignment, import the optional BOM and omit the Mosaic library
+versions:
+
+```kotlin
+dependencies {
+  implementation(platform("org.buildmosaic:mosaic-bom:0.2.0"))
+  implementation("org.buildmosaic:mosaic-core")
+  testImplementation("org.buildmosaic:mosaic-test")
+}
+```
+
+Mosaic uses ordinary library dependencies; Tile registration plugins and
+processors are not required.
+
 ### **Your First Tile**
 
 ```kotlin

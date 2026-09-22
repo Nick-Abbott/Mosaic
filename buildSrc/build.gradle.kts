@@ -16,5 +16,4 @@ dependencies {
   implementation(libs.dokka.gradle.plugin)
   implementation(libs.dokka.javadoc.gradle.plugin)
   implementation(libs.maven.publish)
-  implementation(libs.plugin.publish)
 }

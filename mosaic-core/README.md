@@ -328,6 +328,4 @@ fun Application.module() {
 ## 🔗 **Related Modules**
 
 - **[mosaic-test](../mosaic-test/README.md)**: DSL-based testing framework
-- **[mosaic-core](../mosaic-core/README.md)**: Original class-based framework
-- **[mosaic-consumer-plugin](../mosaic-consumer-plugin/)**: Gradle plugin for automatic tile registration
-- **[mosaic-catalog-ksp](../mosaic-catalog-ksp/)**: KSP processor for tile catalog generation
+- **[mosaic-bom](../mosaic-bom/README.md)**: Optional BOM for version alignment
