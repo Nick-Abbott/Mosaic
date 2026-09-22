@@ -15,10 +15,18 @@ internal class RootEvaluator(
   private val limits: AnalysisLimits,
   private val root: SelectedRoot,
 ) {
-  private val findings = mutableListOf<Finding>()
+  private data class RecordedFinding(
+    val finding: Finding,
+    val feasibility: PathFeasibility,
+    val assignments: Map<String, Boolean>,
+    val supportedConditions: List<String>,
+  )
+
+  private val recordedFindings = mutableListOf<RecordedFinding>()
   private val specializedContracts = sortedSetOf<String>()
   private val budget = ExpansionBudget(limits.alternativeBudget)
-  private val canvasAliases = mutableMapOf<CanvasAliasContext, CanvasState?>()
+  private val canvasAliases = mutableMapOf<CanvasAliasContext, List<CanvasAlternative>>()
+  private var nextCanvasInstance = 0
 
   fun evaluate(): RootReport {
     val initial = EvaluationContext(scope = root.target)
@@ -27,6 +35,7 @@ internal class RootEvaluator(
       is Resolution.Conflict -> addConflict(initial, root.target, callable.owners, rootSite())
       Resolution.Missing -> evaluateCanvasRoot(initial)
     }
+    val findings = coalesceOpaqueLookupFindings()
     val status =
       when {
         findings.any { it.certainty == Certainty.MISSING } -> RootStatus.FAILED
@@ -42,7 +51,7 @@ internal class RootEvaluator(
   ) {
     specializedContracts += contract.id
     val bound = bindRootParameters(context, contract.parameters)
-    evaluateEffects(listOf(bound), contract.effects)
+    evaluateEffects(bound, contract.effects)
   }
 
   private fun evaluateCanvasRoot(context: EvaluationContext) {
@@ -50,7 +59,7 @@ internal class RootEvaluator(
       is Resolution.Found -> {
         specializedContracts += canvas.value.id
         val bound = bindRootParameters(context, canvas.value.parameters)
-        evaluateCanvas(canvas.value.result, bound)
+        bound.forEach { evaluateCanvas(canvas.value.result, it) }
       }
       is Resolution.Conflict -> addConflict(context, root.target, canvas.owners, rootSite())
       Resolution.Missing -> addUnknown(context, "root:${root.target}", rootSite(), "Selected root target is missing")
@@ -60,33 +69,14 @@ internal class RootEvaluator(
   private fun bindRootParameters(
     context: EvaluationContext,
     parameters: List<ContractParameter>,
-  ): EvaluationContext {
-    val values =
-      parameters.associateWith { parameter ->
-        val supplied = root.arguments.values[parameter]
-        when (parameter.kind) {
-          ParameterKind.CANVAS ->
-            if (supplied is ArgumentExpression.Canvas) {
-              RuntimeArgument.CanvasThunk(supplied.expression, context.values, context.currentCanvas)
-            } else {
-              RuntimeArgument.CanvasThunk(
-                CanvasExpression.Unknown("Unresolved selected-root Canvas input ${parameter.name}", rootSite()),
-                context.values,
-                context.currentCanvas,
-              )
-            }
-          ParameterKind.BOOLEAN ->
-            RuntimeArgument.BooleanValue(
-              if (supplied is ArgumentExpression.BooleanValue) {
-                resolveBoolean(supplied.expression, context)
-              } else {
-                RuntimeBoolean.Free("${root.id}:${parameter.name}")
-              },
-            )
-        }
-      }
-    return context.copy(values = values)
-  }
+  ): List<EvaluationContext> =
+    bindArguments(
+      context,
+      parameters,
+      root.arguments,
+      rootSite(),
+      missingBoolean = { parameter -> RuntimeBoolean.Free("${root.id}:${parameter.name}") },
+    )
 
   private fun evaluateEffects(
     initial: List<EvaluationContext>,
@@ -133,7 +123,7 @@ internal class RootEvaluator(
   ): List<EvaluationContext> {
     return evaluateCanvas(effect.canvas, context).map { outcome ->
       if (outcome.state == null) return@map outcome.context.copy(blocked = true)
-      if (effect.kind == LookupKind.OPTIONAL && effect.key is Fact.Unknown) {
+      if (effect.kind == LookupKind.OPTIONAL) {
         addOptionalFinding(effect, outcome.context, "Optional lookup has no provider obligation")
         return@map outcome.context
       }
@@ -189,7 +179,13 @@ internal class RootEvaluator(
         if (effect.execution == MultiTileExecution.UNKNOWN) {
           outcome.context.copy(
             feasibility = PathFeasibility.OPAQUE,
-            conditions = outcome.context.conditions + "${effect.id}: multi-tile execution is unknown",
+            conditions =
+              outcome.context.conditions +
+                PathCondition(
+                  effect.id,
+                  "${effect.id}: multi-tile execution is unknown",
+                  PathConditionKind.OPAQUE_ALTERNATIVE,
+                ),
           )
         } else {
           outcome.context
@@ -239,7 +235,13 @@ internal class RootEvaluator(
         scope = identity,
         depth = context.depth + 1,
       )
-    return evaluateEffects(listOf(tileContext), contract.effects).map { child -> restoreCaller(child, context) }
+    return evaluateEffects(listOf(tileContext), contract.effects).map { child ->
+      restoreCaller(
+        child,
+        context,
+        propagateBlocked = effect.discovery == DiscoveryKind.COMPOSE,
+      )
+    }
   }
 
   private fun resolveTileReference(reference: TileReference): TileResolution =
@@ -278,14 +280,16 @@ internal class RootEvaluator(
     return when (val target = registry.callable(effect.target)) {
       is Resolution.Found -> {
         specializedContracts += target.value.id
-        val callee = bindCall(context, target.value.parameters, effect.arguments, effect.site)
-        val nested =
-          callee.copy(
-            dependencyPath = context.dependencyPath + DependencyPathNode("call:${effect.target}", effect.site),
-            scope = effect.target,
-            depth = context.depth + 1,
-          )
-        evaluateEffects(listOf(nested), target.value.effects).map { restoreCaller(it, context) }
+        bindArguments(context, target.value.parameters, effect.arguments, effect.site).flatMap { callee ->
+          if (callee.blocked) return@flatMap listOf(restoreCaller(callee, context))
+          val nested =
+            callee.copy(
+              dependencyPath = context.dependencyPath + DependencyPathNode("call:${effect.target}", effect.site),
+              scope = effect.target,
+              depth = context.depth + 1,
+            )
+          evaluateEffects(listOf(nested), target.value.effects).map { restoreCaller(it, context) }
+        }
       }
       is Resolution.Conflict -> {
         addConflict(context, effect.id, target.owners, effect.site)
@@ -302,8 +306,12 @@ internal class RootEvaluator(
     effect: Effect.Branch,
     context: EvaluationContext,
   ): List<EvaluationContext> =
-    branch(effect.guard, context, effect.id, effect.site).flatMap { (selected, branchContext) ->
-      evaluateEffects(listOf(branchContext), if (selected) effect.whenTrue else effect.whenFalse)
+    branch(effect.guard, context, effect.id, effect.site).flatMap { (decision, branchContext) ->
+      when (decision) {
+        is BranchDecision.Selected ->
+          evaluateEffects(listOf(branchContext), if (decision.value) effect.whenTrue else effect.whenFalse)
+        BranchDecision.Skipped -> listOf(branchContext)
+      }
     }
 
   private fun evaluateCaptured(
@@ -322,6 +330,8 @@ internal class RootEvaluator(
     val capturedContext =
       context.copy(
         dependencyPath = context.dependencyPath + DependencyPathNode("captured:${effect.owner}", effect.site),
+        capturedOrigins = context.capturedOrigins + effect.origin,
+        contextualEvidence = context.contextualEvidence + EvidenceKind.CAPTURED_FACT,
       )
     return evaluateEffects(listOf(capturedContext), effect.effects).map { restoreCaller(it, context) }
   }
@@ -350,12 +360,39 @@ internal class RootEvaluator(
     expression: CanvasExpression.Alias,
     context: EvaluationContext,
   ): List<CanvasOutcome> {
-    val key = CanvasAliasContext(expression.id, context.scope, context.dependencyPath, context.assignments)
-    if (canvasAliases.containsKey(key)) return listOf(CanvasOutcome(context, canvasAliases[key]))
+    val key =
+      CanvasAliasContext(
+        expression.id,
+        context.scope,
+        context.dependencyPath,
+        context.assignments,
+        context.conditions,
+      )
+    canvasAliases[key]?.let { alternatives ->
+      return alternatives.map { alternative ->
+        CanvasOutcome(
+          context.copy(
+            assignments = alternative.assignments,
+            conditions = context.conditions + alternative.conditions,
+            feasibility = combineFeasibility(context.feasibility, alternative.feasibility),
+            blocked = context.blocked || alternative.blocked,
+          ),
+          alternative.state,
+        )
+      }
+    }
     val outcomes = evaluateCanvas(expression.expression, context)
-    outcomes.forEach { outcome ->
-      val outcomeKey = key.copy(assignments = outcome.context.assignments)
-      canvasAliases[outcomeKey] = outcome.state
+    outcomes.groupBy { key.copy(assignments = it.context.assignments) }.forEach { (outcomeKey, grouped) ->
+      canvasAliases[outcomeKey] =
+        grouped.map { outcome ->
+          CanvasAlternative(
+            outcome.state,
+            outcome.context.assignments,
+            outcome.context.conditions.drop(context.conditions.size),
+            outcome.context.feasibility,
+            outcome.context.blocked,
+          )
+        }
     }
     return outcomes
   }
@@ -364,16 +401,13 @@ internal class RootEvaluator(
     expression: CanvasExpression.ParameterValue,
     context: EvaluationContext,
   ): List<CanvasOutcome> {
-    val value = context.values[expression.parameter] as? RuntimeArgument.CanvasThunk
+    val value = context.values[expression.parameter] as? RuntimeArgument.CanvasValue
     if (value == null) {
       val site = rootSite()
       addUnknown(context, "canvas-parameter:${expression.parameter.name}", site, "Canvas parameter is unresolved")
       return listOf(CanvasOutcome(context, CanvasState.Unknown("Canvas parameter is unresolved", site)))
     }
-    val nested = context.copy(values = value.values, currentCanvas = value.currentCanvas)
-    return evaluateCanvas(value.expression, nested).map { outcome ->
-      CanvasOutcome(restoreCaller(outcome.context, context), outcome.state)
-    }
+    return listOf(CanvasOutcome(context, value.state))
   }
 
   private fun evaluateLayer(
@@ -437,8 +471,13 @@ internal class RootEvaluator(
     expression: CanvasExpression.Choice,
     context: EvaluationContext,
   ): List<CanvasOutcome> =
-    branch(expression.guard, context, "canvas-choice", rootSite()).flatMap { (selected, branchContext) ->
-      evaluateCanvas(if (selected) expression.whenTrue else expression.whenFalse, branchContext)
+    branch(expression.guard, context, "canvas-choice", rootSite()).flatMap { (decision, branchContext) ->
+      when (decision) {
+        is BranchDecision.Selected ->
+          evaluateCanvas(if (decision.value) expression.whenTrue else expression.whenFalse, branchContext)
+        BranchDecision.Skipped ->
+          listOf(CanvasOutcome(branchContext, CanvasState.Unknown("Alternative expansion was skipped", rootSite())))
+      }
     }
 
   private fun evaluateCanvasCall(
@@ -452,17 +491,19 @@ internal class RootEvaluator(
     return when (val target = registry.canvas(expression.target)) {
       is Resolution.Found -> {
         specializedContracts += target.value.id
-        val callee = bindCall(context, target.value.parameters, expression.arguments, expression.site)
-        val nested =
-          callee.copy(
-            dependencyPath =
-              context.dependencyPath +
-                DependencyPathNode("runtime:${expression.target}", expression.site),
-            scope = expression.target,
-            depth = context.depth + 1,
-          )
-        evaluateCanvas(target.value.result, nested).map { outcome ->
-          CanvasOutcome(restoreCaller(outcome.context, context), outcome.state)
+        bindArguments(context, target.value.parameters, expression.arguments, expression.site).flatMap { callee ->
+          if (callee.blocked) return@flatMap listOf(CanvasOutcome(restoreCaller(callee, context), null))
+          val nested =
+            callee.copy(
+              dependencyPath =
+                context.dependencyPath +
+                  DependencyPathNode("runtime:${expression.target}", expression.site),
+              scope = expression.target,
+              depth = context.depth + 1,
+            )
+          evaluateCanvas(target.value.result, nested).map { outcome ->
+            CanvasOutcome(restoreCaller(outcome.context, context), outcome.state)
+          }
         }
       }
       is Resolution.Conflict -> {
@@ -488,9 +529,14 @@ internal class RootEvaluator(
     val nested =
       context.copy(
         dependencyPath = context.dependencyPath + DependencyPathNode("captured:${expression.owner}", expression.site),
+        capturedOrigins = context.capturedOrigins + expression.origin,
+        contextualEvidence = context.contextualEvidence + EvidenceKind.CAPTURED_FACT,
       )
     return evaluateCanvas(expression.expression, nested).map { outcome ->
-      CanvasOutcome(restoreCaller(outcome.context, context), outcome.state)
+      CanvasOutcome(
+        restoreCaller(outcome.context, context),
+        outcome.state?.let { CanvasState.Captured(expression.origin, it) },
+      )
     }
   }
 
@@ -511,32 +557,59 @@ internal class RootEvaluator(
     }
   }
 
-  private fun bindCall(
+  private fun bindArguments(
     context: EvaluationContext,
     parameters: List<ContractParameter>,
     arguments: CallArguments,
     site: SourceLocation,
-  ): EvaluationContext {
-    val values =
-      parameters.associateWith { parameter ->
-        when (val argument = arguments.values[parameter]) {
-          is ArgumentExpression.Canvas ->
-            RuntimeArgument.CanvasThunk(argument.expression, context.values, context.currentCanvas)
-          is ArgumentExpression.BooleanValue ->
-            RuntimeArgument.BooleanValue(resolveBoolean(argument.expression, context))
-          null ->
-            when (parameter.kind) {
-              ParameterKind.CANVAS ->
-                RuntimeArgument.CanvasThunk(
-                  CanvasExpression.Unknown("Missing Canvas argument ${parameter.name}", site),
-                  context.values,
-                  context.currentCanvas,
+    missingBoolean: (ContractParameter) -> RuntimeBoolean = { RuntimeBoolean.Opaque("Missing Boolean argument") },
+  ): List<EvaluationContext> {
+    var contexts = listOf(context)
+    parameters.forEach { parameter ->
+      contexts =
+        contexts.flatMap { argumentContext ->
+          when (val argument = arguments.values[parameter]) {
+            is ArgumentExpression.Canvas ->
+              evaluateCanvas(argument.expression, argumentContext).map { outcome ->
+                val state = outcome.state ?: return@map outcome.context.copy(blocked = true)
+                outcome.context.copy(
+                  values = outcome.context.values + (parameter to RuntimeArgument.CanvasValue(state)),
                 )
-              ParameterKind.BOOLEAN -> RuntimeArgument.BooleanValue(RuntimeBoolean.Opaque("Missing Boolean argument"))
-            }
+              }
+            is ArgumentExpression.BooleanValue ->
+              listOf(
+                argumentContext.copy(
+                  values =
+                    argumentContext.values +
+                      (parameter to RuntimeArgument.BooleanValue(resolveBoolean(argument.expression, argumentContext))),
+                ),
+              )
+            null ->
+              when (parameter.kind) {
+                ParameterKind.CANVAS -> {
+                  val reason = "Missing Canvas argument ${parameter.name}"
+                  addUnknown(argumentContext, "canvas-argument:${parameter.name}", site, reason)
+                  listOf(
+                    argumentContext.copy(
+                      values =
+                        argumentContext.values +
+                          (parameter to RuntimeArgument.CanvasValue(CanvasState.Unknown(reason, site))),
+                    ),
+                  )
+                }
+                ParameterKind.BOOLEAN ->
+                  listOf(
+                    argumentContext.copy(
+                      values =
+                        argumentContext.values +
+                          (parameter to RuntimeArgument.BooleanValue(missingBoolean(parameter))),
+                    ),
+                  )
+              }
+          }
         }
-      }
-    return context.copy(values = values)
+    }
+    return contexts
   }
 
   private fun resolveBoolean(
@@ -556,9 +629,9 @@ internal class RootEvaluator(
     context: EvaluationContext,
     obligationId: String,
     site: SourceLocation,
-  ): List<Pair<Boolean, EvaluationContext>> =
+  ): List<Pair<BranchDecision, EvaluationContext>> =
     when (guard) {
-      is Guard.Constant -> listOf(guard.value to context)
+      is Guard.Constant -> listOf(BranchDecision.Selected(guard.value) to context)
       is Guard.Opaque -> splitOpaque(context, guard.reason, obligationId, site)
       is Guard.BooleanParameter -> splitBooleanParameter(guard, context, obligationId, site)
     }
@@ -568,27 +641,33 @@ internal class RootEvaluator(
     context: EvaluationContext,
     obligationId: String,
     site: SourceLocation,
-  ): List<Pair<Boolean, EvaluationContext>> {
+  ): List<Pair<BranchDecision, EvaluationContext>> {
     val value =
       (context.values[guard.parameter] as? RuntimeArgument.BooleanValue)?.value
         ?: RuntimeBoolean.Opaque("Unresolved Boolean parameter ${guard.parameter.name}")
     return when (value) {
-      is RuntimeBoolean.Known -> listOf((value.value == guard.expected) to context)
+      is RuntimeBoolean.Known -> listOf(BranchDecision.Selected(value.value == guard.expected) to context)
       is RuntimeBoolean.Opaque -> splitOpaque(context, value.reason, obligationId, site)
       is RuntimeBoolean.Free -> {
         val assigned = context.assignments[value.symbol]
         if (assigned != null) {
-          listOf((assigned == guard.expected) to context)
+          listOf(BranchDecision.Selected(assigned == guard.expected) to context)
         } else if (!budget.reserveAlternative()) {
           addIncomplete(context, obligationId, site, "Alternative expansion budget exceeded")
-          emptyList()
+          listOf(BranchDecision.Skipped to context)
         } else {
           listOf(false, true).map { actual ->
             val selected = actual == guard.expected
-            selected to
+            BranchDecision.Selected(selected) to
               context.copy(
                 assignments = context.assignments + (value.symbol to actual),
-                conditions = context.conditions + "${guard.parameter.name}=$actual",
+                conditions =
+                  context.conditions +
+                    PathCondition(
+                      value.symbol,
+                      "${guard.parameter.name}=$actual",
+                      PathConditionKind.SUPPORTED_ASSIGNMENT,
+                    ),
               )
           }
         }
@@ -601,16 +680,22 @@ internal class RootEvaluator(
     reason: String,
     obligationId: String,
     site: SourceLocation,
-  ): List<Pair<Boolean, EvaluationContext>> {
+  ): List<Pair<BranchDecision, EvaluationContext>> {
     if (!budget.reserveAlternative()) {
       addIncomplete(context, obligationId, site, "Alternative expansion budget exceeded")
-      return emptyList()
+      return listOf(BranchDecision.Skipped to context)
     }
     return listOf(false, true).map { selected ->
-      selected to
+      BranchDecision.Selected(selected) to
         context.copy(
           feasibility = PathFeasibility.OPAQUE,
-          conditions = context.conditions + "opaque($reason)=$selected",
+          conditions =
+            context.conditions +
+              PathCondition(
+                "$obligationId:${site.owner}:${site.line}:${site.column}",
+                "opaque($reason)=$selected",
+                PathConditionKind.OPAQUE_ALTERNATIVE,
+              ),
         )
     }
   }
@@ -634,6 +719,13 @@ internal class RootEvaluator(
           reason = "Canvas boundary is unknown: ${canvas.reason}",
         )
       is CanvasState.Assumed -> resolveAssumedLookup(canvas.contract, key, path)
+      is CanvasState.Captured ->
+        resolveLookup(canvas.state, key, path).let { resolution ->
+          resolution.copy(
+            evidence = resolution.evidence + EvidenceKind.CAPTURED_FACT,
+            capturedOrigins = resolution.capturedOrigins + canvas.origin,
+          )
+        }
       is CanvasState.Layer -> {
         val layerPath = path + CanvasPathNode(canvas.id, canvas.site)
         val local = canvas.bindings.firstOrNull { it.key == key }
@@ -669,7 +761,7 @@ internal class RootEvaluator(
         path + CanvasPathNode("assumption:${assumption.id}", assumption.provenance),
         setOf(EvidenceKind.EXTERNAL_ASSUMPTION),
         setOf(assumption.id),
-        "Exact key is guaranteed by a labeled external assumption",
+        reason = "Exact key is guaranteed by a labeled external assumption",
       )
     } else {
       LookupResolution(
@@ -694,7 +786,8 @@ internal class RootEvaluator(
         LookupKind.OPTIONAL -> FindingKind.OPTIONAL_LOOKUP
         LookupKind.PAINT -> FindingKind.CONSTRUCTION_LOOKUP
       }
-    findings +=
+    record(
+      context,
       Finding(
         rootId = root.id,
         obligationId = "${context.scope}:${effect.id}",
@@ -703,15 +796,16 @@ internal class RootEvaluator(
         key = key?.value,
         site = effect.site,
         factProvenance = key?.provenance ?: unknownFactProvenance,
-        capturedOrigins = setOfNotNull(key?.capturedOrigin),
+        capturedOrigins = context.capturedOrigins + resolution.capturedOrigins + setOfNotNull(key?.capturedOrigin),
         bindingSite = resolution.bindingSite,
         dependencyPath = context.dependencyPath,
         canvasPath = resolution.canvasPath,
-        pathCondition = context.conditions,
-        evidence = resolution.evidence + listOfNotNull(key?.evidence),
+        pathCondition = context.conditions.map { it.display },
+        evidence = context.contextualEvidence + resolution.evidence + listOfNotNull(key?.evidence),
         assumptionIds = resolution.assumptionIds,
         reason = resolution.reason,
-      )
+      ),
+    )
   }
 
   private fun addOptionalFinding(
@@ -719,18 +813,24 @@ internal class RootEvaluator(
     context: EvaluationContext,
     reason: String,
   ) {
-    findings +=
+    val key = effect.key as? Fact.Known
+    record(
+      context,
       Finding(
         rootId = root.id,
         obligationId = "${context.scope}:${effect.id}",
         kind = FindingKind.OPTIONAL_LOOKUP,
         certainty = Certainty.VERIFIED,
+        key = key?.value,
         site = effect.site,
-        factProvenance = (effect.key as? Fact.Unknown)?.site,
+        factProvenance = key?.provenance ?: (effect.key as? Fact.Unknown)?.site,
+        capturedOrigins = context.capturedOrigins + setOfNotNull(key?.capturedOrigin),
         dependencyPath = context.dependencyPath,
-        pathCondition = context.conditions,
+        pathCondition = context.conditions.map { it.display },
+        evidence = context.contextualEvidence + listOfNotNull(key?.evidence),
         reason = reason,
-      )
+      ),
+    )
   }
 
   private fun addDuplicate(
@@ -739,20 +839,30 @@ internal class RootEvaluator(
     key: CanvasKeyIdentity,
     bindings: List<KnownBinding>,
   ) {
-    findings +=
+    record(
+      context,
       Finding(
         rootId = root.id,
         obligationId = "${context.scope}:${layer.id}:duplicate:${key.classId}:${key.qualifier}",
         kind = FindingKind.DUPLICATE_BINDING,
-        certainty = Certainty.MISSING,
+        certainty =
+          if (context.feasibility == PathFeasibility.OPAQUE) Certainty.UNVERIFIED else Certainty.MISSING,
         key = key,
         site = bindings.last().site,
         bindingSite = bindings.first().site,
+        capturedOrigins = context.capturedOrigins,
         dependencyPath = context.dependencyPath,
         canvasPath = listOf(CanvasPathNode(layer.id, layer.site)),
-        pathCondition = context.conditions,
-        reason = "Definite duplicate local Canvas bindings make layer construction invalid",
-      )
+        pathCondition = context.conditions.map { it.display },
+        evidence = context.contextualEvidence,
+        reason =
+          if (context.feasibility == PathFeasibility.OPAQUE) {
+            "Duplicate local Canvas bindings occur only under an opaque path condition"
+          } else {
+            "Definite duplicate local Canvas bindings make layer construction invalid"
+          },
+      ),
+    )
   }
 
   private fun addUnknown(
@@ -761,17 +871,21 @@ internal class RootEvaluator(
     site: SourceLocation,
     reason: String,
   ) {
-    findings +=
+    record(
+      context,
       Finding(
         rootId = root.id,
         obligationId = "${context.scope}:$obligationId",
         kind = FindingKind.UNKNOWN_BOUNDARY,
         certainty = Certainty.UNVERIFIED,
         site = site,
+        capturedOrigins = context.capturedOrigins,
         dependencyPath = context.dependencyPath,
-        pathCondition = context.conditions,
+        pathCondition = context.conditions.map { it.display },
+        evidence = context.contextualEvidence,
         reason = reason,
-      )
+      ),
+    )
   }
 
   private fun addConflict(
@@ -780,17 +894,21 @@ internal class RootEvaluator(
     owners: List<String>,
     site: SourceLocation,
   ) {
-    findings +=
+    record(
+      context,
       Finding(
         rootId = root.id,
         obligationId = "${context.scope}:$obligationId",
         kind = FindingKind.CONTRACT_CONFLICT,
         certainty = Certainty.UNVERIFIED,
         site = site,
+        capturedOrigins = context.capturedOrigins,
         dependencyPath = context.dependencyPath,
-        pathCondition = context.conditions,
+        pathCondition = context.conditions.map { it.display },
+        evidence = context.contextualEvidence,
         reason = "Conflicting selected definitions from ${owners.joinToString()}",
-      )
+      ),
+    )
   }
 
   private fun addIncomplete(
@@ -799,17 +917,83 @@ internal class RootEvaluator(
     site: SourceLocation,
     reason: String,
   ) {
-    findings +=
+    record(
+      context,
       Finding(
         rootId = root.id,
         obligationId = "${context.scope}:$obligationId",
         kind = FindingKind.INCOMPLETE_ANALYSIS,
         certainty = Certainty.UNVERIFIED,
         site = site,
+        capturedOrigins = context.capturedOrigins,
         dependencyPath = context.dependencyPath,
-        pathCondition = context.conditions,
+        pathCondition = context.conditions.map { it.display },
+        evidence = context.contextualEvidence,
         reason = reason,
+      ),
+    )
+  }
+
+  private fun record(
+    context: EvaluationContext,
+    finding: Finding,
+  ) {
+    recordedFindings +=
+      RecordedFinding(
+        finding,
+        context.feasibility,
+        context.assignments,
+        context.conditions
+          .filter { it.kind == PathConditionKind.SUPPORTED_ASSIGNMENT }
+          .map { it.display },
       )
+  }
+
+  private fun coalesceOpaqueLookupFindings(): List<Finding> {
+    val lookupKinds =
+      setOf(
+        FindingKind.REQUIRED_LOOKUP,
+        FindingKind.OPTIONAL_LOOKUP,
+        FindingKind.CONSTRUCTION_LOOKUP,
+      )
+    val opaque = recordedFindings.filter { it.feasibility == PathFeasibility.OPAQUE && it.finding.kind in lookupKinds }
+    val ordinary = recordedFindings - opaque.toSet()
+    val merged =
+      opaque.groupBy { record ->
+        listOf(
+          record.finding.rootId,
+          record.finding.obligationId,
+          record.finding.kind,
+          record.finding.key,
+          record.finding.dependencyPath,
+          record.assignments.toSortedMap(),
+          record.supportedConditions,
+        )
+      }.values.map { alternatives -> mergeOpaqueLookupAlternatives(alternatives) }
+    return (ordinary.map { it.finding } + merged).distinct()
+  }
+
+  private fun mergeOpaqueLookupAlternatives(alternatives: List<RecordedFinding>): Finding {
+    val findings = alternatives.map { it.finding }
+    val first = findings.first()
+    if (findings.all { it.certainty == Certainty.VERIFIED }) {
+      return first.copy(
+        pathCondition = alternatives.first().supportedConditions,
+        capturedOrigins = findings.flatMapTo(mutableSetOf()) { it.capturedOrigins },
+        evidence = findings.flatMapTo(mutableSetOf()) { it.evidence },
+        assumptionIds = findings.flatMapTo(mutableSetOf()) { it.assumptionIds },
+        reason = "Every opaque Canvas alternative supplies the exact key",
+      )
+    }
+    return first.copy(
+      certainty = Certainty.UNVERIFIED,
+      bindingSite = null,
+      pathCondition = alternatives.first().supportedConditions,
+      capturedOrigins = findings.flatMapTo(mutableSetOf()) { it.capturedOrigins },
+      evidence = findings.flatMapTo(mutableSetOf()) { it.evidence },
+      assumptionIds = findings.flatMapTo(mutableSetOf()) { it.assumptionIds },
+      reason = "Canvas availability differs across opaque alternatives",
+    )
   }
 
   private fun unknownCurrent(context: EvaluationContext): CanvasState.Unknown {
@@ -821,12 +1005,13 @@ internal class RootEvaluator(
   private fun restoreCaller(
     nested: EvaluationContext,
     caller: EvaluationContext,
+    propagateBlocked: Boolean = true,
   ): EvaluationContext =
     caller.copy(
       assignments = nested.assignments,
       conditions = nested.conditions,
       feasibility = nested.feasibility,
-      blocked = nested.blocked,
+      blocked = caller.blocked || propagateBlocked && nested.blocked,
     )
 
   private fun restoreEffectFeasibility(
@@ -837,7 +1022,7 @@ internal class RootEvaluator(
     val retainedConditions =
       evaluated.conditions
         .drop(beforeEffect.conditions.size)
-        .filterNot { it.startsWith("opaque(") || it.endsWith("execution is unknown") }
+        .filter { it.kind == PathConditionKind.SUPPORTED_ASSIGNMENT }
     return evaluated.copy(
       feasibility = beforeEffect.feasibility,
       conditions = beforeEffect.conditions + retainedConditions,
@@ -849,17 +1034,31 @@ internal class RootEvaluator(
   private fun layerInstanceId(
     expression: CanvasExpression.Layer,
     context: EvaluationContext,
-  ): String =
-    buildString {
+  ): String {
+    val allocation = nextCanvasInstance++
+    return buildString {
       append(context.scope).append(':').append(expression.id)
       context.dependencyPath.forEach { append('/').append(it.label).append('@').append(it.site.owner) }
+      append('#').append(allocation)
     }
+  }
 
   private fun CanvasState.cacheIdentity(): String =
     when (this) {
       CanvasState.Empty -> "empty"
       is CanvasState.Assumed -> "assumption:${contract.id}"
+      is CanvasState.Captured -> "captured:${origin.declaration}:${state.cacheIdentity()}"
       is CanvasState.Layer -> instanceId
       is CanvasState.Unknown -> "unknown:${site.owner}:${site.line}:${site.column}"
+    }
+
+  private fun combineFeasibility(
+    first: PathFeasibility,
+    second: PathFeasibility,
+  ): PathFeasibility =
+    if (first == PathFeasibility.OPAQUE || second == PathFeasibility.OPAQUE) {
+      PathFeasibility.OPAQUE
+    } else {
+      PathFeasibility.SUPPORTED
     }
 }

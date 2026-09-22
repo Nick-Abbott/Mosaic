@@ -5,6 +5,8 @@ It accepts immutable, hand-authored contracts describing Canvas construction,
 lookups, Tile composition, calls, conditions, and selected verification roots.
 It verifies exact Canvas-key availability and eager local singleton construction
 while preserving unknown boundaries and source provenance.
+Canvas arguments are evaluated eagerly at calls, while aliases and parameter
+transfers preserve the identity and guarded alternatives of already-created values.
 
 ```kotlin
 val site = SourceLocation("example.Application", "Application.kt", 1, 1)

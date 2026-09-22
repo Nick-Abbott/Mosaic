@@ -38,7 +38,7 @@ class ConditionAnalysisTest {
   }
 
   @Test
-  fun `opaque registration guard cannot prove failure witness`() {
+  fun `opaque registration alternatives produce one uncertain obligation`() {
     val canvas =
       CanvasExpression.Choice(
         Guard.Opaque("environment predicate", site("predicate")),
@@ -47,7 +47,7 @@ class ConditionAnalysisTest {
       )
     val result = simpleCompose(canvas)
 
-    assertEquals(setOf(Certainty.VERIFIED, Certainty.UNVERIFIED), result.findings.map { it.certainty }.toSet())
+    assertEquals(listOf(Certainty.UNVERIFIED), result.findings.map { it.certainty })
     assertFalse(result.findings.any { it.certainty == Certainty.MISSING })
   }
 

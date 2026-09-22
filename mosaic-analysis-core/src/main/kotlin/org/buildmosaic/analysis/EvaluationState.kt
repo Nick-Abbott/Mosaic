@@ -5,12 +5,19 @@ internal enum class PathFeasibility {
   OPAQUE,
 }
 
+internal enum class PathConditionKind {
+  SUPPORTED_ASSIGNMENT,
+  OPAQUE_ALTERNATIVE,
+}
+
+internal data class PathCondition(
+  val identity: String,
+  val display: String,
+  val kind: PathConditionKind,
+)
+
 internal sealed interface RuntimeArgument {
-  data class CanvasThunk(
-    val expression: CanvasExpression,
-    val values: Map<ContractParameter, RuntimeArgument>,
-    val currentCanvas: CanvasState?,
-  ) : RuntimeArgument
+  data class CanvasValue(val state: CanvasState) : RuntimeArgument
 
   data class BooleanValue(val value: RuntimeBoolean) : RuntimeArgument
 }
@@ -26,7 +33,7 @@ internal sealed interface RuntimeBoolean {
 internal data class EvaluationContext(
   val values: Map<ContractParameter, RuntimeArgument> = emptyMap(),
   val assignments: Map<String, Boolean> = emptyMap(),
-  val conditions: List<String> = emptyList(),
+  val conditions: List<PathCondition> = emptyList(),
   val feasibility: PathFeasibility = PathFeasibility.SUPPORTED,
   val currentCanvas: CanvasState? = null,
   val dependencyPath: List<DependencyPathNode> = emptyList(),
@@ -34,6 +41,8 @@ internal data class EvaluationContext(
   val scope: String,
   val depth: Int = 0,
   val blocked: Boolean = false,
+  val capturedOrigins: Set<CaptureOrigin> = emptySet(),
+  val contextualEvidence: Set<EvidenceKind> = emptySet(),
 )
 
 internal data class KnownBinding(
@@ -62,6 +71,11 @@ internal sealed interface CanvasState {
   data class Assumed(
     val contract: ExternalAssumption,
   ) : CanvasState
+
+  data class Captured(
+    val origin: CaptureOrigin,
+    val state: CanvasState,
+  ) : CanvasState
 }
 
 internal data class CanvasOutcome(
@@ -74,7 +88,22 @@ internal data class CanvasAliasContext(
   val scope: String,
   val dependencyPath: List<DependencyPathNode>,
   val assignments: Map<String, Boolean>,
+  val conditions: List<PathCondition>,
 )
+
+internal data class CanvasAlternative(
+  val state: CanvasState?,
+  val assignments: Map<String, Boolean>,
+  val conditions: List<PathCondition>,
+  val feasibility: PathFeasibility,
+  val blocked: Boolean,
+)
+
+internal sealed interface BranchDecision {
+  data class Selected(val value: Boolean) : BranchDecision
+
+  data object Skipped : BranchDecision
+}
 
 internal data class LookupResolution(
   val certainty: Certainty,
@@ -82,6 +111,7 @@ internal data class LookupResolution(
   val canvasPath: List<CanvasPathNode> = emptyList(),
   val evidence: Set<EvidenceKind> = emptySet(),
   val assumptionIds: Set<String> = emptySet(),
+  val capturedOrigins: Set<CaptureOrigin> = emptySet(),
   val reason: String,
 )
 
