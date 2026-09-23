@@ -43,17 +43,21 @@ External inline helper bodies are unavailable before backend inlining; a helper
 that can affect Mosaic is explicitly unknown. The extractor never substitutes
 the newest helper body into an already compiled caller.
 
-The output is deterministic UTF-8 JSON at
-`META-INF/mosaic-analysis/v1/summary.json` when packaged by the Gradle plugin.
-The provisional schema remains v1.1. The extractor version is `prototype-7`;
-older extractor output is rejected because it can omit evaluation work or
-apply different dispatch and continuation rules to Canvas results, or treat
-implicit callbacks and bound reference receivers as effect-free. Version 7 also
-rejects summaries that rebind captured DSL receivers or export a custom getter
-as its initializer Tile. The model
-adds evaluated-value references and dispatch ownership on Canvas calls. The
-compiler option names and symbol-locator strategy are internal and provisional.
-This module is not published or included in the BOM.
+The plugin produces complete main-source-set metadata as deterministic UTF-8
+JSON at `META-INF/mosaic-analysis/v1/summary.json` when packaged by the Gradle
+plugin. The discovery path stays stable; the explicit header governs
+compatibility. Format 2 uses `analysis-contract-1` semantics and Kotlin 2.2.10.
+The producer version is `prototype-8`. Unpublished prototype-7 snapshots are
+rejected and must be regenerated. The payload checksum covers the canonical
+module, provenance limitations, and binary locators; it detects corruption,
+not producer trust. See the analysis-core README for the wire format and
+compatibility policy.
+
+Only analysis-core applies the Kotlin serialization compiler plugin to generate
+the serializers. The packaged compiler plugin includes the serialization
+runtime through analysis-core; consuming projects do not apply that compiler
+plugin. The compiler option names and symbol-locator strategy remain internal
+and provisional. This module is not published or included in the BOM.
 
 ## Test placement
 

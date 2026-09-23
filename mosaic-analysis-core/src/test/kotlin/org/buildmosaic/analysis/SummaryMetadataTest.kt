@@ -13,13 +13,18 @@ class SummaryMetadataTest {
     for (field in listOf(
       "complete",
       "toolVersion",
-      "schemaMajor",
-      "schemaMinor",
+      "formatVersion",
+      "semanticsVersion",
+      "moduleId",
+      "payloadHash",
       "kotlinCompilerVersion",
       "sourceSet",
     )) {
       val partial = bytes.replace(Regex("\"$field\":(?:\"[^\"]*\"|true|[0-9]+),?"), "").replace(",}", "}")
       assertFailsWith<IllegalArgumentException>(field) { SummaryCodec.decode(partial.toByteArray()) }
+    }
+    assertFailsWith<IllegalArgumentException> {
+      SummaryCodec.decode(bytes.replace("\"payload\":", "\"missingPayload\":").toByteArray())
     }
     assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(bytes.replace("2.2.10", "2.3.0").toByteArray())
@@ -99,14 +104,16 @@ class SummaryMetadataTest {
       SummaryCodec.decode(bytes.replace("\"complete\":true", "\"complete\":false").toByteArray())
     }
     assertFailsWith<IllegalArgumentException> {
-      SummaryCodec.decode(bytes.replace("\"schemaMajor\":1", "\"schemaMajor\":2").toByteArray())
-    }
-    assertFailsWith<IllegalArgumentException> {
-      SummaryCodec.decode(bytes.replace("\"schemaMinor\":1", "\"schemaMinor\":0").toByteArray())
+      SummaryCodec.decode(bytes.replace("\"formatVersion\":2", "\"formatVersion\":3").toByteArray())
     }
     assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(
-        bytes.replace("\"toolVersion\":\"prototype-7\"", "\"toolVersion\":\"prototype-6\"").toByteArray(),
+        bytes.replace("\"semanticsVersion\":\"analysis-contract-1\"", "\"semanticsVersion\":\"other\"").toByteArray(),
+      )
+    }
+    assertFailsWith<IllegalArgumentException> {
+      SummaryCodec.decode(
+        bytes.replace("\"toolVersion\":\"prototype-8\"", "\"toolVersion\":\"\"").toByteArray(),
       )
     }
     assertFailsWith<IllegalArgumentException> {
