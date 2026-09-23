@@ -30,7 +30,9 @@ import org.buildmosaic.analysis.OverrideSlot
 import org.buildmosaic.analysis.ParameterKind
 import org.buildmosaic.analysis.ResolvedOverride
 import org.buildmosaic.analysis.SourceLocation
-import org.buildmosaic.analysis.SummaryCodec
+import org.buildmosaic.analysis.SourceShard
+import org.buildmosaic.analysis.SourceShardCodec
+import org.buildmosaic.analysis.SourceShardPaths
 import org.buildmosaic.analysis.TileContract
 import org.buildmosaic.analysis.TileReference
 import org.buildmosaic.analysis.UnknownRegistration
@@ -89,12 +91,19 @@ import org.jetbrains.kotlin.ir.util.isFakeOverride
 import org.jetbrains.kotlin.ir.visitors.IrVisitorVoid
 import org.jetbrains.kotlin.ir.visitors.acceptChildrenVoid
 import java.io.File
+import java.nio.file.FileVisitResult
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.SimpleFileVisitor
+import java.nio.file.attribute.BasicFileAttributes
 
 /** Read-only K2 IR collector for the deliberately small prototype DSL subset. */
 @OptIn(UnsafeDuringIrConstructionAPI::class)
 class MosaicIrExtractor(
   private val output: String,
   private val moduleId: String,
+  private val sourceRoot: String? = null,
+  private val shardMode: Boolean = false,
 ) : IrGenerationExtension {
   private val limitations = mutableListOf<String>()
   private val freshTemplates = linkedMapOf<String, TileContract>()
@@ -103,14 +112,18 @@ class MosaicIrExtractor(
     moduleFragment: org.jetbrains.kotlin.ir.declarations.IrModuleFragment,
     pluginContext: IrPluginContext,
   ) {
-    freshTemplates.clear()
-    val canvases = mutableListOf<CanvasContract>()
-    val tiles = mutableListOf<TileContract>()
-    val callables = mutableListOf<CallableContract>()
-    val overrides = mutableListOf<ResolvedOverride>()
-    val keys = mutableListOf<KeyContract>()
-    val locators = linkedMapOf<String, String>()
+    val shards = mutableListOf<SourceShard>()
     moduleFragment.files.sortedBy { it.fileEntry.name }.forEach { file ->
+      freshTemplates.clear()
+      identities.clear()
+      limitations.clear()
+      val canvases = mutableListOf<CanvasContract>()
+      val tiles = mutableListOf<TileContract>()
+      val callables = mutableListOf<CallableContract>()
+      val overrides = mutableListOf<ResolvedOverride>()
+      val keys = mutableListOf<KeyContract>()
+      val locators = linkedMapOf<String, String>()
+
       fun visit(declaration: IrDeclaration) {
         when (declaration) {
           is IrClass -> {
@@ -257,13 +270,78 @@ class MosaicIrExtractor(
         }
       }
       file.declarations.forEach(::visit)
+      tiles += freshTemplates.values
+      val sourceId = sourceIdentity(file)
+      val shard =
+        SourceShard(
+          sourceId,
+          ModuleContract(moduleId, canvases, tiles, callables, overrides, keys),
+          limitations.toList(),
+          locators,
+        )
+      if (shardMode) {
+        SourceShardPaths.shardFile(File(output), sourceId).apply {
+          parentFile.mkdirs()
+          writeBytes(SourceShardCodec.encode(shard))
+        }
+      }
+      shards += shard
     }
-    tiles += freshTemplates.values
-    val module = ModuleContract(moduleId, canvases, tiles, callables, overrides, keys)
-    File(output).apply {
-      parentFile.mkdirs()
-      writeBytes(SummaryCodec.encode(module, limitations = limitations, binaryLocators = locators))
+    if (shardMode) {
+      pruneObsoleteShards()
+    } else {
+      File(output).apply {
+        parentFile.mkdirs()
+        writeBytes(SourceShardCodec.assemble(moduleId, shards))
+      }
     }
+  }
+
+  private fun sourceIdentity(file: IrFile): String {
+    val source = File(file.fileEntry.name)
+    return sourceRoot?.let { SourceShardPaths.sourceId(File(it), source) } ?: source.canonicalFile.name
+  }
+
+  private fun pruneObsoleteShards() {
+    val root = File(requireNotNull(sourceRoot) { "Shard mode requires a source root" })
+    val outputRoot = File(output)
+    require(!Files.isSymbolicLink(root.toPath()) && !Files.isSymbolicLink(outputRoot.toPath())) {
+      "Mosaic source and shard roots must not be symbolic links"
+    }
+    val current =
+      if (Files.isDirectory(root.toPath())) {
+        Files.walk(root.toPath()).use { paths ->
+          paths.filter { it.fileName.toString().endsWith(".kt") && Files.isRegularFile(it) }
+            .map { SourceShardPaths.sourceId(root, it.toFile()) }
+            .toList().toSet()
+        }
+      } else {
+        emptySet()
+      }
+    val shardRoot = outputRoot.toPath()
+    if (!Files.exists(shardRoot)) return
+    Files.walkFileTree(
+      shardRoot,
+      object : SimpleFileVisitor<Path>() {
+        override fun visitFile(
+          file: Path,
+          attrs: BasicFileAttributes,
+        ): FileVisitResult {
+          val sourceId = SourceShardPaths.sourceIdForShard(outputRoot, file.toFile())
+          if (sourceId != null && sourceId !in current) Files.delete(file)
+          return FileVisitResult.CONTINUE
+        }
+
+        override fun postVisitDirectory(
+          dir: Path,
+          error: java.io.IOException?,
+        ): FileVisitResult {
+          if (error != null) throw error
+          if (dir != shardRoot && Files.list(dir).use { !it.findAny().isPresent }) Files.delete(dir)
+          return FileVisitResult.CONTINUE
+        }
+      },
+    )
   }
 
   /** Values carry references only. Evaluation owns effects; aliases and parameter binding never rescan IR. */

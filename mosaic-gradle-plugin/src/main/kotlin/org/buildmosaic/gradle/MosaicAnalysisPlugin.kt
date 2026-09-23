@@ -1,9 +1,8 @@
 package org.buildmosaic.gradle
 
+import org.buildmosaic.analysis.SourceShardPaths
 import org.gradle.api.GradleException
-import org.gradle.api.Plugin
 import org.gradle.api.Project
-import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.type.ArtifactTypeDefinition
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.plugins.JavaPluginExtension
@@ -13,12 +12,17 @@ import org.gradle.api.tasks.TaskProvider
 import org.gradle.api.tasks.bundling.Jar
 import org.gradle.jvm.toolchain.JavaToolchainService
 import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
+import org.jetbrains.kotlin.gradle.plugin.FilesSubpluginOption
+import org.jetbrains.kotlin.gradle.plugin.KotlinCompilation
+import org.jetbrains.kotlin.gradle.plugin.KotlinCompilerPluginSupportPlugin
+import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
+import org.jetbrains.kotlin.gradle.plugin.SubpluginArtifact
+import org.jetbrains.kotlin.gradle.plugin.SubpluginOption
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 import java.util.Properties
 import javax.inject.Inject
 
 private const val MOSAIC_SUMMARY_ARTIFACT_TYPE = "mosaic-analysis-summary"
-private const val MOSAIC_RESOLUTION_ARTIFACT_TYPE = "mosaic-source-resolution"
 
 abstract class MosaicAnalysisExtension
   @Inject
@@ -40,36 +44,46 @@ enum class MosaicAnalysisEnforcement {
   STRICT,
 }
 
-class MosaicAnalysisPlugin : Plugin<Project> {
-  override fun apply(project: Project) {
+class MosaicAnalysisPlugin : KotlinCompilerPluginSupportPlugin {
+  private lateinit var project: Project
+  private lateinit var mosaicVersion: String
+
+  override fun isApplicable(kotlinCompilation: KotlinCompilation<*>): Boolean =
+    kotlinCompilation.name == "main" && kotlinCompilation.platformType == KotlinPlatformType.jvm &&
+      kotlinCompilation.project.plugins.hasPlugin("org.jetbrains.kotlin.jvm")
+
+  override fun getCompilerPluginId(): String = "org.buildmosaic.analysis"
+
+  override fun getPluginArtifact(): SubpluginArtifact =
+    SubpluginArtifact("org.buildmosaic", "mosaic-compiler-plugin", mosaicVersion)
+
+  override fun applyToCompilation(
+    kotlinCompilation: KotlinCompilation<*>,
+  ): org.gradle.api.provider.Provider<List<SubpluginOption>> =
+    project.provider {
+      val output = project.layout.buildDirectory.dir("mosaic-analysis/main/shards").get().asFile
+      val root = project.file("src/main/kotlin")
+      listOf(
+        FilesSubpluginOption("output", listOf(output)),
+        FilesSubpluginOption("sourceRoot", listOf(root)),
+        SubpluginOption("mode", "shards"),
+        SubpluginOption("module", project.group.toString() + ":" + project.name),
+      )
+    }
+
+  override fun apply(target: Project) {
+    val project = target
+    this.project = target
     registerAnalysisTransforms(project)
     val extension = project.extensions.create("mosaicAnalysis", MosaicAnalysisExtension::class.java)
-    val mosaicVersion = installedMosaicVersion()
-    val compilerConfiguration =
-      project.configurations.create("mosaicAnalysisCompiler") {
-        it.isVisible = false
-        it.isCanBeConsumed = false
-        it.isCanBeResolved = true
-      }
-    project.dependencies.add(compilerConfiguration.name, "org.jetbrains.kotlin:kotlin-compiler-embeddable:2.2.10")
-    val compilerPluginConfiguration =
-      project.configurations.create("mosaicAnalysisCompilerPlugin") {
-        it.isVisible = false
-        it.isCanBeConsumed = false
-        it.isCanBeResolved = true
-        it.isTransitive = false
-      }
-    project.dependencies.add(
-      compilerPluginConfiguration.name,
-      "org.buildmosaic:mosaic-compiler-plugin:$mosaicVersion",
-    )
+    mosaicVersion = installedMosaicVersion()
     project.afterEvaluate {
       if (!project.plugins.hasPlugin("org.jetbrains.kotlin.jvm")) {
         throw GradleException("Mosaic analysis prototype requires a pure Kotlin/JVM project")
       }
     }
     project.plugins.withId("org.jetbrains.kotlin.jvm") {
-      registerMain(project, extension, compilerConfiguration, compilerPluginConfiguration, mosaicVersion)
+      registerMain(project, extension)
     }
   }
 
@@ -85,13 +99,12 @@ class MosaicAnalysisPlugin : Plugin<Project> {
   private fun registerMain(
     project: Project,
     extension: MosaicAnalysisExtension,
-    compilerConfiguration: Configuration,
-    compilerPluginConfiguration: Configuration,
-    mosaicVersion: String,
   ) {
     val compile = project.tasks.named("compileKotlin", KotlinJvmCompile::class.java)
+    val shardDirectory = project.layout.buildDirectory.dir("mosaic-analysis/main/shards")
+    compile.configure { it.outputs.dir(shardDirectory).withPropertyName("mosaicSourceShards") }
     val extract =
-      registerExtraction(project, compilerConfiguration, compilerPluginConfiguration, mosaicVersion, compile)
+      registerExtraction(project, compile)
     project.tasks.named("jar", Jar::class.java) { jar ->
       jar.dependsOn(extract)
       jar.from(extract.flatMap { it.summaryFile }) {
@@ -125,9 +138,6 @@ class MosaicAnalysisPlugin : Plugin<Project> {
 
   private fun registerExtraction(
     project: Project,
-    compilerConfiguration: Configuration,
-    compilerPluginConfiguration: Configuration,
-    mosaicVersion: String,
     compile: TaskProvider<KotlinJvmCompile>,
   ): TaskProvider<ExtractMosaicTask> {
     val kotlinPluginVersion =
@@ -138,51 +148,44 @@ class MosaicAnalysisPlugin : Plugin<Project> {
       project.extensions.getByType(
         KotlinJvmProjectExtension::class.java,
       ).sourceSets.getByName("main").kotlin
+    val sourceRoot = project.file("src/main/kotlin")
+    val shardDirectory = project.layout.buildDirectory.dir("mosaic-analysis/main/shards")
     return project.tasks.register("extractMosaicMain", ExtractMosaicTask::class.java) { task ->
       task.group = "verification"
-      task.description = "Extract a complete Mosaic main summary in a separate Kotlin compiler process"
+      task.description = "Assemble compiler-produced Mosaic source shards into a complete main summary"
       task.sources.from(mainSources)
       task.javaSources.from(project.fileTree("src/main/java") { it.include("**/*.java") })
-      task.supportedSourceRoot.set(project.file("src/main/kotlin").absolutePath)
-      task.compileClasspath.from(project.configurations.getByName("compileClasspath"))
-      val resolutionArtifacts =
-        project.configurations.getByName("compileClasspath").incoming.artifactView { view ->
-          view.attributes.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, MOSAIC_RESOLUTION_ARTIFACT_TYPE)
-        }.files
-      task.sourceResolutionAbi.from(resolutionArtifacts.filter { it.name.endsWith(".resolution.jar") })
-      task.kotlinModuleMetadata.from(resolutionArtifacts.filter { it.name.endsWith(".kotlin-modules.bin") })
-      task.compilerClasspath.from(compilerConfiguration)
+      task.supportedSourceRoot.set(sourceRoot.absolutePath)
+      task.shardFiles.from(
+        mainSources.elements.map { sources ->
+          sources.map { it.asFile }.filter { it.extension == "kt" }.map { source ->
+            SourceShardPaths.shardFile(shardDirectory.get().asFile, SourceShardPaths.sourceId(sourceRoot, source))
+          }
+        },
+      )
       task.additionalCompilerPlugins.from(compile.map { it.pluginClasspath })
       task.friendPaths.from(compile.map { it.friendPaths })
-      task.compilerPluginJar.set(
-        project.layout.file(compilerPluginConfiguration.elements.map { elements -> elements.single().asFile }),
-      )
       task.mosaicVersion.set(mosaicVersion)
       task.moduleId.set(project.provider { project.group.toString() + ":" + project.name })
-      task.kotlinModuleName.set(compile.flatMap { it.compilerOptions.moduleName })
-      task.jvmTarget.set(compile.flatMap { it.compilerOptions.jvmTarget }.map { it.target })
-      task.languageVersion.set(compile.map { it.compilerOptions.languageVersion.orNull?.version.orEmpty() })
-      task.apiVersion.set(compile.map { it.compilerOptions.apiVersion.orNull?.version.orEmpty() })
       task.productionCompilerVersion.set(kotlinPluginVersion)
       task.unsupportedCompilerOptions.set(compile.map(::unsupportedCompilerOptions))
       task.unsupportedProjectPlugins.set(project.provider { unsupportedProjectPlugins(project) })
-      task.javaExecutable.set(launcher.map { it.executablePath })
       task.selectedJavaVersion.set(launcher.map { it.metadata.languageVersion.asInt().toString() })
-      task.selectedJavaVendor.set(launcher.map { it.metadata.vendor })
-      task.selectedJavaRuntimeVersion.set(launcher.map { it.metadata.javaRuntimeVersion })
       task.expectedJavaVersion.set(
         compile.flatMap {
           it.kotlinJavaToolchainProvider
         }.flatMap { it.javaVersion }.map { it.majorVersion },
       )
       task.summaryFile.set(project.layout.buildDirectory.file("mosaic-analysis/main/summary.json"))
+      task.shardDirectory.set(shardDirectory)
+      task.dependsOn(compile)
     }
   }
 
   private fun unsupportedCompilerOptions(taskCompile: KotlinJvmCompile): List<String> =
     buildList {
       taskCompile.pluginOptions.orNull.orEmpty().flatMap { it.allOptions().entries }.forEach { (id, options) ->
-        if (options.isNotEmpty()) add("plugin:$id:${options.size}")
+        if (options.isNotEmpty() && id != "org.buildmosaic.analysis") add("plugin:$id:${options.size}")
       }
       taskCompile.compilerOptions.freeCompilerArgs.orNull.orEmpty().forEach { add("free:$it") }
       taskCompile.compilerOptions.optIn.orNull.orEmpty().forEach { add("optIn:$it") }
@@ -205,9 +208,5 @@ private fun registerAnalysisTransforms(project: Project) {
   project.dependencies.registerTransform(MosaicSummaryTransform::class.java) { transform ->
     transform.from.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, ArtifactTypeDefinition.JAR_TYPE)
     transform.to.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, MOSAIC_SUMMARY_ARTIFACT_TYPE)
-  }
-  project.dependencies.registerTransform(SourceResolutionTransform::class.java) { transform ->
-    transform.from.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, ArtifactTypeDefinition.JAR_TYPE)
-    transform.to.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, MOSAIC_RESOLUTION_ARTIFACT_TYPE)
   }
 }

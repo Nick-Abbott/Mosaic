@@ -1,224 +1,157 @@
 package org.buildmosaic.gradle
 
-import org.buildmosaic.analysis.ModuleContract
+import org.buildmosaic.analysis.SourceShardCodec
+import org.buildmosaic.analysis.SourceShardPaths
 import org.buildmosaic.analysis.SummaryCodec
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Classpath
-import org.gradle.api.tasks.CompileClasspath
 import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
-import org.gradle.process.ExecOperations
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.jar.JarFile
-import javax.inject.Inject
 
+/** Assembles only current Kotlin sources. Kotlin's own compilation owns extraction and invalidation. */
 @CacheableTask
-abstract class ExtractMosaicTask
-  @Inject
-  constructor(private val exec: ExecOperations) : DefaultTask() {
-    @get:InputFiles
-    @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val sources: ConfigurableFileCollection
+abstract class ExtractMosaicTask : DefaultTask() {
+  @get:Internal abstract val sources: ConfigurableFileCollection
 
-    @get:InputFiles
-    @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val javaSources: ConfigurableFileCollection
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val javaSources: ConfigurableFileCollection
 
-    @get:Internal
-    abstract val compileClasspath: ConfigurableFileCollection
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val shardFiles: ConfigurableFileCollection
 
-    @get:CompileClasspath
-    abstract val sourceResolutionAbi: ConfigurableFileCollection
+  @get:Internal abstract val shardDirectory: DirectoryProperty
 
-    @get:InputFiles
-    @get:PathSensitive(PathSensitivity.NONE)
-    abstract val kotlinModuleMetadata: ConfigurableFileCollection
+  @get:Classpath abstract val additionalCompilerPlugins: ConfigurableFileCollection
 
-    @get:Classpath
-    abstract val compilerClasspath: ConfigurableFileCollection
+  @get:Classpath abstract val friendPaths: ConfigurableFileCollection
 
-    @get:Classpath
-    abstract val additionalCompilerPlugins: ConfigurableFileCollection
+  @get:Input abstract val mosaicVersion: Property<String>
 
-    @get:Classpath
-    abstract val friendPaths: ConfigurableFileCollection
+  @get:Input abstract val moduleId: Property<String>
 
-    @get:InputFile
-    @get:PathSensitive(PathSensitivity.NONE)
-    abstract val compilerPluginJar: RegularFileProperty
+  @get:Input abstract val productionCompilerVersion: Property<String>
 
-    @get:Input
-    abstract val mosaicVersion: Property<String>
+  @get:Input abstract val unsupportedCompilerOptions: ListProperty<String>
 
-    @get:Input
-    abstract val moduleId: Property<String>
+  @get:Input abstract val unsupportedProjectPlugins: ListProperty<String>
 
-    @get:Input
-    abstract val kotlinModuleName: Property<String>
+  @get:Input abstract val expectedJavaVersion: Property<String>
 
-    @get:Input
-    abstract val jvmTarget: Property<String>
+  @get:Input abstract val selectedJavaVersion: Property<String>
 
-    @get:Input
-    abstract val languageVersion: Property<String>
+  @get:Internal abstract val supportedSourceRoot: Property<String>
 
-    @get:Input
-    abstract val apiVersion: Property<String>
+  @get:OutputFile abstract val summaryFile: RegularFileProperty
 
-    @get:Input
-    abstract val productionCompilerVersion: Property<String>
-
-    @get:Input
-    abstract val unsupportedCompilerOptions: org.gradle.api.provider.ListProperty<String>
-
-    @get:Input
-    abstract val unsupportedProjectPlugins: org.gradle.api.provider.ListProperty<String>
-
-    @get:Input
-    abstract val expectedJavaVersion: Property<String>
-
-    @get:Input
-    abstract val selectedJavaVersion: Property<String>
-
-    @get:Input
-    abstract val selectedJavaVendor: Property<String>
-
-    @get:Input
-    abstract val selectedJavaRuntimeVersion: Property<String>
-
-    @get:Internal
-    abstract val javaExecutable: RegularFileProperty
-
-    @get:Internal
-    abstract val supportedSourceRoot: Property<String>
-
-    @get:Input
-    val sourceLayout: List<String>
-      get() {
-        val root = File(supportedSourceRoot.get()).canonicalFile.toPath()
-        return sources.files.map { source ->
-          val path = source.canonicalFile.toPath()
-          if (path.startsWith(
-              root,
-            )
-          ) {
-            root.relativize(path).toString().replace(File.separatorChar, '/')
-          } else {
-            "<unsupported>:${source.name}"
-          }
-        }.sorted()
-      }
-
-    @get:OutputFile
-    abstract val summaryFile: RegularFileProperty
-
-    @Suppress("TooGenericExceptionCaught")
-    @TaskAction
-    fun extract() {
-      val output = summaryFile.get().asFile
-      output.delete()
-      output.parentFile.mkdirs()
-      val kotlinSources = sources.files.filter { it.extension == "kt" }.sortedBy(File::getAbsolutePath)
-      validateConfiguration()
-      validateSources(sources.files, javaSources.files, kotlinSources, File(supportedSourceRoot.get()))
-      if (kotlinSources.isEmpty()) {
-        output.writeBytes(SummaryCodec.encode(ModuleContract(moduleId.get())))
-        return
-      }
-      val classOutput = File(temporaryDir, "classes")
-      classOutput.deleteRecursively()
-      classOutput.mkdirs()
-      val args =
-        mutableListOf(
-          "-no-stdlib", "-no-reflect", "-jvm-target", jvmTarget.get(),
-          "-module-name", kotlinModuleName.get(),
-          "-classpath", compileClasspath.files.joinToString(File.pathSeparator) { it.absolutePath },
-          "-Xplugin=${compilerPluginJar.get().asFile.absolutePath}",
-          "-P", "plugin:org.buildmosaic.analysis:output=${output.absolutePath}",
-          "-P", "plugin:org.buildmosaic.analysis:module=${moduleId.get()}",
-          "-d", classOutput.absolutePath,
-        ) + kotlinSources.map { it.absolutePath }
-      val settings = mutableListOf<String>()
-      if (languageVersion.get().isNotBlank()) settings += listOf("-language-version", languageVersion.get())
-      if (apiVersion.get().isNotBlank()) settings += listOf("-api-version", apiVersion.get())
-      try {
-        logger.info("Mosaic K2 extraction launched for ${moduleId.get()}")
-        exec.javaexec { spec ->
-          spec.executable = javaExecutable.get().asFile.absolutePath
-          spec.classpath = compilerClasspath
-          spec.mainClass.set("org.jetbrains.kotlin.cli.jvm.K2JVMCompiler")
-          spec.args(settings + args)
+  @get:Input
+  val sourceLayout: List<String>
+    get() {
+      val root = File(supportedSourceRoot.get()).canonicalFile.toPath()
+      return sources.files.map { source ->
+        val path = source.canonicalFile.toPath()
+        if (path.startsWith(root)) {
+          SourceShardPaths.sourceId(File(supportedSourceRoot.get()), source)
+        } else {
+          "<unsupported>:${source.name}"
         }
-        if (!output.isFile) throw GradleException("Mosaic compiler did not write a complete summary")
-        SummaryCodec.decode(output.readBytes())
-      } catch (failure: Exception) {
-        output.delete()
-        throw GradleException("Mosaic full extraction failed for ${moduleId.get()}", failure)
-      }
+      }.sorted()
     }
 
-    private fun validateConfiguration() {
-      validateCompilerPluginVersion(compilerPluginJar.get().asFile, mosaicVersion.get())
-      requireSupported(
-        productionCompilerVersion.get().matches(Regex("2\\.2\\.10(?:-release-[0-9]+)?")),
-        "Mosaic extraction requires Kotlin Gradle plugin 2.2.10; found ${productionCompilerVersion.get()}",
-      )
-      val unsupportedPlugins =
-        additionalCompilerPlugins.files.filterNot(::isDefaultKotlinCompilerArtifact)
-      val unsupportedPluginOptions = unsupportedCompilerOptions.get().filter { it.startsWith("plugin:") }
-      val names = unsupportedPlugins.joinToString { it.name }
-      requireSupported(
-        unsupportedPlugins.isEmpty() && unsupportedPluginOptions.isEmpty(),
-        "Mosaic extraction does not mirror additional Kotlin compiler plugins: $names; $unsupportedPluginOptions",
-      )
-      requireSupported(friendPaths.files.isEmpty(), "Mosaic extraction does not support Kotlin friend paths")
-      requireSupported(
-        unsupportedCompilerOptions.get().isEmpty(),
-        "Mosaic extraction does not mirror compiler options: ${unsupportedCompilerOptions.get().joinToString()}",
-      )
-      requireSupported(
-        unsupportedProjectPlugins.get().isEmpty(),
-        "Mosaic extraction does not support project plugins: ${unsupportedProjectPlugins.get().joinToString()}",
-      )
-      val expected = expectedJavaVersion.get()
-      val selected = selectedJavaVersion.get()
-      requireSupported(
-        expected == selected,
-        "Mosaic extraction toolchain mismatch: Kotlin uses Java $expected, extraction selected Java $selected",
-      )
-    }
+  @TaskAction
+  @Suppress("TooGenericExceptionCaught")
+  fun extract() {
+    val output = summaryFile.get().asFile
+    output.delete()
+    validateConfiguration()
+    validateSources()
+    val current = sourceLayout.filter { it.endsWith(".kt") }
+    requireSupported(current.size == current.distinct().size, "Duplicate Mosaic source identities")
+    val root = shardDirectory.get().asFile
+    val shards =
+      current.map { sourceId ->
+        val shard = SourceShardPaths.shardFile(root, sourceId)
+        if (!shard.isFile) throw GradleException("Missing Mosaic compiler shard for current source $sourceId")
+        try {
+          SourceShardCodec.decode(shard.readBytes()).also {
+            require(it.sourceId == sourceId) { "Mosaic shard identity mismatch for $sourceId" }
+          }
+        } catch (error: Exception) {
+          throw GradleException("Invalid Mosaic compiler shard for $sourceId", error)
+        }
+      }
+    val bytes = SourceShardCodec.assemble(moduleId.get(), shards)
+    SummaryCodec.decode(bytes)
+    output.parentFile.mkdirs()
+    val pending = File(output.parentFile, "${output.name}.pending")
+    pending.writeBytes(bytes)
+    Files.move(pending.toPath(), output.toPath(), StandardCopyOption.REPLACE_EXISTING)
   }
 
-private fun validateSources(
-  sources: Set<File>,
-  javaSources: Set<File>,
-  kotlinSources: List<File>,
-  root: File,
-) {
-  requireSupported(
-    sources.none { it.extension == "kts" },
-    "Mosaic prototype extraction does not support Kotlin scripts",
-  )
-  requireSupported(
-    javaSources.isEmpty(),
-    "Mosaic prototype extraction does not support mixed Java/Kotlin sources",
-  )
-  val sourceRoot = root.canonicalFile.toPath()
-  requireSupported(
-    kotlinSources.all { it.canonicalFile.toPath().startsWith(sourceRoot) },
-    "Mosaic prototype extraction supports only src/main/kotlin sources",
-  )
+  private fun validateSources() {
+    requireSupported(
+      sources.files.none { it.extension == "kts" },
+      "Mosaic extraction does not support Kotlin scripts",
+    )
+    requireSupported(
+      javaSources.files.isEmpty(),
+      "Mosaic extraction does not support mixed Java/Kotlin sources",
+    )
+    requireSupported(
+      sourceLayout.none {
+        it.startsWith("<unsupported>:")
+      },
+      "Mosaic extraction supports only src/main/kotlin sources",
+    )
+  }
+
+  private fun validateConfiguration() {
+    requireSupported(
+      productionCompilerVersion.get().matches(Regex("2\\.2\\.10(?:-release-[0-9]+)?")),
+      "Mosaic extraction requires Kotlin Gradle plugin 2.2.10; found ${productionCompilerVersion.get()}",
+    )
+    val compilerPlugins = additionalCompilerPlugins.files.filter { it.name.startsWith("mosaic-compiler-plugin-") }
+    requireSupported(compilerPlugins.size == 1, "Mosaic compiler plugin artifact was not resolved exactly once")
+    validateCompilerPluginVersion(compilerPlugins.single(), mosaicVersion.get())
+    val unsupported =
+      additionalCompilerPlugins.files.filterNot {
+        it in compilerPlugins || isDefaultKotlinCompilerArtifact(it)
+      }
+    requireSupported(
+      unsupported.isEmpty(),
+      "Mosaic extraction does not support additional Kotlin compiler plugins: ${unsupported.joinToString { it.name }}",
+    )
+    requireSupported(friendPaths.files.isEmpty(), "Mosaic extraction does not support Kotlin friend paths")
+    requireSupported(
+      unsupportedCompilerOptions.get().isEmpty(),
+      "Mosaic extraction does not support compiler options: ${unsupportedCompilerOptions.get().joinToString()}",
+    )
+    requireSupported(
+      unsupportedProjectPlugins.get().isEmpty(),
+      "Mosaic extraction does not support project plugins: ${unsupportedProjectPlugins.get().joinToString()}",
+    )
+    requireSupported(
+      expectedJavaVersion.get() == selectedJavaVersion.get(),
+      "Mosaic extraction toolchain mismatch",
+    )
+  }
 }
 
 internal fun validateCompilerPluginVersion(

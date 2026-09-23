@@ -2,9 +2,11 @@
 
 This published build-tooling module is a read-only Kotlin 2.2.10 K2 compiler plugin. It uses
 `CompilerPluginRegistrar` and `IrGenerationExtension` before IR lowering. It
-does not transform Kotlin or run Mosaic code. A separate full compiler invocation
-emits one complete main-source-set summary; ordinary `compileKotlin` does not
-produce the snapshot.
+does not transform Kotlin or run Mosaic code. The Gradle plugin installs it into the normal Kotlin/JVM `main`
+compilation through Kotlin’s compiler-subplugin API. It emits per-source internal
+shards for the files Kotlin recompiles. `extractMosaicMain` assembles the complete
+module summary without a second compiler invocation. Standalone complete-output
+mode remains for compiler fixtures.
 
 The supported extraction path covers public `Tile` and `MultiTile` creation,
 reified, KClass, and CanvasKey lookup, `canvas`, `single`, `withLayer`, `paint`,
@@ -48,11 +50,15 @@ External inline helper bodies are unavailable before backend inlining; a helper
 that can affect Mosaic is explicitly unknown. The extractor never substitutes
 the newest helper body into an already compiled caller.
 
-The plugin produces complete main-source-set metadata as deterministic UTF-8
-JSON at `META-INF/mosaic-analysis/v1/summary.json` when packaged by the Gradle
-plugin. The discovery path stays stable; the explicit header governs
+The Gradle plugin assembles deterministic UTF-8 JSON at
+`META-INF/mosaic-analysis/v1/summary.json` for packaging. Source shards are
+internal incremental state, keyed by paths relative to `src/main/kotlin`; they
+are not a public metadata format. After an incremental IR invocation, the
+compiler plugin removes obsolete shard files. A current-source manifest selects
+only current shards for assembly, including when Kotlin has no sources and does
+not invoke the plugin. The discovery path stays stable; the explicit header governs
 compatibility. Format 3 uses `analysis-contract-2` semantics and Kotlin 2.2.10.
-The producer version is `prototype-9`. Unpublished prototype-7 snapshots are
+The producer version is `prototype-10`. Unpublished prototype-7 snapshots are
 rejected and must be regenerated. The payload checksum covers the canonical
 module, stable key exports, provenance limitations, and binary locators; it detects corruption,
 not producer trust. See the analysis-core README for the wire format and

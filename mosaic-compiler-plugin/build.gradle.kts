@@ -31,19 +31,27 @@ plugins {
 
 dependencies {
   compileOnly("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.2.10")
-  implementation(project(":mosaic-analysis-core"))
+  compileOnly(project(":mosaic-analysis-core"))
+  testImplementation(project(":mosaic-analysis-core"))
   testImplementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.2.10")
   testImplementation(project(":mosaic-core"))
   testImplementation(kotlin("test"))
 }
 
+val bundledCompilerRuntime =
+  configurations.create("bundledCompilerRuntime") {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+  }
+dependencies { add(bundledCompilerRuntime.name, project(":mosaic-analysis-core")) }
+
 tasks.jar {
-  dependsOn(configurations.runtimeClasspath)
+  dependsOn(bundledCompilerRuntime)
   duplicatesStrategy = DuplicatesStrategy.FAIL
   exclude("META-INF/versions/**/module-info.class")
   manifest.attributes("Implementation-Version" to project.version.toString())
   from({
-    configurations.runtimeClasspath.get().filter { it.extension == "jar" }.map { zipTree(it) }
+    bundledCompilerRuntime.filter { it.extension == "jar" }.map { zipTree(it) }
   })
 }
 

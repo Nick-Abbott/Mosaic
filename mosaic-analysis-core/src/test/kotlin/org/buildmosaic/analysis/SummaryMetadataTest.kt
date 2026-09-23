@@ -113,7 +113,7 @@ class SummaryMetadataTest {
     }
     assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(
-        bytes.replace("\"toolVersion\":\"prototype-9\"", "\"toolVersion\":\"\"").toByteArray(),
+        bytes.replace("\"toolVersion\":\"prototype-10\"", "\"toolVersion\":\"\"").toByteArray(),
       )
     }
     assertFailsWith<IllegalArgumentException> {

@@ -45,7 +45,7 @@ class PublishedInstallationTest {
     assertTrue(!pluginPom.contains("kotlin-gradle-plugin"), pluginPom)
     val compilerPom =
       maven.resolve("org/buildmosaic/mosaic-compiler-plugin/$version/mosaic-compiler-plugin-$version.pom").readText()
-    assertTrue(compilerPom.contains("<artifactId>mosaic-analysis-core</artifactId>"))
+    assertTrue(!compilerPom.contains("<artifactId>mosaic-analysis-core</artifactId>"), compilerPom)
     assertTrue(!compilerPom.contains("kotlin-compiler-embeddable"), compilerPom)
     JarFile(maven.resolve("org/buildmosaic/mosaic-compiler-plugin/$version/mosaic-compiler-plugin-$version.jar")).use {
         jar ->
@@ -97,7 +97,7 @@ class PublishedInstallationTest {
         """.trimIndent(),
       )
     }
-    val result = run(consumer, "build", "dependencies", "--configuration", "mosaicAnalysisCompilerPlugin")
+    val result = run(consumer, "build", "dependencies", "--configuration", "kotlinCompilerPluginClasspathMain")
     assertEquals(TaskOutcome.SUCCESS, result.task(":verifyMosaicMain")?.outcome)
     assertTrue(result.output.contains("org.buildmosaic:mosaic-compiler-plugin:$version"), result.output)
     val report = consumer.resolve("build/reports/mosaic-analysis/main.txt").readText()
@@ -106,7 +106,7 @@ class PublishedInstallationTest {
     val summary = SummaryCodec.decode(consumer.resolve("build/mosaic-analysis/main/summary.json").readBytes())
     assertEquals(3, summary.formatVersion)
     assertEquals("analysis-contract-2", summary.semanticsVersion)
-    assertEquals("prototype-9", summary.toolVersion)
+    assertEquals("prototype-10", summary.toolVersion)
     assertTrue(summary.module.callables.any { it.id == "app.entry()" && it.effects.isNotEmpty() })
     JarFile(consumer.resolve("build/libs/app-99.0.0.jar")).use { assertTrue(it.getEntry(SUMMARY_PATH) != null) }
   }

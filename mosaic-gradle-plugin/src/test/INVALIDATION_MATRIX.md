@@ -1,30 +1,24 @@
-# Analysis task invalidation matrix
+# Compiler-integrated invalidation matrix
 
-The TestKit `BinaryIntegrationTest` fixes these task boundaries. `SUCCESS` for
-extraction means a separate Mosaic K2 process launched; `UP_TO_DATE` and
-`FROM_CACHE` must have no launch marker. The `assertFreshEquivalent` oracle
-compares decoded summaries and reports after rebuilding representative changed
-programs from a clean application workspace.
+`BinaryIntegrationTest` uses normal Kotlin 2.2.10 compilation and checks the
+complete summary after persistent source and dependency edits. The production
+path launches zero standalone Mosaic K2 compiler processes. Compiler-module
+fixtures still invoke K2 as test infrastructure.
 
-| Mutation | `compileKotlin` | `extractMosaicMain` | `verifyMosaicMain` | Result |
-| --- | --- | --- | --- | --- |
-| Identical second build | `UP_TO_DATE` | `UP_TO_DATE` | `UP_TO_DATE` | No K2 launch |
-| Equivalent relocated workspace after clean | May execute or restore | `FROM_CACHE` | May execute | Decoded summary equal |
-| Ordinary dependency body change, same ABI and summary | Kotlin incremental decision | `UP_TO_DATE` | `UP_TO_DATE` | No K2 launch |
-| Dependency Canvas body loses binding, same signature | Kotlin incremental decision | `UP_TO_DATE` | Executes | `MISSING PlatformConfig` |
-| Binding restored | Kotlin incremental decision | `UP_TO_DATE` | Executes | `VERIFIED` |
-| Source-visible dependency ABI change | Kotlin incremental decision | Executes | Executes if summary changes | No false cache hit |
-| External public `const val` change | Kotlin incremental decision | Executes | Executes if summary changes | Caller qualifier re-extracted |
-| Public Kotlin typealias changes `Selected` from `First` to `Second` | Kotlin incremental decision | Executes | Executes if summary changes | Exported Canvas key changes; fresh result equal |
-| Only compiler-generated `.kotlin_module` projection changes | Not requested | Executes | Not requested | Same local summary; module metadata input reported changed |
-| External inline body only | Kotlin incremental decision | `UP_TO_DATE` | `UP_TO_DATE` if summary same | No K2 launch |
-| Summary removed | Unchanged | `UP_TO_DATE` | Executes | Reached boundary `UNVERIFIED` |
-| Summary malformed | Unchanged | `UP_TO_DATE` | Executes, fails | Hard artifact error |
-| Source edit | Kotlin incremental decision | Executes full source extraction | Executes if summary changes | Fresh result equal |
+| Mutation | `compileKotlin` | `extractMosaicMain` | Result |
+| --- | --- | --- | --- |
+| Identical second build | `UP_TO_DATE` | `UP_TO_DATE` | Complete summary unchanged |
+| Relocated clean workspace | `FROM_CACHE` in the local fixture | `FROM_CACHE` or assembles | Shards restored with compile output |
+| Deleted shard directory | Restored from cache | `UP_TO_DATE` or assembles | Complete shards available again |
+| Ordinary source body | Executes affected source | May remain `UP_TO_DATE` | Summary semantically unchanged |
+| Tile body, declaration signature, move, or rename | Executes Kotlin affected set | Assembles | Current owner facts only; clean result equal |
+| External public constant or typealias | Kotlin chooses affected callers | Assembles if shards change | Caller contract updates; clean result equal |
+| External inline body | Kotlin chooses affected callers | Depends on resulting shard content | No independent Mosaic compiler work |
+| Dependency Canvas contract only | Application compilation unchanged | `UP_TO_DATE` | Verification reruns from transformed dependency summary |
+| Missing or malformed dependency summary | Application compilation unchanged | `UP_TO_DATE` | Unknown boundary or artifact error as configured |
+| All main Kotlin sources removed | Kotlin may report no sources | Assembles explicit empty module | No stale declarations |
+| Compilation failure with Mosaic edit | Fails | Does not run | Recovery build equals clean result |
 
-Task outcomes and K2 launch markers are the performance evidence. No wall-clock
-threshold is an assertion. The remaining limitation is full source extraction
-after a relevant source edit. Clean/full comparison is retained for one
-dependency Mosaic-contract change, the typealias source-resolution change, and
-a direct source rename. Missing and malformed metadata retain their separate
-verification assertions without redundant clean extraction.
+The shard directory is a declared `compileKotlin` output. Assembly selects only
+shards whose relative IDs occur in the current source inventory; stale physical
+shards cannot contribute contracts. No timing threshold is a test assertion.
