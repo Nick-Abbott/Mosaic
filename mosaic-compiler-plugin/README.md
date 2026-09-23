@@ -1,0 +1,98 @@
+# Mosaic compiler extraction prototype
+
+This unpublished module is a read-only Kotlin 2.2.10 K2 compiler plugin. It uses
+`CompilerPluginRegistrar` and `IrGenerationExtension` before IR lowering. It
+does not transform Kotlin or run Mosaic code. A separate full compiler invocation
+emits one complete main-source-set summary; ordinary `compileKotlin` does not
+produce the snapshot.
+
+The supported extraction path covers reified `singleTile`, `source`, `sourceOr`,
+`canvas`, `single`, `withLayer`, `paint`, `create`, `compose`, and `composeAsync` in
+the tested shapes; immutable local Canvas, Mosaic, and Tile aliases; caller-side
+argument evaluation in source order; parameterized Canvas helpers; ordinary
+resolved calls and getters; and the direct final template method to protected
+abstract suspend override transfer by parameter position. `multiTile` and
+`perKeyTile` execution is classified for known-empty, known-nonempty, and unknown
+requests; nested callbacks are not generally interpreted. Mutable and read-only
+List/Set/Map keys normalize to their shared runtime KClass identity. A user
+constructor is exported as a callable: proven Mosaic-free initialization has
+empty effects, while capability-bearing initialization is unknown. Referenced
+stored-property initialization is extracted through its getter or field read;
+ordinary constants remain harmless. This does not model every JVM class-load
+trigger or exception. Used capability-bearing defaults and defaults whose binary
+body is unavailable are unknown after explicit actuals are evaluated. Mosaic
+extension-helper receiver transfer is not modeled, so those calls are unknown;
+direct Tile `source()` and direct `other.source()` remain supported. Regular
+Mosaic parameters cannot borrow the caller's current Canvas. Property accessors
+use the same receiver and inline safeguards as functions. Omitted constructor
+defaults use the same conservative boundary as function defaults. Reified
+generic array keys use erased JVM array class identity: `Array<String>` and
+`Array<Int>` differ, while arrays of List element types match. Unknown Mosaic
+receiver provenance, unsupported control flow, and capability callbacks also
+produce explicit unknown effects. This is a narrow extractor, not a general
+Kotlin interpreter.
+
+Array component mapping is limited to boxed primitives, `String`, `Any`,
+List/Set/Map/Collection interfaces, primitive arrays, and nested supported
+arrays. An unrecognized generic array component produces an unknown key.
+
+An external const qualifier arrives in this phase as a literal. Its value is
+retained in the caller's summary. The original external const declaration is
+not reliably recoverable, so the summary records a provenance limitation.
+External inline helper bodies are unavailable before backend inlining; a helper
+that can affect Mosaic is explicitly unknown. The extractor never substitutes
+the newest helper body into an already compiled caller.
+
+The output is deterministic UTF-8 JSON at
+`META-INF/mosaic-analysis/v1/summary.json` when packaged by the Gradle plugin.
+The provisional schema remains v1.1. The extractor version is `prototype-7`;
+older extractor output is rejected because it can omit evaluation work or
+apply different dispatch and continuation rules to Canvas results, or treat
+implicit callbacks and bound reference receivers as effect-free. Version 7 also
+rejects summaries that rebind captured DSL receivers or export a custom getter
+as its initializer Tile. The model
+adds evaluated-value references and dispatch ownership on Canvas calls. The
+compiler option names and symbol-locator strategy are internal and provisional.
+This module is not published or included in the BOM.
+
+## Test placement
+
+`mosaic-analysis-core` tests own semantic combinations. Compiler tests check
+source-to-contract fidelity, while Gradle TestKit tests check wiring, packaging,
+and invalidation. Put a regression's decisive assertion at the cheapest layer
+that exposes it, and extend a relevant compiled fixture before adding another
+compiler or build invocation. Retain distinct failure guarantees rather than
+each historical test wrapper.
+
+The [executable scenario index](src/test/SCENARIOS.md) fixes the supported
+boundary and operation/context coverage. A single normalizer evaluates each IR
+expression once, appends its effects, and returns an abstract value. Immutable
+aliases read that value; Canvas computations initialize invocation-local slots.
+Compiler temporaries preserve named-argument order, without source-offset sorting.
+Functions, accessors, constructors and intrinsics all prepare receiver and actual
+values before defaults and eligibility. Registration arguments run before eager
+providers. Lambda/reference creation does not execute the body; unsupported
+invocation or escape is explicitly unknown.
+
+The kernel shares call activation, dispatch resolution, parameter binding and
+continuation for ordinary and Canvas results. Only a continuing path delivers a
+result; incomplete expansion and unknown behavior preserve continuation. The
+small effect-free whitelist and structural proof do not exempt whole packages,
+ordinary return types or unavailable bodies. Constructor delegation remains a
+symbolic call; unsupported stored initialization stays a named boundary.
+
+Ordinary calls and structural omission share the same eligibility decision.
+Equality, hashing collection construction, and error-message conversion require
+a scalar type proof (or a statically empty collection); otherwise they report a
+localized implicit-callback boundary. Lists/arrays retain their callback-free
+creation behavior. Bound references evaluate receivers, while lambda and
+reference bodies remain deferred. This does not interpret arbitrary callbacks
+or prove general exception safety.
+
+DSL receivers bind the entry Canvas to invocation-local value references before
+body evaluation. Captures retain that Canvas across nested builders/providers;
+a provider's own receiver binds its construction layer without reconstructing it.
+Stable Tile properties require a top-level immutable declaration with a default
+getter and supported Tile initializer. Custom getters retain evaluated effects
+but yield unknown Tile provenance. Binary references require a proven stable
+Tile export from the selected producer summary; a top-level val alone is no proof.

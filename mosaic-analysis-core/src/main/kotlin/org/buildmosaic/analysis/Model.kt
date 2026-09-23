@@ -1,5 +1,7 @@
 package org.buildmosaic.analysis
 
+import com.fasterxml.jackson.annotation.JsonTypeInfo
+
 /** A stable source location supplied by a future extractor or a hand-authored fixture. */
 data class SourceLocation(
   val owner: String,
@@ -15,6 +17,7 @@ enum class EvidenceKind {
   EXTERNAL_ASSUMPTION,
 }
 
+@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface Fact<out T> {
   data class Known<T>(
     val value: T,
@@ -46,6 +49,7 @@ data class ContractParameter(
   val kind: ParameterKind,
 )
 
+@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface BooleanExpression {
   data class Constant(val value: Boolean) : BooleanExpression
 
@@ -57,6 +61,7 @@ sealed interface BooleanExpression {
   ) : BooleanExpression
 }
 
+@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface Guard {
   data class Constant(val value: Boolean) : Guard
 
@@ -71,6 +76,7 @@ sealed interface Guard {
   ) : Guard
 }
 
+@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface ArgumentExpression {
   data class Canvas(val expression: CanvasExpression) : ArgumentExpression
 
@@ -82,6 +88,7 @@ data class CallArguments(
   val values: Map<ContractParameter, ArgumentExpression> = emptyMap(),
 )
 
+@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface CanvasExpression {
   data object Empty : CanvasExpression
 
@@ -108,6 +115,17 @@ sealed interface CanvasExpression {
     val target: String,
     val arguments: CallArguments = CallArguments(),
     val site: SourceLocation,
+    val callerEffects: List<Effect> = emptyList(),
+    val receiver: DispatchReceiver = DispatchReceiver.None,
+    val virtualDispatch: Boolean = false,
+  ) : CanvasExpression
+
+  /** Read a previously evaluated value in the current invocation; never initializes it. */
+  data class ValueReference(val id: String, val site: SourceLocation) : CanvasExpression
+
+  data class WithEffects(
+    val effects: List<Effect>,
+    val result: CanvasExpression,
   ) : CanvasExpression
 
   /** Behavior captured by the caller, which can still contain ordinary runtime references. */
@@ -147,6 +165,7 @@ data class UnknownRegistration(
   val site: SourceLocation,
 )
 
+@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface CaptureOrigin {
   val declaration: String
   val artifact: String
@@ -164,10 +183,17 @@ sealed interface CaptureOrigin {
   ) : CaptureOrigin
 }
 
+@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface TileReference {
   data class Stable(
     val contractId: String,
     val receiverId: String? = null,
+  ) : TileReference
+
+  /** A binary property is usable only if its producer exported a proven stable Tile contract. */
+  data class ExportedProperty(
+    val contractId: String,
+    val site: SourceLocation,
   ) : TileReference
 
   data class Alias(val reference: TileReference) : TileReference
@@ -202,6 +228,19 @@ enum class MultiTileExecution {
   UNKNOWN,
 }
 
+@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
+sealed interface DispatchReceiver {
+  data object None : DispatchReceiver
+
+  /** The callee receives the same dispatch object as its caller. */
+  data object Forwarded : DispatchReceiver
+
+  data class Concrete(val type: String) : DispatchReceiver
+
+  data class Unknown(val reason: String) : DispatchReceiver
+}
+
+@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface Effect {
   val id: String
   val site: SourceLocation
@@ -234,6 +273,8 @@ sealed interface Effect {
     val target: String,
     val arguments: CallArguments = CallArguments(),
     override val site: SourceLocation,
+    val receiver: DispatchReceiver = DispatchReceiver.None,
+    val virtualDispatch: Boolean = false,
   ) : Effect
 
   data class Branch(
@@ -273,6 +314,7 @@ data class TileContract(
   val effects: List<Effect>,
   val site: SourceLocation,
   val reusable: Boolean = true,
+  val multi: Boolean = false,
 )
 
 data class CallableContract(
@@ -288,6 +330,20 @@ data class ModuleContract(
   val canvases: List<CanvasContract> = emptyList(),
   val tiles: List<TileContract> = emptyList(),
   val callables: List<CallableContract> = emptyList(),
+  val overrides: List<ResolvedOverride> = emptyList(),
+)
+
+data class ResolvedOverride(
+  val receiverType: String,
+  val baseId: String,
+  val implementationId: String,
+  val slots: List<OverrideSlot> = emptyList(),
+)
+
+data class OverrideSlot(
+  val base: ContractParameter,
+  val implementation: ContractParameter,
+  val position: Int,
 )
 
 data class SelectedRoot(
