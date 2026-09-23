@@ -1076,17 +1076,28 @@ class MosaicIrExtractor(
         override fun visitElement(element: IrElement) {
           if (element is IrGetValue && element.symbol !in local) {
             val value = outerValues[element.symbol]
-            val capabilityType = isCapabilityType(element.type) || isCallableType(element.type)
-            val capabilityValue = value?.canvas != null || value?.mosaic != null || value?.tile != null || value?.callable == true
-            if (capabilityType || capabilityValue) {
-              reason = element.type.classFqName?.asString() ?: "capability value"
-            }
+            reason = unsupportedCaptureReason(element.type, value) ?: reason
           }
           element.acceptChildrenVoid(this)
         }
       },
     )
     return reason
+  }
+
+  private fun unsupportedCaptureReason(
+    type: IrType,
+    value: Value?,
+  ): String? {
+    if (isKeyType(type)) {
+      return when (value?.key) {
+        is Fact.Known, is Fact.ExportedKey -> null
+        else -> "CanvasKey value provenance is unavailable"
+      }
+    }
+    val capabilityType = isCapabilityType(type) || isCallableType(type)
+    val capabilityValue = value?.canvas != null || value?.mosaic != null || value?.tile != null || value?.callable == true
+    return if (capabilityType || capabilityValue) type.classFqName?.asString() ?: "capability value" else null
   }
 
   private fun canvasParameters(
