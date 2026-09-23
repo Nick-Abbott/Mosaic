@@ -1,10 +1,10 @@
-# Mosaic Gradle analysis prototype
+# Mosaic Gradle analysis plugin
 
-This unpublished plugin supports pure Kotlin/JVM `main` sources under
-`src/main/kotlin` with Kotlin Gradle plugin and compiler 2.2.10. Its provisional ID is
-`org.buildmosaic.analysis`. The plugin does not apply Kotlin or add Mosaic
-runtime dependencies. In this repository's binary integration test the plugin
-is supplied through Gradle TestKit; there is no published marker yet.
+The `org.buildmosaic.analysis` plugin supports pure Kotlin/JVM `main` sources
+under `src/main/kotlin` with Kotlin Gradle plugin and compiler **2.2.10 only**.
+It is build tooling: it does not apply Kotlin or add Mosaic application runtime
+dependencies. Add Maven Central to plugin and dependency repositories. Once a
+Mosaic release containing the analysis artifacts is available, install it with:
 
 ```kotlin
 import org.buildmosaic.gradle.MosaicAnalysisEnforcement
@@ -12,11 +12,10 @@ import org.buildmosaic.gradle.MosaicAnalysisRole
 
 plugins {
   kotlin("jvm") version "2.2.10"
-  id("org.buildmosaic.analysis")
+  id("org.buildmosaic.analysis") version "<mosaic-version>"
 }
 
 mosaicAnalysis {
-  compilerPluginJar.set(file("/path/to/mosaic-compiler-plugin-0.2.0.jar"))
   role = MosaicAnalysisRole.APPLICATION
   enforcement = MosaicAnalysisEnforcement.STANDARD
   roots.add("app.entry()")
@@ -30,10 +29,26 @@ summary in their JAR:
 
 ```kotlin
 mosaicAnalysis {
-  compilerPluginJar.set(file("/path/to/mosaic-compiler-plugin-0.2.0.jar"))
   role = MosaicAnalysisRole.LIBRARY
 }
 ```
+
+The Gradle plugin resolves the same-version `mosaic-compiler-plugin` artifact
+automatically. No compiler JAR path or application dependency is needed.
+
+## Publication
+
+The release publishes `org.buildmosaic:mosaic-analysis-core`,
+`org.buildmosaic:mosaic-compiler-plugin`, and
+`org.buildmosaic:mosaic-gradle-plugin` to Maven Central at the same Mosaic
+version. Gradle generates the `org.buildmosaic.analysis` plugin marker. The
+compiler plugin is a self-contained artifact for the separate compiler process;
+analysis-core and the compiler plugin are implementation support artifacts,
+not ordinary application dependencies or BOM entries. Publish and make the
+Central artifacts available before running `:mosaic-gradle-plugin:publishPlugins`
+for the Gradle Plugin Portal. The root `releaseToMavenCentral` task includes all
+three analysis publications. Local installation tests use a temporary Maven
+repository and do not run a remote publication task.
 
 Applications also export contracts. A library with roots is contradictory and
 fails with a configuration error.
@@ -94,4 +109,4 @@ the plugin without Kotlin/JVM fails during project configuration. Android,
 multiplatform, test sources, framework lifecycle callbacks, and arbitrary virtual
 dispatch remain unsupported. A virtual call with an unresolved receiver is
 UNVERIFIED. The plugin ID, extension, tasks, v1.1 schema, and report format are
-provisional; none is published or included in the BOM.
+provisional. The analysis tooling is not included in the BOM.

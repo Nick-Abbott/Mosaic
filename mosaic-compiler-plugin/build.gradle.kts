@@ -26,6 +26,7 @@ description = "Experimental Kotlin IR extraction for Mosaic"
 plugins {
   id("kotlin.convention")
   id("quality.convention")
+  id("library.convention")
 }
 
 dependencies {
@@ -37,7 +38,10 @@ dependencies {
 }
 
 tasks.jar {
-  duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+  dependsOn(configurations.runtimeClasspath)
+  duplicatesStrategy = DuplicatesStrategy.FAIL
+  exclude("META-INF/versions/**/module-info.class")
+  manifest.attributes("Implementation-Version" to project.version.toString())
   from({
     configurations.runtimeClasspath.get().filter { it.extension == "jar" }.map { zipTree(it) }
   })

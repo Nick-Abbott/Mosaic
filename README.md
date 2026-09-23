@@ -50,6 +50,10 @@ dependencies {
 Mosaic uses ordinary library dependencies; Tile registration plugins and
 processors are not required.
 
+For optional Kotlin/JVM contract analysis, see the
+[analysis Gradle plugin](mosaic-gradle-plugin/README.md). It uses a separate
+build-tooling installation and currently supports Kotlin 2.2.10 only.
+
 ### **Your First Tile**
 
 ```kotlin

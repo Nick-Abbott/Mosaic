@@ -1,6 +1,6 @@
 # Mosaic compiler extraction prototype
 
-This unpublished module is a read-only Kotlin 2.2.10 K2 compiler plugin. It uses
+This published build-tooling module is a read-only Kotlin 2.2.10 K2 compiler plugin. It uses
 `CompilerPluginRegistrar` and `IrGenerationExtension` before IR lowering. It
 does not transform Kotlin or run Mosaic code. A separate full compiler invocation
 emits one complete main-source-set summary; ordinary `compileKotlin` does not
@@ -57,7 +57,9 @@ Only analysis-core applies the Kotlin serialization compiler plugin to generate
 the serializers. The packaged compiler plugin includes the serialization
 runtime through analysis-core; consuming projects do not apply that compiler
 plugin. The compiler option names and symbol-locator strategy remain internal
-and provisional. This module is not published or included in the BOM.
+and provisional. This module is resolved automatically by the same-version
+Mosaic Gradle analysis plugin; it is not an application runtime dependency or
+included in the BOM.
 
 ## Test placement
 

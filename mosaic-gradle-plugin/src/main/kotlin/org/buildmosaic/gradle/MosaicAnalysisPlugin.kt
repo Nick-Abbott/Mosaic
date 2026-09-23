@@ -4,7 +4,6 @@ import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.artifacts.Configuration
-import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.api.provider.ListProperty
@@ -14,6 +13,7 @@ import org.gradle.api.tasks.bundling.Jar
 import org.gradle.jvm.toolchain.JavaToolchainService
 import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
+import java.util.Properties
 import javax.inject.Inject
 
 abstract class MosaicAnalysisExtension
@@ -24,7 +24,6 @@ abstract class MosaicAnalysisExtension
       objects.property(MosaicAnalysisRole::class.java).convention(MosaicAnalysisRole.APPLICATION)
     val enforcement: Property<MosaicAnalysisEnforcement> =
       objects.property(MosaicAnalysisEnforcement::class.java).convention(MosaicAnalysisEnforcement.STANDARD)
-    val compilerPluginJar: RegularFileProperty = objects.fileProperty()
   }
 
 enum class MosaicAnalysisRole {
@@ -40,6 +39,7 @@ enum class MosaicAnalysisEnforcement {
 class MosaicAnalysisPlugin : Plugin<Project> {
   override fun apply(project: Project) {
     val extension = project.extensions.create("mosaicAnalysis", MosaicAnalysisExtension::class.java)
+    val mosaicVersion = installedMosaicVersion()
     val compilerConfiguration =
       project.configurations.create("mosaicAnalysisCompiler") {
         it.isVisible = false
@@ -47,23 +47,46 @@ class MosaicAnalysisPlugin : Plugin<Project> {
         it.isCanBeResolved = true
       }
     project.dependencies.add(compilerConfiguration.name, "org.jetbrains.kotlin:kotlin-compiler-embeddable:2.2.10")
+    val compilerPluginConfiguration =
+      project.configurations.create("mosaicAnalysisCompilerPlugin") {
+        it.isVisible = false
+        it.isCanBeConsumed = false
+        it.isCanBeResolved = true
+        it.isTransitive = false
+      }
+    project.dependencies.add(
+      compilerPluginConfiguration.name,
+      "org.buildmosaic:mosaic-compiler-plugin:$mosaicVersion",
+    )
     project.afterEvaluate {
       if (!project.plugins.hasPlugin("org.jetbrains.kotlin.jvm")) {
         throw GradleException("Mosaic analysis prototype requires a pure Kotlin/JVM project")
       }
     }
     project.plugins.withId("org.jetbrains.kotlin.jvm") {
-      registerMain(project, extension, compilerConfiguration)
+      registerMain(project, extension, compilerConfiguration, compilerPluginConfiguration, mosaicVersion)
     }
+  }
+
+  private fun installedMosaicVersion(): String {
+    val stream =
+      javaClass.getResourceAsStream("version.properties")
+        ?: throw GradleException("Mosaic analysis plugin is missing its generated version metadata")
+    val properties = Properties().apply { stream.use(::load) }
+    return properties.getProperty("version")?.takeIf(String::isNotBlank)
+      ?: throw GradleException("Mosaic analysis plugin has invalid version metadata")
   }
 
   private fun registerMain(
     project: Project,
     extension: MosaicAnalysisExtension,
     compilerConfiguration: Configuration,
+    compilerPluginConfiguration: Configuration,
+    mosaicVersion: String,
   ) {
     val compile = project.tasks.named("compileKotlin", KotlinJvmCompile::class.java)
-    val extract = registerExtraction(project, extension, compilerConfiguration, compile)
+    val extract =
+      registerExtraction(project, compilerConfiguration, compilerPluginConfiguration, mosaicVersion, compile)
     project.tasks.named("jar", Jar::class.java) { jar ->
       jar.dependsOn(extract)
       jar.from(extract.flatMap { it.summaryFile }) {
@@ -92,8 +115,9 @@ class MosaicAnalysisPlugin : Plugin<Project> {
 
   private fun registerExtraction(
     project: Project,
-    extension: MosaicAnalysisExtension,
     compilerConfiguration: Configuration,
+    compilerPluginConfiguration: Configuration,
+    mosaicVersion: String,
     compile: TaskProvider<KotlinJvmCompile>,
   ): TaskProvider<ExtractMosaicTask> {
     val kotlinPluginVersion =
@@ -114,7 +138,10 @@ class MosaicAnalysisPlugin : Plugin<Project> {
       task.compilerClasspath.from(compilerConfiguration)
       task.additionalCompilerPlugins.from(compile.map { it.pluginClasspath })
       task.friendPaths.from(compile.map { it.friendPaths })
-      task.compilerPluginJar.set(extension.compilerPluginJar)
+      task.compilerPluginJar.set(
+        project.layout.file(compilerPluginConfiguration.elements.map { elements -> elements.single().asFile }),
+      )
+      task.mosaicVersion.set(mosaicVersion)
       task.moduleId.set(project.provider { project.group.toString() + ":" + project.name })
       task.kotlinModuleName.set(compile.flatMap { it.compilerOptions.moduleName })
       task.jvmTarget.set(compile.flatMap { it.compilerOptions.jvmTarget }.map { it.target })

@@ -4,6 +4,7 @@ plugins {
   id("kotlin.convention")
   id("quality.convention")
   id("testing.convention")
+  id("library.convention")
   alias(libs.plugins.kotlin.serialization)
 }
 
