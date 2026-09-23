@@ -1,65 +1,44 @@
 package org.buildmosaic.analysis
 
-import com.fasterxml.jackson.core.JsonGenerator
-import com.fasterxml.jackson.core.JsonProcessingException
-import com.fasterxml.jackson.databind.DeserializationContext
-import com.fasterxml.jackson.databind.JsonSerializer
-import com.fasterxml.jackson.databind.KeyDeserializer
-import com.fasterxml.jackson.databind.MapperFeature
-import com.fasterxml.jackson.databind.SerializerProvider
-import com.fasterxml.jackson.databind.module.SimpleModule
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import org.buildmosaic.analysis.metadata.WireEnvelope
+import org.buildmosaic.analysis.metadata.WireLocator
+import org.buildmosaic.analysis.metadata.WirePayload
+import org.buildmosaic.analysis.metadata.toModel
+import org.buildmosaic.analysis.metadata.toWire
 import java.security.MessageDigest
 
-/** Internal provisional JAR resource. A missing or invalid resource is never a complete contract. */
+/** Internal JAR resource. Compatibility is decided by the header, not this path. */
 const val SUMMARY_PATH = "META-INF/mosaic-analysis/v1/summary.json"
 
 data class SummaryMetadata(
-  val schemaMajor: Int = 1,
-  val schemaMinor: Int = 1,
-  val toolVersion: String = "prototype-7",
-  val kotlinCompilerVersion: String = "2.2.10",
+  val formatVersion: Int,
+  val semanticsVersion: String,
+  val toolVersion: String,
+  val kotlinCompilerVersion: String,
   val moduleId: String,
-  val sourceSet: String = "main",
-  val complete: Boolean = true,
+  val sourceSet: String,
+  val complete: Boolean,
   val payloadHash: String,
   val module: ModuleContract,
-  val limitations: List<String> = emptyList(),
-  val binaryLocators: Map<String, String> = emptyMap(),
+  val limitations: List<String>,
+  val binaryLocators: Map<String, String>,
 )
 
 object SummaryCodec {
-  private val mapper =
-    jacksonObjectMapper()
-      .registerModule(
-        SimpleModule().apply {
-          addKeySerializer(
-            ContractParameter::class.java,
-            object : JsonSerializer<ContractParameter>() {
-              override fun serialize(
-                value: ContractParameter,
-                gen: JsonGenerator,
-                serializers: SerializerProvider,
-              ) {
-                gen.writeFieldName(listOf(value.owner, value.name, value.kind.name).joinToString("\u001f"))
-              }
-            },
-          )
-          addKeyDeserializer(
-            ContractParameter::class.java,
-            object : KeyDeserializer() {
-              override fun deserializeKey(
-                key: String,
-                ctxt: DeserializationContext,
-              ): ContractParameter {
-                val parts = key.split("\u001f")
-                require(parts.size == 3) { "Malformed contract parameter key" }
-                return ContractParameter(parts[0], parts[1], ParameterKind.valueOf(parts[2]))
-              }
-            },
-          )
-        },
-      ).enable(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY)
+  private const val FORMAT_VERSION = 2
+  private const val SEMANTICS_VERSION = "analysis-contract-1"
+  private const val TOOL_VERSION = "prototype-8"
+  private const val COMPILER_VERSION = "2.2.10"
+  private val json =
+    Json {
+      classDiscriminator = "kind"
+      encodeDefaults = true
+      explicitNulls = true
+    }
 
   fun encode(
     module: ModuleContract,
@@ -69,53 +48,64 @@ object SummaryCodec {
     binaryLocators: Map<String, String> = emptyMap(),
   ): ByteArray {
     require(module.id == moduleId) { "Module identity mismatch" }
-    val canonical =
-      module.copy(
-        canvases = module.canvases.sortedBy { it.id },
-        tiles = module.tiles.sortedBy { it.id },
-        callables = module.callables.sortedBy { it.id },
+    require(moduleId.isNotBlank() && sourceSet == "main") { "Unsupported Mosaic module or source-set identity" }
+    val payload =
+      WirePayload(
+        module.toWire(),
+        limitations.distinct().sorted(),
+        binaryLocators.toSortedMap().map { (id, locator) -> WireLocator(id, locator) },
       )
-    val hash = sha256(mapper.writeValueAsBytes(canonical))
-    val summary =
-      SummaryMetadata(
-        moduleId = moduleId,
-        sourceSet = sourceSet,
-        payloadHash = hash,
-        module = canonical,
-        limitations = limitations.distinct().sorted(),
-        binaryLocators = binaryLocators.toSortedMap(),
+    val envelope =
+      WireEnvelope(
+        FORMAT_VERSION, SEMANTICS_VERSION, TOOL_VERSION, COMPILER_VERSION, moduleId, sourceSet, true,
+        sha256(
+          json.encodeToString(payload).toByteArray(Charsets.UTF_8),
+        ),
+        payload,
       )
-    return mapper.writeValueAsBytes(summary) + '\n'.code.toByte()
+    return (json.encodeToString(envelope) + "\n").toByteArray(Charsets.UTF_8)
   }
 
   fun decode(bytes: ByteArray): SummaryMetadata {
-    val summary =
-      try {
-        val document = mapper.readTree(bytes)
-        require(document != null && document.isObject) { "Missing Mosaic summary object" }
-        val required =
-          listOf(
-            "schemaMajor", "schemaMinor", "toolVersion", "kotlinCompilerVersion", "moduleId", "sourceSet",
-            "complete", "payloadHash", "module",
-          )
-        require(required.all { document.hasNonNull(it) }) { "Incomplete Mosaic summary header" }
-        mapper.treeToValue(document, SummaryMetadata::class.java)
-      } catch (error: JsonProcessingException) {
-        throw IllegalArgumentException("Malformed Mosaic summary", error)
+    try {
+      val raw = bytes.toString(Charsets.UTF_8)
+      require(raw.toByteArray(Charsets.UTF_8).contentEquals(bytes)) { "Malformed Mosaic summary UTF-8" }
+      val element = json.parseToJsonElement(raw)
+      require(element is JsonObject) { "Missing Mosaic summary object" }
+      require("schemaMajor" !in element && "schemaMinor" !in element) {
+        "Unpublished prototype-7 Mosaic summary is unsupported; rebuild its producer"
       }
-    require(summary.schemaMajor == 1) { "Unsupported Mosaic summary schema major ${summary.schemaMajor}" }
-    require(summary.schemaMinor == 1) { "Unsupported Mosaic summary schema minor ${summary.schemaMinor}" }
-    require(summary.toolVersion == "prototype-7") { "Unsupported Mosaic extractor version ${summary.toolVersion}" }
-    require(summary.complete) { "Partial Mosaic summary cannot be used as complete" }
-    require(summary.moduleId == summary.module.id) { "Module identity mismatch" }
-    require(summary.sourceSet == "main") { "Unsupported source set identity ${summary.sourceSet}" }
-    require(
-      summary.kotlinCompilerVersion == "2.2.10",
-    ) { "Unsupported Kotlin compiler ${summary.kotlinCompilerVersion}" }
-    require(summary.payloadHash == sha256(mapper.writeValueAsBytes(summary.module))) {
-      "Mosaic summary payload hash mismatch"
+      val envelope = json.decodeFromJsonElement(WireEnvelope.serializer(), element)
+      require(
+        envelope.formatVersion == FORMAT_VERSION,
+      ) { "Unsupported Mosaic metadata format ${envelope.formatVersion}" }
+      require(envelope.semanticsVersion == SEMANTICS_VERSION) {
+        "Unsupported Mosaic analyzer semantics ${envelope.semanticsVersion}"
+      }
+      require(envelope.kotlinCompilerVersion == COMPILER_VERSION) {
+        "Unsupported Kotlin compiler ${envelope.kotlinCompilerVersion}"
+      }
+      require(envelope.toolVersion.isNotBlank()) { "Missing Mosaic producer version" }
+      require(envelope.complete) { "Partial Mosaic summary cannot be used as complete" }
+      require(envelope.moduleId.isNotBlank() && envelope.moduleId == envelope.payload.module.id) {
+        "Module identity mismatch"
+      }
+      require(envelope.sourceSet == "main") { "Unsupported source set identity ${envelope.sourceSet}" }
+      val hash = sha256(json.encodeToString(envelope.payload).toByteArray(Charsets.UTF_8))
+      require(envelope.payloadHash == hash) { "Mosaic summary payload hash mismatch" }
+      val locators = linkedMapOf<String, String>()
+      envelope.payload.binaryLocators.forEach {
+        require(!locators.containsKey(it.id)) { "Duplicate binary locator ${it.id}" }
+        locators[it.id] = it.locator
+      }
+      return SummaryMetadata(
+        envelope.formatVersion, envelope.semanticsVersion, envelope.toolVersion,
+        envelope.kotlinCompilerVersion, envelope.moduleId, envelope.sourceSet, envelope.complete,
+        envelope.payloadHash, envelope.payload.module.toModel(), envelope.payload.limitations, locators,
+      )
+    } catch (error: SerializationException) {
+      throw IllegalArgumentException("Malformed Mosaic summary: ${error.message}", error)
     }
-    return summary
   }
 
   private fun sha256(bytes: ByteArray): String =

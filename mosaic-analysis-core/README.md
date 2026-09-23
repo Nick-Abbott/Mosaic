@@ -73,9 +73,31 @@ Reusable contracts are only reported as deferred until a selected root reaches
 and specializes them. Public visibility does not select a root, and selecting no
 roots produces an `UNCONFIGURED` report.
 
-The internal `SummaryCodec` round-trips complete, hashed, provisional v1.1 JSON
-contracts for the compiler and Gradle prototypes. It rejects malformed,
-partial, incompatible-version, or hash-mismatched summaries. This serialization
+## Binary metadata
+
+`SummaryCodec` writes deterministic UTF-8 JSON using generated
+`kotlinx.serialization` serializers and internal, closed wire variants. Each
+variant has a stable `kind` tag; metadata contains no JVM class names. The
+evaluator model has no serialization annotations. The wire payload preserves
+effects, arguments, receivers, captures, provenance, overrides, and binary
+locators. Unordered declarations, limitations, and locator entries are sorted;
+effect and argument order is retained. Arguments are ordered parameter/value
+entries, and duplicate parameters are rejected.
+
+Format 2 has separate `formatVersion`, `semanticsVersion`, `toolVersion`,
+`kotlinCompilerVersion`, `moduleId`, `sourceSet`, and `complete` header fields.
+The current reader accepts format 2, `analysis-contract-1`, Kotlin 2.2.10,
+and complete `main` source-set snapshots. The producer version is recorded
+separately from semantic compatibility. `payloadHash` is lowercase SHA-256 of
+the canonical compact UTF-8 JSON serialization of the entire `payload` object
+(module, limitations, and binary locators), without the envelope or hash field.
+It detects corruption; it does not authenticate a producer. Missing required
+fields, unknown kinds, partial output, and checksum mismatches fail decoding.
+
+The resource remains at `META-INF/mosaic-analysis/v1/summary.json` for
+discovery. Unpublished prototype-7 snapshots must be rebuilt; the reader does
+not infer compatibility from the resource path. This checksum is not a cache
+fingerprint, and extraction and verification still run as before. Serialization
 remains independent of Kotlin compiler and Gradle APIs.
 
 The model intentionally supports only the expressions needed by the semantic

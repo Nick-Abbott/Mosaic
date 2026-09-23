@@ -31,7 +31,6 @@ plugins {
 dependencies {
   compileOnly("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.2.10")
   implementation(project(":mosaic-analysis-core"))
-  implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.19.1")
   testImplementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.2.10")
   testImplementation(project(":mosaic-core"))
   testImplementation(kotlin("test"))

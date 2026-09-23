@@ -1,7 +1,5 @@
 package org.buildmosaic.analysis
 
-import com.fasterxml.jackson.annotation.JsonTypeInfo
-
 /** A stable source location supplied by a future extractor or a hand-authored fixture. */
 data class SourceLocation(
   val owner: String,
@@ -17,7 +15,6 @@ enum class EvidenceKind {
   EXTERNAL_ASSUMPTION,
 }
 
-@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface Fact<out T> {
   data class Known<T>(
     val value: T,
@@ -49,7 +46,6 @@ data class ContractParameter(
   val kind: ParameterKind,
 )
 
-@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface BooleanExpression {
   data class Constant(val value: Boolean) : BooleanExpression
 
@@ -61,7 +57,6 @@ sealed interface BooleanExpression {
   ) : BooleanExpression
 }
 
-@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface Guard {
   data class Constant(val value: Boolean) : Guard
 
@@ -76,7 +71,6 @@ sealed interface Guard {
   ) : Guard
 }
 
-@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface ArgumentExpression {
   data class Canvas(val expression: CanvasExpression) : ArgumentExpression
 
@@ -88,7 +82,6 @@ data class CallArguments(
   val values: Map<ContractParameter, ArgumentExpression> = emptyMap(),
 )
 
-@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface CanvasExpression {
   data object Empty : CanvasExpression
 
@@ -165,7 +158,6 @@ data class UnknownRegistration(
   val site: SourceLocation,
 )
 
-@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface CaptureOrigin {
   val declaration: String
   val artifact: String
@@ -183,7 +175,6 @@ sealed interface CaptureOrigin {
   ) : CaptureOrigin
 }
 
-@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface TileReference {
   data class Stable(
     val contractId: String,
@@ -228,7 +219,6 @@ enum class MultiTileExecution {
   UNKNOWN,
 }
 
-@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface DispatchReceiver {
   data object None : DispatchReceiver
 
@@ -240,7 +230,6 @@ sealed interface DispatchReceiver {
   data class Unknown(val reason: String) : DispatchReceiver
 }
 
-@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface Effect {
   val id: String
   val site: SourceLocation
