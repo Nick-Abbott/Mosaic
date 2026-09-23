@@ -79,7 +79,7 @@ class MosaicAnalysisPlugin : KotlinCompilerPluginSupportPlugin {
     mosaicVersion = installedMosaicVersion()
     project.afterEvaluate {
       if (!project.plugins.hasPlugin("org.jetbrains.kotlin.jvm")) {
-        throw GradleException("Mosaic analysis prototype requires a pure Kotlin/JVM project")
+        throw GradleException("Mosaic analysis requires a pure Kotlin/JVM project")
       }
     }
     project.plugins.withId("org.jetbrains.kotlin.jvm") {

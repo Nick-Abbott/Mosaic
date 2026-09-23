@@ -1,5 +1,7 @@
 # Mosaic Gradle analysis plugin
 
+## Installation
+
 The `org.buildmosaic.analysis` plugin supports pure Kotlin/JVM `main` sources
 under `src/main/kotlin` with Kotlin Gradle plugin and compiler **2.2.10 only**.
 It is build tooling: it does not apply Kotlin or add Mosaic application runtime
@@ -22,6 +24,8 @@ mosaicAnalysis {
 }
 ```
 
+## Roles and enforcement
+
 `role` and `enforcement` are independent typed settings. The defaults are
 `APPLICATION` and `STANDARD`. Applications must name one or more explicit
 callable roots. Libraries can omit roots and still export the same complete
@@ -39,23 +43,10 @@ compilation. No compiler JAR path or application dependency is needed. The
 compiler artifact is self-contained; its publication does not add a second
 analysis-core or serialization runtime to the compiler plugin classpath.
 
-## Publication
-
-The release publishes `org.buildmosaic:mosaic-analysis-core`,
-`org.buildmosaic:mosaic-compiler-plugin`, and
-`org.buildmosaic:mosaic-gradle-plugin` to Maven Central at the same Mosaic
-version. Gradle generates the `org.buildmosaic.analysis` plugin marker. The
-compiler plugin is a self-contained artifact loaded by the normal Kotlin compiler;
-analysis-core and the compiler plugin are implementation support artifacts,
-not ordinary application dependencies or BOM entries. For a release, publish
-the three support/implementation artifacts with `releaseToMavenCentral`, wait
-until they resolve from Maven Central, then validate and publish the Gradle
-plugin through the Plugin Portal with `:mosaic-gradle-plugin:publishPlugins`.
-Local installation tests use a temporary Maven repository and do not run a
-remote publication task.
-
 Applications also export contracts. A library with roots is contradictory and
 fails with a configuration error.
+
+## Build and task architecture
 
 `compileKotlin` runs Mosaic’s IR extractor inside the normal Kotlin/JVM `main`
 compilation. There is no second Kotlin compiler process in supported production
@@ -81,6 +72,8 @@ malformed shard fails assembly.
 summary and selected dependency summaries, writes
 `build/reports/mosaic-analysis/main.txt`, and is aggregated by `verifyMosaic`
 and `check`.
+
+## Incremental and cache behavior
 
 Dependency contract invalidation remains separate from source compilation.
 Verification reads the raw summary resource copied by a cacheable per-JAR
@@ -128,6 +121,8 @@ format 3 with `analysis-contract-2`; summaries from older extractor versions
 are rejected because they may have omitted accessor or constructor-default
 effects or conflated array keys.
 
+## Supported project boundary
+
 Only the tested default Kotlin/JVM main layout is supported. The assembly
 task validates the configured Java toolchain against Kotlin’s toolchain. It rejects nonstandard or generated Kotlin source paths, Kotlin scripts,
 mixed Java/Kotlin sources, friend paths, additional compiler plugins, plugin
@@ -138,3 +133,18 @@ multiplatform, test sources, framework lifecycle callbacks, and arbitrary virtua
 dispatch remain unsupported. A virtual call with an unresolved receiver is
 UNVERIFIED. The plugin ID, extension, tasks, format-3 schema, and report format are
 provisional. The analysis tooling is not included in the BOM.
+
+## Publication
+
+The release publishes `org.buildmosaic:mosaic-analysis-core`,
+`org.buildmosaic:mosaic-compiler-plugin`, and
+`org.buildmosaic:mosaic-gradle-plugin` to Maven Central at the same Mosaic
+version. Gradle generates the `org.buildmosaic.analysis` plugin marker. The
+compiler plugin is a self-contained artifact loaded by the normal Kotlin compiler;
+analysis-core and the compiler plugin are implementation support artifacts,
+not ordinary application dependencies or BOM entries. For a release, publish
+the three support/implementation artifacts with `releaseToMavenCentral`, wait
+until they resolve from Maven Central, then validate and publish the Gradle
+plugin through the Plugin Portal with `:mosaic-gradle-plugin:publishPlugins`.
+Local installation tests use a temporary Maven repository and do not run a
+remote publication task.

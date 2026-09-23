@@ -1,6 +1,6 @@
 # Executable scenario index
 
-Frozen before production edits. V = strict VERIFIED, M = exact missing key,
+V = strict VERIFIED, M = exact missing key,
 U = named UNVERIFIED boundary, D = deferred, R = rejected. Analysis concerns
 selected-root Canvas availability, not general exceptions or deadlocks.
 K names refer to analysis-core tests; C/B to compiler tests; G to TestKit.
@@ -102,15 +102,14 @@ not source files; unavailable binary defaults are error-expression stubs. Getter
 bodies cannot suspend, so the Canvas getter prefix probe asserts its actual
 UNVERIFIED Metrics lookup on an unknown returned Canvas, not an invented empty
 Canvas or a generic root failure. Unknown ordinary Canvas-helper arguments are
-no longer rejected solely for their type: their work runs through the same plan.
-The former blanket rejection assertion was corrected; the known missing lookup
-is still required, and harmless ordinary actuals can verify.
+processed by the same call plan: their work remains visible, a known missing
+lookup is required, and harmless actuals can verify.
 
-## Classifier audit (Kotlin 2.2.10, fixed before classifier edits)
+## Classifier boundary (Kotlin 2.2.10)
 
 Both ordinary normalization and structural omission must use the same operation
 proof. Arguments/receivers execute before that proof; callable bodies do not
-execute on reference creation. The following covers the whole existing whitelist
+execute on reference creation. The following covers the whitelist
 and every structural early-return category. New assertions share EC's compilation.
 
 | Classifier category | Evidence / expected outcome and EC roots |
@@ -144,37 +143,11 @@ Function types) and Mosaic extension ownership: `conditionalReferenceEscape`
 and `conditionalExtension` U (control), even when the final callee body is empty.
 These share the normal call boundary checks rather than a separate body shortcut.
 
-Frozen classifier run before production edits: Kotlin 2.2.10, 38 EC assertions,
-16 failures (all incorrectly VERIFIED), 22 passing controls; one shared fixture
-compilation. Both reviewed roots fail at their named assertions, not root lookup.
+## Receiver ownership and stable exports
 
-The C5 reference-escape assertion also checks an immutable alias typed as Any
-(`conditionalReferenceAlias`): reading the resolved binding must retain its
-callable fact without replaying initialization. This equivalence check exposed
-a remaining structural omission during implementation (V before the alias-fact
-fix); it now requires the same control-flow U as the direct reference.
-
-Final focused run: all 38 assertions pass, including the alias equivalence.
-Executed JUnit time was 2.272s before / 2.330s after, one compiler invocation
-each (warm dependencies; single samples, not a speedup claim). The full root
-gate retains 36 compiler invocations and 24 TestKit builds; no fixture added.
-
-Receiver ownership and stable property regressions (same EC compilation):
-`capturedEntry` / `capturedLabelEntry` require missing outer Metrics despite an
-inner registration; `capturedSuppliedEntry` is V with the outer binding's site.
-`capturedOnceEntry` checks one outer provider construction. `nestedFactoryMissing`
-is M; `nestedFactorySupplied` is V and distinguishes the captured factory's
-original layer from the nested provider's own paint layer. `directNeedsEntry`,
-`directNeedsSupplied`, and `stableTileAlias` preserve direct source and alias M/V.
-`computedEntry` is specifically U for computed Tile provenance, with no exported
-initializer Tile contract. `computedWorkEntry` retains both getter and creation
-lookups. The existing binary-default producer/consumer compilation also checks
-stable Tile aliases V, custom getters without stable exports U, and loss of the
-stable export U while retaining callable metadata; no additional builds.
-Before production edits, Kotlin 2.2.10 executed 48 EC assertions (7 failed) and
-2 existing default/binary assertions (1 failed). The failures expose incorrect
-verification, inner-provider provenance, omitted getter work, and an optimistic
-binary export. Direct source, stable aliases, creation work and construction-once
-controls pass already; their expected outcomes remain unchanged.
-After the ownership/export corrections, all 48 EC and both default/binary
-assertions pass. The full compiler suite retains 36 compiler invocations.
+`ExecutionCatalogTest` covers captured entry Canvas, nested factory/provider
+ownership, direct and supplied lookups, stable Tile aliases, and unknown computed
+Tile provenance. Its `computedWorkEntry` keeps getter and creation argument
+work. The binary-default fixture covers stable Tile exports, custom getter
+unknowns, and missing producer exports. These share existing compiler
+compilations.
