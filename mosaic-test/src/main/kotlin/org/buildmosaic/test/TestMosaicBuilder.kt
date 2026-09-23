@@ -37,7 +37,7 @@ import kotlin.reflect.KClass
  *
  * ### Basic Usage
  * ```kotlin
- * val testMosaic = TestMosaicBuilder()
+ * val testMosaic = TestMosaicBuilder(this)
  *   .withMockTile(MyTile, "test data")
  *   .withFailedTile(OtherTile, RuntimeException("Test error"))
  *   .withDelayedTile(SlowTile, "delayed data", 1000) // 1 second delay
@@ -46,7 +46,7 @@ import kotlin.reflect.KClass
  *
  * ### MultiTile Usage
  * ```kotlin
- * val testMosaic = TestMosaicBuilder()
+ * val testMosaic = TestMosaicBuilder(this)
  *   .withMockTile(UserTile, mapOf("user1" to user1, "user2" to user2))
  *   .withCustomTile(ProfileTile) { keys ->
  *     // Custom logic based on requested keys
@@ -72,7 +72,7 @@ class TestMosaicBuilder(testContext: TestScope) {
    * @return This builder for method chaining
    *
    * ```kotlin
-   * val testMosaic = TestMosaicBuilder()
+   * val testMosaic = TestMosaicBuilder(this)
    *   .withMockTile(MyTile, "test data")
    *   .build()
    * ```
@@ -93,7 +93,7 @@ class TestMosaicBuilder(testContext: TestScope) {
    * @return This builder for method chaining
    *
    * ```kotlin
-   * val testMosaic = TestMosaicBuilder()
+   * val testMosaic = TestMosaicBuilder(this)
    *   .withFailedTile(MyTile, RuntimeException("Test error"))
    *   .build()
    * ```
@@ -116,7 +116,7 @@ class TestMosaicBuilder(testContext: TestScope) {
    * @return This builder for method chaining
    *
    * ```kotlin
-   * val testMosaic = TestMosaicBuilder()
+   * val testMosaic = TestMosaicBuilder(this)
    *   .withDelayedTile(MyTile, "delayed data", 1000) // 1 second delay
    *   .build()
    * ```
@@ -143,7 +143,7 @@ class TestMosaicBuilder(testContext: TestScope) {
    * @return This builder for method chaining
    *
    * ```kotlin
-   * val testMosaic = TestMosaicBuilder()
+   * val testMosaic = TestMosaicBuilder(this)
    *   .withCustomTile(MyTile) {
    *     // Custom logic here
    *     if (condition) "result1" else "result2"
@@ -169,7 +169,7 @@ class TestMosaicBuilder(testContext: TestScope) {
    * @return This builder for method chaining
    *
    * ```kotlin
-   * val testMosaic = TestMosaicBuilder()
+   * val testMosaic = TestMosaicBuilder(this)
    *   .withMockTile(UserTile, mapOf(
    *     "user1" to User("user1"),
    *     "user2" to User("user2")
@@ -195,8 +195,8 @@ class TestMosaicBuilder(testContext: TestScope) {
    * @return This builder for method chaining
    *
    * ```kotlin
-   * val testMosaic = TestMosaicBuilder()
-   *   .withFailedTile(UserTile::class, RuntimeException("User not found"))
+   * val testMosaic = TestMosaicBuilder(this)
+   *   .withFailedTile(UserTile, RuntimeException("User not found"))
    *   .build()
    * ```
    */
@@ -220,7 +220,7 @@ class TestMosaicBuilder(testContext: TestScope) {
    * @return This builder for method chaining
    *
    * ```kotlin
-   * val testMosaic = TestMosaicBuilder()
+   * val testMosaic = TestMosaicBuilder(this)
    *   .withDelayedTile(UserTile, mapOf("user1" to User("user1")), 500)
    *   .build()
    * ```
@@ -249,7 +249,7 @@ class TestMosaicBuilder(testContext: TestScope) {
    * @return This builder for method chaining
    *
    * ```kotlin
-   * val testMosaic = TestMosaicBuilder()
+   * val testMosaic = TestMosaicBuilder(this)
    *   .withCustomTile(UserTile) { keys ->
    *     // Custom logic based on requested keys
    *     keys.associateWith { key ->
@@ -278,7 +278,7 @@ class TestMosaicBuilder(testContext: TestScope) {
    * @return This builder for method chaining
    *
    * ```kotlin
-   * val testMosaic = TestMosaicBuilder()
+   * val testMosaic = TestMosaicBuilder(this)
    *   .withCanvasSource(User::class, User("test-user"))
    *   .withMockTile(MyTile, "test data")
    *   .build()
@@ -299,7 +299,7 @@ class TestMosaicBuilder(testContext: TestScope) {
    * @return This builder for method chaining
    *
    * ```kotlin
-   * val testMosaic = TestMosaicBuilder()
+   * val testMosaic = TestMosaicBuilder(this)
    *   .withCanvasSource(User("test-user"))
    *   .withMockTile(MyTile, "test data")
    *   .build()
@@ -316,7 +316,7 @@ class TestMosaicBuilder(testContext: TestScope) {
    * @return This builder for method chaining
    *
    * ```kotlin
-   * val testMosaic = TestMosaicBuilder()
+   * val testMosaic = TestMosaicBuilder(this)
    *   .withCanvasSource(DatabaseService::class, "primary", primaryDb)
    *   .withCanvasSource(DatabaseService::class, "secondary", secondaryDb)
    *   .build()
@@ -339,7 +339,7 @@ class TestMosaicBuilder(testContext: TestScope) {
    * @return This builder for method chaining
    *
    * ```kotlin
-   * val testMosaic = TestMosaicBuilder()
+   * val testMosaic = TestMosaicBuilder(this)
    *   .withCanvasSource("primary", primaryDb)
    *   .withCanvasSource("secondary", secondaryDb)
    *   .build()
@@ -359,7 +359,7 @@ class TestMosaicBuilder(testContext: TestScope) {
    *
    * ```kotlin
    * val dbKey = CanvasKey(DatabaseService::class, "primary")
-   * val testMosaic = TestMosaicBuilder()
+   * val testMosaic = TestMosaicBuilder(this)
    *   .withCanvasSource(dbKey, primaryDb)
    *   .build()
    * ```
@@ -381,8 +381,8 @@ class TestMosaicBuilder(testContext: TestScope) {
    * @return A new [TestMosaic] instance ready for testing
    *
    * ```kotlin
-   * val testMosaic = TestMosaicBuilder()
-   *   .withMockTile<MyTile>("test data")
+   * val testMosaic = TestMosaicBuilder(this)
+   *   .withMockTile(MyTile, "test data")
    *   .build()
    * ```
    */

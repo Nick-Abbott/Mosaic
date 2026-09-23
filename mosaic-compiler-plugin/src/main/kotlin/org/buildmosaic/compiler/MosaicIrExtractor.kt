@@ -8,7 +8,7 @@ import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import java.io.File
 
 /** Collects affected Kotlin sources during the normal main compilation. */
-class MosaicIrExtractor(
+internal class MosaicIrExtractor(
   private val output: String,
   private val moduleId: String,
   private val sourceRoot: String? = null,

@@ -19,7 +19,7 @@ import java.io.File
 
 /** Phase-zero probe. This is deliberately read-only and records resolved symbols. */
 @OptIn(UnsafeDuringIrConstructionAPI::class)
-class MosaicIrProbe(private val output: String) : IrGenerationExtension {
+internal class MosaicIrProbe(private val output: String) : IrGenerationExtension {
   override fun generate(
     moduleFragment: IrModuleFragment,
     pluginContext: IrPluginContext,

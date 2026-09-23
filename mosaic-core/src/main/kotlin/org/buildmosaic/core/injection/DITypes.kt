@@ -6,7 +6,7 @@ import kotlinx.coroutines.sync.withLock
 /**
  * Base interface for all dependency injection types in Mosaic.
  */
-sealed interface MosaicDI
+internal sealed interface MosaicDI
 
 /**
  * Represents a dependency that hasn't been initialized yet.
@@ -14,7 +14,7 @@ sealed interface MosaicDI
  * Stubs are used during the canvas building phase to defer dependency creation
  * until the canvas is fully constructed and ready to resolve dependencies.
  */
-sealed interface Stub<T : Any> : MosaicDI {
+internal sealed interface Stub<T : Any> : MosaicDI {
   /**
    * Creates the dependency instance using the provided canvas factory.
    */
@@ -31,7 +31,7 @@ sealed interface Stub<T : Any> : MosaicDI {
  *
  * @param ctor The constructor function that creates the dependency instance
  */
-class SingleStub<T : Any>(private val ctor: suspend CanvasFactory.() -> T) : Stub<T> {
+internal class SingleStub<T : Any>(private val ctor: suspend CanvasFactory.() -> T) : Stub<T> {
   private val initLock = Mutex()
 
   @Volatile private lateinit var instance: T
@@ -59,7 +59,7 @@ class SingleStub<T : Any>(private val ctor: suspend CanvasFactory.() -> T) : Stu
 /**
  * Represents a fully initialized dependency that can be retrieved synchronously.
  */
-sealed interface Provider<T : Any> : MosaicDI {
+internal sealed interface Provider<T : Any> : MosaicDI {
   /**
    * Gets the dependency instance.
    */
@@ -71,6 +71,6 @@ sealed interface Provider<T : Any> : MosaicDI {
  *
  * @param instance The singleton instance to provide
  */
-class Single<T : Any>(internal val instance: T) : Provider<T> {
+internal class Single<T : Any>(internal val instance: T) : Provider<T> {
   override fun get() = instance
 }

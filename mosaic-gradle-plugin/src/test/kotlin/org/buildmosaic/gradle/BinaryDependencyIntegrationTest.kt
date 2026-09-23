@@ -32,8 +32,8 @@ class BinaryDependencyIntegrationTest {
   fun `separate binary artifacts verify and body only platform change invalidates application`() {
     val root = Files.createTempDirectory("mosaic-binary-integration").toFile()
     val repository = File(System.getProperty("user.dir")).parentFile
-    val pluginJar = File(repository, "mosaic-compiler-plugin/build/libs/mosaic-compiler-plugin-0.2.0.jar")
-    val coreJar = File(repository, "mosaic-core/build/libs/mosaic-core-0.2.0.jar")
+    val pluginJar = File(repository, "mosaic-compiler-plugin/build/libs/mosaic-compiler-plugin-${mosaicVersion()}.jar")
+    val coreJar = File(repository, "mosaic-core/build/libs/mosaic-core-${mosaicVersion()}.jar")
     assertTrue(pluginJar.isFile, pluginJar.absolutePath)
     assertTrue(coreJar.isFile, coreJar.absolutePath)
     val platform = project(root, "platform", pluginJar, listOf(coreJar), role = "LIBRARY")

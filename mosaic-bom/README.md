@@ -11,12 +11,12 @@ This module provides a Bill of Materials (BOM) for Mosaic, making it easier to m
 plugins {
     // Apply the Mosaic BOM
     id("java")
-    kotlin("jvm") version "1.9.0" // or your preferred Kotlin version
+    kotlin("jvm") version "2.2.10"
 }
 
 dependencies {
-    // Import the BOM (replace VERSION with the desired version)
-    implementation(platform("org.buildmosaic:mosaic-bom:VERSION"))
+    // Import the BOM (replace 0.3.0 with the desired version)
+    implementation(platform("org.buildmosaic:mosaic-bom:0.3.0"))
     
     // Add Mosaic dependencies without version numbers
     implementation("org.buildmosaic:mosaic-core")
@@ -31,12 +31,12 @@ dependencies {
 plugins {
     // Apply the Mosaic BOM
     id 'java'
-    id 'org.jetbrains.kotlin.jvm' version '1.9.0' // or your preferred Kotlin version
+    id 'org.jetbrains.kotlin.jvm' version '2.2.10'
 }
 
 dependencies {
     // Import the BOM
-    implementation platform('org.buildmosaic:mosaic-bom:VERSION')
+    implementation platform('org.buildmosaic:mosaic-bom:0.3.0')
     
     // Add Mosaic dependencies without version numbers
     implementation 'org.buildmosaic:mosaic-core'
@@ -53,7 +53,7 @@ dependencies {
             <dependency>
                 <groupId>org.buildmosaic</groupId>
                 <artifactId>mosaic-bom</artifactId>
-                <version>VERSION</version>
+                <version>0.3.0</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

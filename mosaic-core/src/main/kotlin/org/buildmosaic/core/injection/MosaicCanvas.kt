@@ -42,7 +42,7 @@ class CanvasBuilder internal constructor() {
  * Factory for creating [MosaicCanvas] instances from dependency bindings.
  *
  * This class handles the initialization of all registered dependencies and manages
- * their lifecycle, including automatic cleanup of [AutoCloseable] instances.
+ * their lifecycle, including cleanup of locally owned [AutoCloseable] instances when the canvas is closed.
  *
  * @param bindings Map of dependency keys to their stub implementations
  * @param parent Optional parent canvas for dependency resolution fallback

@@ -19,7 +19,7 @@ class SupportedBoundaryIntegrationTest {
   fun `unsupported production configurations fail before extraction`() {
     val root = Files.createTempDirectory("mosaic-boundary-integration").toFile()
     val repository = File(System.getProperty("user.dir")).parentFile
-    val pluginJar = File(repository, "mosaic-compiler-plugin/build/libs/mosaic-compiler-plugin-0.2.0.jar")
+    val pluginJar = File(repository, "mosaic-compiler-plugin/build/libs/mosaic-compiler-plugin-${mosaicVersion()}.jar")
     val project = project(root, "boundary", pluginJar, emptyList())
     val buildFile = File(project, "build.gradle.kts")
     val validBuild = buildFile.readText()
