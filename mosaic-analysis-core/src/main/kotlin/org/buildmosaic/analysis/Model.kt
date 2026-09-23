@@ -190,6 +190,12 @@ sealed interface TileReference {
     val receiverId: String? = null,
   ) : TileReference
 
+  /** A binary property is usable only if its producer exported a proven stable Tile contract. */
+  data class ExportedProperty(
+    val contractId: String,
+    val site: SourceLocation,
+  ) : TileReference
+
   data class Alias(val reference: TileReference) : TileReference
 
   data class Fresh(

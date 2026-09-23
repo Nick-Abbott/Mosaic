@@ -4,6 +4,7 @@ package org.buildmosaic.compiler
 
 import org.buildmosaic.analysis.AnalysisPolicy
 import org.buildmosaic.analysis.AnalysisRequest
+import org.buildmosaic.analysis.CanvasExpression
 import org.buildmosaic.analysis.Certainty
 import org.buildmosaic.analysis.FindingKind
 import org.buildmosaic.analysis.MosaicAnalyzer
@@ -279,6 +280,79 @@ class ExecutionCatalogTest {
     unknown("CallbackField.<set-callback>(kotlin.Function0)", "Unsupported control flow")
   }
 
+  @Test fun `B1 captured Tile receiver cannot borrow inner registration`() {
+    missing("capturedEntry")
+    val lookup = report("capturedEntry").findings.single { it.key?.classId == "catalog.Metrics" }
+    assertEquals(FindingKind.REQUIRED_LOOKUP, lookup.kind)
+    assertEquals("catalog.CapturedTile", lookup.site.owner)
+    assertEquals(null, lookup.bindingSite)
+  }
+
+  @Test fun `B1 explicitly labeled Tile receiver keeps its original Canvas`() {
+    missing("capturedLabelEntry")
+  }
+
+  @Test fun `B1 captured Tile receiver retains outer provider provenance`() {
+    verified("capturedSuppliedEntry")
+    val lookup = report("capturedSuppliedEntry").findings.single { it.key?.classId == "catalog.Metrics" }
+    assertEquals("catalog.suppliedOuter()", lookup.bindingSite?.owner, lookup.toString())
+    assertTrue(lookup.canvasPath.none { it.site?.owner == "catalog.CapturedTile" }, lookup.toString())
+  }
+
+  @Test fun `C1 receiver aliases and captures do not reconstruct Canvas`() {
+    verified("capturedOnceEntry")
+    val lookups = report("capturedOnceEntry").findings.filter { it.key?.classId == "catalog.First" }
+    assertEquals(1, lookups.size, lookups.toString())
+    assertEquals(FindingKind.CONSTRUCTION_LOOKUP, lookups.single().kind)
+    assertEquals("catalog.outerWithPaint()", lookups.single().site.owner)
+  }
+
+  @Test fun `D2 captured CanvasFactory receiver cannot borrow nested registration`() {
+    missing("nestedFactoryMissing")
+    val lookup = report("nestedFactoryMissing").findings.single { it.key?.classId == "catalog.Metrics" }
+    assertEquals(FindingKind.CONSTRUCTION_LOOKUP, lookup.kind)
+    assertEquals(null, lookup.bindingSite)
+  }
+
+  @Test fun `D2 nested paint uses own layer while captured factory uses original layer`() {
+    verified("nestedFactorySupplied")
+    val layer =
+      module.canvases.single {
+        it.id == "catalog.nestedFactorySupplied()"
+      }.result.evaluatedResult() as CanvasExpression.Layer
+    val findings = report("nestedFactorySupplied").findings
+    val captured = findings.single { it.key?.classId == "catalog.Metrics" }
+    val own = findings.single { it.key?.classId == "catalog.Second" }
+    assertEquals(layer.bindings.first().site, captured.bindingSite, captured.toString())
+    assertEquals(layer.id, captured.canvasPath.first().layerId, captured.toString())
+    assertTrue(own.bindingSite != captured.bindingSite, own.toString())
+    assertTrue(own.canvasPath.first().layerId != layer.id, own.toString())
+  }
+
+  @Test fun `B1 direct Tile source and immutable stable Tile alias stay supported`() {
+    missing("directNeedsEntry")
+    verified("directNeedsSupplied")
+    verified("stableTileAlias")
+  }
+
+  @Test fun `C4 computed getter cannot export initializer Tile as its result`() {
+    unknown("computedEntry", "computed Tile property")
+    assertTrue(module.tiles.none { it.id == "catalog.ExposedTile" }, module.toString())
+  }
+
+  @Test fun `C4 computed getter retains evaluated getter work`() {
+    val finding = report("computedWorkEntry").findings.single { it.key?.classId == "catalog.Second" }
+    assertEquals(FindingKind.REQUIRED_LOOKUP, finding.kind)
+    assertEquals("catalog.<get-ComputedWorkTile>()", finding.site.owner)
+    unknown("computedWorkEntry", "computed Tile property")
+  }
+
+  @Test fun `C4 computed getter retains evaluated creation work`() {
+    val finding = report("computedWorkEntry").findings.single { it.key?.classId == "kotlin.Int" }
+    assertEquals(FindingKind.REQUIRED_LOOKUP, finding.kind)
+    assertEquals(Certainty.UNVERIFIED, finding.certainty)
+  }
+
   companion object {
     private val module by lazy {
       val directory = Files.createTempDirectory("mosaic-execution-catalog").toFile()
@@ -289,6 +363,58 @@ class ExecutionCatalogTest {
         import kotlinx.coroutines.runBlocking
         import org.buildmosaic.core.*
         import org.buildmosaic.core.injection.*
+        val CapturedTile = singleTile {
+            val outer = this
+            canvas {
+                single<Metrics> { Metrics() }
+                single<String> { outer.source<Metrics>(); "ok" }
+            }
+            "ok"
+        }
+        val LabeledCaptureTile = singleTile tile@ {
+            canvas {
+                single<Metrics> { Metrics() }
+                single<String> { this@tile.source<Metrics>(); "ok" }
+            }
+            "ok"
+        }
+        suspend fun capturedLabelEntry() = canvas {}.create().compose(LabeledCaptureTile)
+        suspend fun capturedEntry() = canvas {}.create().compose(CapturedTile)
+        suspend fun suppliedOuter(): Canvas = canvas { single<Metrics> { Metrics() } }
+        suspend fun capturedSuppliedEntry() = suppliedOuter().create().compose(CapturedTile)
+        suspend fun outerWithPaint(): Canvas = canvas { single<First> { First() }; single<Metrics> { paint<First>(); Metrics() } }
+        suspend fun capturedOnceEntry() { val base = outerWithPaint(); val alias = base; alias.create().compose(CapturedTile) }
+        suspend fun nestedFactoryMissing(): Canvas = canvas {
+            single<String> {
+                val retained = this
+                canvas {
+                    single<Metrics> { Metrics() }; single<Second> { Second() }
+                    single<String> { paint<Second>(); retained.paint<Metrics>(); "ok" }
+                }
+                "ok"
+            }
+        }
+        suspend fun nestedFactorySupplied(): Canvas = canvas {
+            single<Metrics> { Metrics() }
+            single<String> {
+                val retained = this
+                canvas {
+                    single<Metrics> { Metrics() }; single<Second> { Second() }
+                    single<String> { paint<Second>(); retained.paint<Metrics>(); "ok" }
+                }
+                "ok"
+            }
+        }
+        val NeedsMetrics = singleTile { source<Metrics>(); "required" }
+        val ExposedTile = singleTile { "backing" }
+            get() { field; return NeedsMetrics }
+        val ComputedWorkTile = chunkedMultiTile<String, String>(empty.source<Int>()) { emptyMap() }
+            get() { empty.source<Second>(); return field }
+        suspend fun computedEntry() = canvas {}.create().compose(ExposedTile)
+        suspend fun computedWorkEntry() = canvas {}.create().compose(ComputedWorkTile, listOf("key"))
+        suspend fun directNeedsEntry() = canvas {}.create().compose(NeedsMetrics)
+        suspend fun directNeedsSupplied() = suppliedOuter().create().compose(NeedsMetrics)
+        suspend fun stableTileAlias() { val alias = NeedsMetrics; suppliedOuter().create().compose(alias) }
         class CallbackValue {
             override fun equals(other: Any?): Boolean { runBlocking { canvas {}.source<Metrics>() }; return true }
             override fun hashCode(): Int { runBlocking { canvas {}.source<Metrics>() }; return 0 }

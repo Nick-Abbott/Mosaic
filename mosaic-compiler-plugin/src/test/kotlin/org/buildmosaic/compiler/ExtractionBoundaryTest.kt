@@ -172,7 +172,7 @@ class DefaultBoundaryTest {
   }
 
   @Test
-  fun `binary used default is unknown`() {
+  fun `binary defaults and Tile exports stay explicit`() {
     val directory = Files.createTempDirectory("mosaic-default-binary").toFile()
     val producer =
       File(directory, "Producer.kt").apply {
@@ -193,6 +193,7 @@ class DefaultBoundaryTest {
       },
       consumerModule.toString(),
     )
+    assertBinaryTileProperties(consumerModule, producerModule)
     val withMetadata = analyze(consumerModule, listOf(producerModule))
     val withoutMetadata = analyze(consumerModule)
     assertTrue(
@@ -409,11 +410,41 @@ private fun extensionReceiverFixtureSource(): String =
   suspend fun accessorEntry() = canvas { single<Metrics> { Metrics() } }.create().compose(AccessorTile)
   """.trimIndent()
 
+private fun assertBinaryTileProperties(
+  consumer: ModuleContract,
+  producer: ModuleContract,
+) {
+  val stable = analyze(consumer, listOf(producer), "regression.stableTileEntry()")
+  assertEquals(RootStatus.VERIFIED, stable.roots.single().status, stable.toString())
+  assertTrue(stable.policyDecision.passed)
+  val computed = analyze(consumer, listOf(producer), "regression.computedTileEntry()")
+  assertTrue(computed.roots.single().specializedContracts.contains("regression.computedTileEntry()"))
+  assertTrue(
+    computed.findings.any {
+      it.certainty == Certainty.UNVERIFIED && it.reason.contains("exported stable Tile contract")
+    },
+    computed.toString(),
+  )
+  assertTrue(computed.findings.none { it.reason.contains("Selected root target is missing") })
+  assertTrue(!computed.policyDecision.passed)
+  assertTrue(producer.tiles.none { it.id == "producer.ExposedTile" }, producer.toString())
+  val withoutExport = analyze(consumer, listOf(producer.copy(tiles = emptyList())), "regression.stableTileEntry()")
+  assertTrue(
+    withoutExport.findings.any {
+      it.certainty == Certainty.UNVERIFIED && it.reason.contains("exported stable Tile contract")
+    },
+    withoutExport.toString(),
+  )
+}
+
 private fun binaryDefaultProducerSource(): String =
   """
   package producer
   import org.buildmosaic.core.*
   import org.buildmosaic.core.injection.*
+  val NeedsMetrics = singleTile { source<Metrics>(); "required" }
+  val ExposedTile = singleTile { "backing" }
+      get() { field; return NeedsMetrics }
   class Metrics
   fun consume(base: Canvas, ignored: Metrics = base.source<Metrics>()) = Unit
   class Holder(receiver: Mosaic, val metrics: Metrics = receiver.source<Metrics>())
@@ -440,6 +471,8 @@ private fun binaryDefaultConsumerSource(): String =
   import org.buildmosaic.core.*
   import org.buildmosaic.core.injection.*
   import producer.*
+  suspend fun stableTileEntry() { val alias = NeedsMetrics; canvas { single<Metrics> { Metrics() } }.create().compose(alias) }
+  suspend fun computedTileEntry() = canvas {}.create().compose(ExposedTile)
   suspend fun entry() { consume(canvas { }) }
   suspend fun constructorEntry() { Holder(canvas { }.create()) }
   """.trimIndent()

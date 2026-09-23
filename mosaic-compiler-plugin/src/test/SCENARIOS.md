@@ -146,3 +146,23 @@ Final focused run: all 38 assertions pass, including the alias equivalence.
 Executed JUnit time was 2.272s before / 2.330s after, one compiler invocation
 each (warm dependencies; single samples, not a speedup claim). The full root
 gate retains 36 compiler invocations and 24 TestKit builds; no fixture added.
+
+Receiver ownership and stable property regressions (same EC compilation):
+`capturedEntry` / `capturedLabelEntry` require missing outer Metrics despite an
+inner registration; `capturedSuppliedEntry` is V with the outer binding's site.
+`capturedOnceEntry` checks one outer provider construction. `nestedFactoryMissing`
+is M; `nestedFactorySupplied` is V and distinguishes the captured factory's
+original layer from the nested provider's own paint layer. `directNeedsEntry`,
+`directNeedsSupplied`, and `stableTileAlias` preserve direct source and alias M/V.
+`computedEntry` is specifically U for computed Tile provenance, with no exported
+initializer Tile contract. `computedWorkEntry` retains both getter and creation
+lookups. The existing binary-default producer/consumer compilation also checks
+stable Tile aliases V, custom getters without stable exports U, and loss of the
+stable export U while retaining callable metadata; no additional builds.
+Before production edits, Kotlin 2.2.10 executed 48 EC assertions (7 failed) and
+2 existing default/binary assertions (1 failed). The failures expose incorrect
+verification, inner-provider provenance, omitted getter work, and an optimistic
+binary export. Direct source, stable aliases, creation work and construction-once
+controls pass already; their expected outcomes remain unchanged.
+After the ownership/export corrections, all 48 EC and both default/binary
+assertions pass. The full compiler suite retains 36 compiler invocations.

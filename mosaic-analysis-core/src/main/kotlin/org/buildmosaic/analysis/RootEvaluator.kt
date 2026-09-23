@@ -257,6 +257,16 @@ internal class RootEvaluator(
           is Resolution.Conflict -> TileResolution.Conflict(reference.contractId, contract.owners)
           Resolution.Missing -> TileResolution.Missing(reference.contractId)
         }
+      is TileReference.ExportedProperty ->
+        when (val contract = registry.tile(reference.contractId)) {
+          is Resolution.Found -> TileResolution.Found(contract.value, reference.contractId)
+          is Resolution.Conflict -> TileResolution.Conflict(reference.contractId, contract.owners)
+          Resolution.Missing ->
+            TileResolution.Unknown(
+              "No exported stable Tile contract for property ${reference.contractId}",
+              reference.site,
+            )
+        }
       is TileReference.Fresh ->
         when (val contract = registry.tile(reference.templateId)) {
           is Resolution.Found ->

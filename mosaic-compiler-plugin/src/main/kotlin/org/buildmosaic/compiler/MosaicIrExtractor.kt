@@ -147,14 +147,14 @@ class MosaicIrExtractor(
           }
           is IrProperty -> {
             val initializer = declaration.backingField?.initializer?.expression
-            val stableTile = declaration.parent is IrFile && !declaration.isVar && initializer is IrCall && isTileFactory(initializer)
+            val stableTile = tilePropertyEligibility(declaration) == TilePropertyEligibility.LOCAL_STABLE
             if (stableTile) {
               val call = initializer as IrCall
               val lambda = call.argument("block") ?: call.argument("fetch")
               val normalizer = Normalizer(file, propertyId(declaration))
               val function = lambdaFunction(lambda)
               function?.parameters?.filter { it.kind == IrParameterKind.ExtensionReceiver }?.forEach {
-                normalizer.values[it.symbol] = Value(mosaic = CanvasExpression.Current)
+                normalizer.bindCurrentReceiver(it, mosaic = true)
               }
               val body = function?.body
               if (body != null) {
@@ -293,6 +293,15 @@ class MosaicIrExtractor(
       val slot = valueId(element)
       effects += Effect.ConstructCanvas(slot, CanvasExpression.Alias(slot, expression), site(element))
       return Value(canvas = CanvasExpression.ValueReference(slot, site(element)))
+    }
+
+    /** Snapshot the receiver at DSL entry; captured values must not follow a nested currentCanvas. */
+    fun bindCurrentReceiver(
+      parameter: IrValueParameter,
+      mosaic: Boolean,
+    ) {
+      val receiver = materialize(parameter, CanvasExpression.Current).canvas
+      values[parameter.symbol] = if (mosaic) Value(mosaic = receiver) else Value(canvas = receiver)
     }
 
     fun body(element: IrElement?): Value =
@@ -536,16 +545,11 @@ class MosaicIrExtractor(
       }
       val tile =
         if (getter != null && isTileType(call.type)) {
-          val topLevel = getter.parent is IrPackageFragment && !getter.isVar
-          val stable =
-            topLevel && (
-              getter.parent !is IrFile ||
-                getter.backingField?.initializer?.expression?.let { it is IrCall && isTileFactory(it) } == true
-            )
-          if (stable) {
-            TileReference.Stable(propertyId(getter))
-          } else {
-            TileReference.Unknown("Unsupported member-dependent or computed Tile property", site(call))
+          when (tilePropertyEligibility(getter)) {
+            TilePropertyEligibility.LOCAL_STABLE -> TileReference.Stable(propertyId(getter))
+            TilePropertyEligibility.REQUIRES_EXPORT -> TileReference.ExportedProperty(propertyId(getter), site(call))
+            TilePropertyEligibility.UNSUPPORTED ->
+              TileReference.Unknown("Unsupported member-dependent or computed Tile property", site(call))
           }
         } else {
           null
@@ -578,7 +582,7 @@ class MosaicIrExtractor(
           val provider = Normalizer(file, owner, builder.values.toMutableMap())
           val function = lambdaFunction(ctor)
           function?.parameters?.filter { it.kind == IrParameterKind.ExtensionReceiver }?.forEach {
-            provider.values[it.symbol] = Value(canvas = CanvasExpression.Current)
+            provider.bindCurrentReceiver(it, mosaic = false)
           }
           val ctorBody = function?.body
           if (ctorBody == null) {
@@ -600,6 +604,21 @@ class MosaicIrExtractor(
       // Registration expressions execute before eager provider construction.
       effects += builder.effects
       return CanvasExpression.Layer(valueId(call), parent, bindings, unknown, site(call))
+    }
+  }
+
+  private enum class TilePropertyEligibility { LOCAL_STABLE, REQUIRES_EXPORT, UNSUPPORTED }
+
+  /** The same property proof gates declaration export and reference resolution. */
+  private fun tilePropertyEligibility(property: IrProperty): TilePropertyEligibility {
+    if (property.parent !is IrPackageFragment || property.isVar || property.isDelegated) return TilePropertyEligibility.UNSUPPORTED
+    // Binary IR cannot prove what the getter returns. Defer to the selected producer's export.
+    if (property.parent !is IrFile) return TilePropertyEligibility.REQUIRES_EXPORT
+    val initializer = property.backingField?.initializer?.expression
+    return if (property.getter?.origin == IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR && initializer is IrCall && isTileFactory(initializer)) {
+      TilePropertyEligibility.LOCAL_STABLE
+    } else {
+      TilePropertyEligibility.UNSUPPORTED
     }
   }
 
