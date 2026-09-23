@@ -29,6 +29,7 @@ val testKitKotlinPlugin =
   }
 
 dependencies {
+  implementation("org.ow2.asm:asm:9.7.1")
   implementation(project(":mosaic-analysis-core"))
   compileOnly("org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.10")
   add(testKitKotlinPlugin.name, "org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.10")

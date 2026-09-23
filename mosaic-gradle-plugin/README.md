@@ -58,6 +58,10 @@ fails with a configuration error.
 over the complete supported source set. It writes a complete summary, including
 an empty summary after the final source is removed. It deletes prior output
 before each invocation and on failure. Normal `compileKotlin` remains separate.
+An unchanged extraction is skipped, and Gradle's build cache can restore a
+complete summary in an equivalent checkout at another path. Source edits still
+rerun extraction over the full main source set; per-file extraction is not yet
+implemented.
 `jar` embeds the summary at `META-INF/mosaic-analysis/v1/summary.json`.
 `verifyMosaicMain` writes `build/reports/mosaic-analysis/main.txt`;
 `verifyMosaic` aggregates it and is wired into `check` (and therefore ordinary
@@ -65,8 +69,30 @@ before each invocation and on failure. Normal `compileKotlin` remains separate.
 and checks the configured roots. In LIBRARY mode it validates only the local
 complete summary and reports `EXPORT_ONLY`; it does not claim application roots
 or cross-application dependencies were verified. `jar` embeds the local summary
-in either role. Verification tracks full dependency JAR bytes, so a body-only
-contract change invalidates it even when Kotlin compilation can reuse an ABI.
+in either role. Verification reads the raw summary resource copied by a
+cacheable per-JAR artifact transform. A JAR without the resource produces no
+summary; a present malformed resource reaches verification and fails as an
+artifact error. Unrelated dependency implementation changes leave extraction
+and verification up to date. A dependency Mosaic contract change reruns
+verification without rerunning unchanged application extraction.
+
+Extraction runs K2 with the full compile classpath, but fingerprints a
+source-resolution ABI view of each JAR. The view retains named classes and
+public constant values. It excludes compiler-generated anonymous classes and
+source debug annotations that change with implementation details. A
+`platformCanvas()` body-only binding change demonstrated that the raw JAR under
+Gradle's compile classpath normalization includes generated lambda references
+and source debug annotations, unnecessarily rerunning application extraction.
+The narrow projection preserves the verified `UP_TO_DATE` boundary for that
+case. Gradle applies compile classpath ABI normalization to its projected JAR.
+
+Kotlin `.kotlin_module` resources are aggregated separately per JAR with their
+names and raw bytes, and tracked as a path-independent file input. They are not
+passed through compile classpath normalization, which ignores resources.
+External public constant changes, Kotlin-visible declaration metadata changes,
+and source-visible ABI changes invalidate extraction; ordinary body and
+unrelated resource changes do not. Additional compiler plugins and nonstandard
+source layouts remain unsupported.
 
 Roots are explicit callable IDs. APPLICATION with no roots fails both
 `verifyMosaicMain` and `check`/`build`, with guidance to configure roots or select
