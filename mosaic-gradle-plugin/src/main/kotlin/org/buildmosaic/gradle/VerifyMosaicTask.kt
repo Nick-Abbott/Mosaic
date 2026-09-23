@@ -15,6 +15,7 @@ import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
@@ -28,7 +29,14 @@ abstract class VerifyMosaicTask : DefaultTask() {
 
   @get:InputFiles
   @get:PathSensitive(PathSensitivity.NONE)
-  abstract val dependencyJars: ConfigurableFileCollection
+  abstract val dependencySummaries: ConfigurableFileCollection
+
+  @get:Internal
+  abstract val dependencyArtifacts: ConfigurableFileCollection
+
+  @get:Input
+  val unsupportedDependencyArtifacts: List<String>
+    get() = dependencyArtifacts.files.filter { !it.isFile || it.extension != "jar" }.map { it.name }.sorted()
 
   @get:Input
   abstract val roots: ListProperty<String>
@@ -60,28 +68,9 @@ abstract class VerifyMosaicTask : DefaultTask() {
     output: java.io.File,
     selectedRoots: List<String>,
   ) {
-    val message = configurationError(selectedRoots) ?: return
+    val message = configurationError(role.get(), selectedRoots) ?: return
     failWithDiagnostic(output, "Configuration error", GradleException(message))
   }
-
-  private fun configurationError(selectedRoots: List<String>): String? =
-    when (role.get()) {
-      MosaicAnalysisRole.APPLICATION ->
-        when {
-          selectedRoots.any { it.isBlank() } -> "Mosaic APPLICATION roots must not be blank"
-          selectedRoots.isEmpty() ->
-            "Mosaic APPLICATION verification requires at least one root. " +
-              "Configure mosaicAnalysis.roots or select role = MosaicAnalysisRole.LIBRARY."
-          else -> null
-        }
-      MosaicAnalysisRole.LIBRARY ->
-        if (selectedRoots.isNotEmpty()) {
-          "Mosaic LIBRARY cannot select application roots. Remove mosaicAnalysis.roots or select " +
-            "role = MosaicAnalysisRole.APPLICATION; applications also export contracts."
-        } else {
-          null
-        }
-    }
 
   private fun readAndReportLocalSummary(output: java.io.File): ModuleContract =
     try {
@@ -107,9 +96,19 @@ abstract class VerifyMosaicTask : DefaultTask() {
     program: ModuleContract,
     selectedRoots: List<String>,
   ) {
+    if (unsupportedDependencyArtifacts.isNotEmpty()) {
+      failWithDiagnostic(
+        output,
+        "Artifact metadata error",
+        GradleException(
+          "Mosaic verification requires dependency JARs, not class directories or other artifacts: " +
+            unsupportedDependencyArtifacts.joinToString(),
+        ),
+      )
+    }
     val dependencies =
       try {
-        MosaicDependencyReader.read(dependencyJars)
+        MosaicDependencyReader.read(dependencySummaries)
       } catch (failure: GradleException) {
         failWithDiagnostic(output, "Artifact metadata error", failure)
       }
@@ -176,3 +175,25 @@ abstract class VerifyMosaicTask : DefaultTask() {
     throw failure
   }
 }
+
+private fun configurationError(
+  role: MosaicAnalysisRole,
+  selectedRoots: List<String>,
+): String? =
+  when (role) {
+    MosaicAnalysisRole.APPLICATION ->
+      when {
+        selectedRoots.any { it.isBlank() } -> "Mosaic APPLICATION roots must not be blank"
+        selectedRoots.isEmpty() ->
+          "Mosaic APPLICATION verification requires at least one root. " +
+            "Configure mosaicAnalysis.roots or select role = MosaicAnalysisRole.LIBRARY."
+        else -> null
+      }
+    MosaicAnalysisRole.LIBRARY ->
+      if (selectedRoots.isNotEmpty()) {
+        "Mosaic LIBRARY cannot select application roots. Remove mosaicAnalysis.roots or select " +
+          "role = MosaicAnalysisRole.APPLICATION; applications also export contracts."
+      } else {
+        null
+      }
+  }

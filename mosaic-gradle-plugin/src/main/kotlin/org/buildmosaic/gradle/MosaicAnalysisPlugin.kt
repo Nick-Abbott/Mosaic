@@ -4,6 +4,7 @@ import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.artifacts.Configuration
+import org.gradle.api.artifacts.type.ArtifactTypeDefinition
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.api.provider.ListProperty
@@ -15,6 +16,9 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 import java.util.Properties
 import javax.inject.Inject
+
+private const val MOSAIC_SUMMARY_ARTIFACT_TYPE = "mosaic-analysis-summary"
+private const val MOSAIC_RESOLUTION_ARTIFACT_TYPE = "mosaic-source-resolution"
 
 abstract class MosaicAnalysisExtension
   @Inject
@@ -38,6 +42,7 @@ enum class MosaicAnalysisEnforcement {
 
 class MosaicAnalysisPlugin : Plugin<Project> {
   override fun apply(project: Project) {
+    registerAnalysisTransforms(project)
     val extension = project.extensions.create("mosaicAnalysis", MosaicAnalysisExtension::class.java)
     val mosaicVersion = installedMosaicVersion()
     val compilerConfiguration =
@@ -96,9 +101,14 @@ class MosaicAnalysisPlugin : Plugin<Project> {
     val verify =
       project.tasks.register("verifyMosaicMain", VerifyMosaicTask::class.java) { task ->
         task.group = "verification"
-        task.description = "Verify selected Mosaic main roots against selected dependency JAR summaries"
+        task.description = "Verify selected Mosaic main roots against selected dependency summaries"
         task.summaryFile.set(extract.flatMap { it.summaryFile })
-        task.dependencyJars.from(project.configurations.getByName("compileClasspath"))
+        task.dependencyArtifacts.from(project.configurations.getByName("compileClasspath"))
+        task.dependencySummaries.from(
+          project.configurations.getByName("compileClasspath").incoming.artifactView { view ->
+            view.attributes.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, MOSAIC_SUMMARY_ARTIFACT_TYPE)
+          }.files,
+        )
         task.roots.set(extension.roots)
         task.role.set(extension.role)
         task.enforcement.set(extension.enforcement)
@@ -135,6 +145,11 @@ class MosaicAnalysisPlugin : Plugin<Project> {
       task.javaSources.from(project.fileTree("src/main/java") { it.include("**/*.java") })
       task.supportedSourceRoot.set(project.file("src/main/kotlin").absolutePath)
       task.compileClasspath.from(project.configurations.getByName("compileClasspath"))
+      task.sourceResolutionClasspath.from(
+        project.configurations.getByName("compileClasspath").incoming.artifactView { view ->
+          view.attributes.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, MOSAIC_RESOLUTION_ARTIFACT_TYPE)
+        }.files,
+      )
       task.compilerClasspath.from(compilerConfiguration)
       task.additionalCompilerPlugins.from(compile.map { it.pluginClasspath })
       task.friendPaths.from(compile.map { it.friendPaths })
@@ -152,6 +167,8 @@ class MosaicAnalysisPlugin : Plugin<Project> {
       task.unsupportedProjectPlugins.set(project.provider { unsupportedProjectPlugins(project) })
       task.javaExecutable.set(launcher.map { it.executablePath })
       task.selectedJavaVersion.set(launcher.map { it.metadata.languageVersion.asInt().toString() })
+      task.selectedJavaVendor.set(launcher.map { it.metadata.vendor })
+      task.selectedJavaRuntimeVersion.set(launcher.map { it.metadata.javaRuntimeVersion })
       task.expectedJavaVersion.set(
         compile.flatMap {
           it.kotlinJavaToolchainProvider
@@ -173,13 +190,23 @@ class MosaicAnalysisPlugin : Plugin<Project> {
       taskCompile.compilerOptions.jvmDefault.orNull?.let { add("jvmDefault:$it") }
       if (taskCompile.multiPlatformEnabled.orNull == true) add("multiPlatformEnabled")
     }
+}
 
-  private fun unsupportedProjectPlugins(project: Project): List<String> =
-    listOf(
-      "org.jetbrains.kotlin.multiplatform",
-      "com.android.application",
-      "com.android.library",
-      "com.google.devtools.ksp",
-    )
-      .filter(project.plugins::hasPlugin)
+private fun unsupportedProjectPlugins(project: Project): List<String> =
+  listOf(
+    "org.jetbrains.kotlin.multiplatform",
+    "com.android.application",
+    "com.android.library",
+    "com.google.devtools.ksp",
+  ).filter(project.plugins::hasPlugin)
+
+private fun registerAnalysisTransforms(project: Project) {
+  project.dependencies.registerTransform(MosaicSummaryTransform::class.java) { transform ->
+    transform.from.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, ArtifactTypeDefinition.JAR_TYPE)
+    transform.to.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, MOSAIC_SUMMARY_ARTIFACT_TYPE)
+  }
+  project.dependencies.registerTransform(SourceResolutionTransform::class.java) { transform ->
+    transform.from.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, ArtifactTypeDefinition.JAR_TYPE)
+    transform.to.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, MOSAIC_RESOLUTION_ARTIFACT_TYPE)
+  }
 }

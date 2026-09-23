@@ -7,10 +7,13 @@ import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Classpath
+import org.gradle.api.tasks.CompileClasspath
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
@@ -20,6 +23,7 @@ import java.io.File
 import java.util.jar.JarFile
 import javax.inject.Inject
 
+@CacheableTask
 abstract class ExtractMosaicTask
   @Inject
   constructor(private val exec: ExecOperations) : DefaultTask() {
@@ -31,19 +35,19 @@ abstract class ExtractMosaicTask
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val javaSources: ConfigurableFileCollection
 
-    @get:InputFiles
-    @get:PathSensitive(PathSensitivity.NONE)
+    @get:Internal
     abstract val compileClasspath: ConfigurableFileCollection
+
+    @get:CompileClasspath
+    abstract val sourceResolutionClasspath: ConfigurableFileCollection
 
     @get:Classpath
     abstract val compilerClasspath: ConfigurableFileCollection
 
-    @get:InputFiles
-    @get:PathSensitive(PathSensitivity.NONE)
+    @get:Classpath
     abstract val additionalCompilerPlugins: ConfigurableFileCollection
 
-    @get:InputFiles
-    @get:PathSensitive(PathSensitivity.NONE)
+    @get:Classpath
     abstract val friendPaths: ConfigurableFileCollection
 
     @get:InputFile
@@ -83,12 +87,34 @@ abstract class ExtractMosaicTask
     @get:Input
     abstract val selectedJavaVersion: Property<String>
 
-    @get:InputFile
-    @get:PathSensitive(PathSensitivity.NONE)
-    abstract val javaExecutable: RegularFileProperty
+    @get:Input
+    abstract val selectedJavaVendor: Property<String>
 
     @get:Input
+    abstract val selectedJavaRuntimeVersion: Property<String>
+
+    @get:Internal
+    abstract val javaExecutable: RegularFileProperty
+
+    @get:Internal
     abstract val supportedSourceRoot: Property<String>
+
+    @get:Input
+    val sourceLayout: List<String>
+      get() {
+        val root = File(supportedSourceRoot.get()).canonicalFile.toPath()
+        return sources.files.map { source ->
+          val path = source.canonicalFile.toPath()
+          if (path.startsWith(
+              root,
+            )
+          ) {
+            root.relativize(path).toString().replace(File.separatorChar, '/')
+          } else {
+            "<unsupported>:${source.name}"
+          }
+        }.sorted()
+      }
 
     @get:OutputFile
     abstract val summaryFile: RegularFileProperty
@@ -101,7 +127,7 @@ abstract class ExtractMosaicTask
       output.parentFile.mkdirs()
       val kotlinSources = sources.files.filter { it.extension == "kt" }.sortedBy(File::getAbsolutePath)
       validateConfiguration()
-      validateSources(kotlinSources)
+      validateSources(sources.files, javaSources.files, kotlinSources, File(supportedSourceRoot.get()))
       if (kotlinSources.isEmpty()) {
         output.writeBytes(SummaryCodec.encode(ModuleContract(moduleId.get())))
         return
@@ -123,6 +149,7 @@ abstract class ExtractMosaicTask
       if (languageVersion.get().isNotBlank()) settings += listOf("-language-version", languageVersion.get())
       if (apiVersion.get().isNotBlank()) settings += listOf("-api-version", apiVersion.get())
       try {
+        logger.lifecycle("Mosaic K2 extraction launched for ${moduleId.get()}")
         exec.javaexec { spec ->
           spec.executable = javaExecutable.get().asFile.absolutePath
           spec.classpath = compilerClasspath
@@ -167,25 +194,28 @@ abstract class ExtractMosaicTask
         "Mosaic extraction toolchain mismatch: Kotlin uses Java $expected, extraction selected Java $selected",
       )
     }
-
-    private fun validateSources(kotlinSources: List<File>) {
-      requireSupported(
-        sources.files.none {
-          it.extension == "kts"
-        },
-        "Mosaic prototype extraction does not support Kotlin scripts",
-      )
-      requireSupported(
-        javaSources.files.isEmpty(),
-        "Mosaic prototype extraction does not support mixed Java/Kotlin sources",
-      )
-      val sourceRoot = File(supportedSourceRoot.get()).canonicalFile.toPath()
-      requireSupported(
-        kotlinSources.all { it.canonicalFile.toPath().startsWith(sourceRoot) },
-        "Mosaic prototype extraction supports only src/main/kotlin sources",
-      )
-    }
   }
+
+private fun validateSources(
+  sources: Set<File>,
+  javaSources: Set<File>,
+  kotlinSources: List<File>,
+  root: File,
+) {
+  requireSupported(
+    sources.none { it.extension == "kts" },
+    "Mosaic prototype extraction does not support Kotlin scripts",
+  )
+  requireSupported(
+    javaSources.isEmpty(),
+    "Mosaic prototype extraction does not support mixed Java/Kotlin sources",
+  )
+  val sourceRoot = root.canonicalFile.toPath()
+  requireSupported(
+    kotlinSources.all { it.canonicalFile.toPath().startsWith(sourceRoot) },
+    "Mosaic prototype extraction supports only src/main/kotlin sources",
+  )
+}
 
 internal fun validateCompilerPluginVersion(
   jar: File,

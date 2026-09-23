@@ -122,6 +122,8 @@ class BinaryIntegrationTest {
     val refreshed = SummaryCodec.decode(summaryFile.readBytes()).module
     assertEquals(listOf("deletion.RenamedTile"), refreshed.tiles.map { it.id })
     assertTrue(refreshed.callables.any { it.id == "deletion.retained()" })
+    run(project, "clean extractMosaicMain")
+    assertEquals(refreshed, SummaryCodec.decode(summaryFile.readBytes()).module)
     renamed.delete()
     stable.delete()
     val unconfigured = run(project, "verifyMosaicMain", expectFailure = true)
@@ -342,6 +344,10 @@ class BinaryIntegrationTest {
     val initial = run(app, "build")
     val initialReport = File(app, "build/reports/mosaic-analysis/main.txt").readText()
     assertEquals(TaskOutcome.SUCCESS, initial.task(":verifyMosaicMain")?.outcome)
+    val unchanged = run(app, "build")
+    assertEquals(TaskOutcome.UP_TO_DATE, unchanged.task(":extractMosaicMain")?.outcome)
+    assertEquals(TaskOutcome.UP_TO_DATE, unchanged.task(":verifyMosaicMain")?.outcome)
+    assertFalse(unchanged.output.contains("Mosaic K2 extraction launched"))
     assertTrue(initialReport.contains("Root app.entry(): VERIFIED"), initialReport)
     assertTrue(initialReport.contains("Root app.adapterEntry(): VERIFIED"), initialReport)
     assertTrue(initialReport.contains("Root app.slotEntry(): VERIFIED"), initialReport)
@@ -381,6 +387,19 @@ class BinaryIntegrationTest {
         ),
       )
     assertEquals(RootStatus.UNVERIFIED, standaloneOverride.roots.single().status)
+    platformSource.writeText(
+      originalPlatform.replace("platform initialization executed", "platform initialization updated"),
+    )
+    run(platform, "jar")
+    assertNotEquals(firstPlatformHash, sha256(platformJar))
+    assertEquals(firstPlatformSummaryHash, summaryHash(platformJar))
+    val implementationOnly = run(app, "build")
+    assertEquals(TaskOutcome.UP_TO_DATE, implementationOnly.task(":extractMosaicMain")?.outcome)
+    assertEquals(TaskOutcome.UP_TO_DATE, implementationOnly.task(":verifyMosaicMain")?.outcome)
+    assertFalse(implementationOnly.output.contains("Mosaic K2 extraction launched"))
+    platformSource.writeText(originalPlatform)
+    run(platform, "jar")
+    run(app, "build")
     println(
       "INITIAL_TASKS compileKotlin=${initial.task(
         ":compileKotlin",
@@ -406,6 +425,14 @@ class BinaryIntegrationTest {
     val broken = run(app, "build", expectFailure = true)
     val brokenReport = File(app, "build/reports/mosaic-analysis/main.txt").readText()
     assertEquals(TaskOutcome.FAILED, broken.task(":verifyMosaicMain")?.outcome)
+    assertEquals(
+      TaskOutcome.UP_TO_DATE,
+      broken.task(":extractMosaicMain")?.outcome,
+      broken.output.lines().filter {
+        it.contains("Input property") || it.contains("not up-to-date")
+      }.joinToString("\n"),
+    )
+    assertFalse(broken.output.contains("Mosaic K2 extraction launched"))
     assertTrue(
       brokenReport.contains("MISSING REQUIRED_LOOKUP CanvasKeyIdentity(classId=platform.PlatformConfig"),
       brokenReport,
@@ -416,6 +443,7 @@ class BinaryIntegrationTest {
       brokenReport.contains("VERIFIED REQUIRED_LOOKUP CanvasKeyIdentity(classId=platform.PlatformConfig"),
       brokenReport,
     )
+    assertFreshEquivalent(app, brokenReport, expectFailure = true)
     println(
       "PLATFORM_TASKS extractMosaicMain=${changedPlatform.task(
         ":extractMosaicMain",
@@ -440,6 +468,8 @@ class BinaryIntegrationTest {
     run(platform, "jar")
     val restored = run(app, "build")
     assertEquals(TaskOutcome.SUCCESS, restored.task(":verifyMosaicMain")?.outcome)
+    assertEquals(TaskOutcome.UP_TO_DATE, restored.task(":extractMosaicMain")?.outcome)
+    assertFreshEquivalent(app, File(app, "build/reports/mosaic-analysis/main.txt").readText())
     appBuildFile.writeText(
       strictBuildText.replace(
         "enforcement = org.buildmosaic.gradle.MosaicAnalysisEnforcement.STRICT",
@@ -464,11 +494,13 @@ class BinaryIntegrationTest {
     val missingMetadata = run(app, "verifyMosaicMain", expectFailure = true)
     val missingReport = File(app, "build/reports/mosaic-analysis/main.txt").readText()
     assertEquals(TaskOutcome.FAILED, missingMetadata.task(":verifyMosaicMain")?.outcome)
+    assertEquals(TaskOutcome.UP_TO_DATE, missingMetadata.task(":extractMosaicMain")?.outcome)
     assertTrue(missingReport.contains("UNVERIFIED"), missingReport)
     assertFalse(
       missingReport.contains("MISSING REQUIRED_LOOKUP CanvasKeyIdentity(classId=platform.PlatformConfig"),
       missingReport,
     )
+    assertFreshEquivalent(app, missingReport, expectFailure = true)
     appBuildFile.writeText(
       strictBuildText.replace(
         "enforcement = org.buildmosaic.gradle.MosaicAnalysisEnforcement.STRICT",
@@ -492,8 +524,10 @@ class BinaryIntegrationTest {
     val malformed = run(app, "verifyMosaicMain", expectFailure = true)
     val malformedReport = File(app, "build/reports/mosaic-analysis/main.txt").readText()
     assertEquals(TaskOutcome.FAILED, malformed.task(":verifyMosaicMain")?.outcome)
+    assertEquals(TaskOutcome.UP_TO_DATE, malformed.task(":extractMosaicMain")?.outcome)
     assertTrue(malformedReport.contains("Artifact metadata error"), malformedReport)
     assertTrue(malformedReport.contains("invalid Mosaic summary"), malformedReport)
+    assertFreshEquivalent(app, malformedReport, expectFailure = true)
     platformJar.writeBytes(completeBytes)
     run(app, "verifyMosaicMain")
 
@@ -512,6 +546,185 @@ class BinaryIntegrationTest {
     ).appendText("\ndependencies { implementation(files(\"${duplicateJar.invariantSeparatorsPath}\")) }\n")
     val conflict = run(app, "verifyMosaicMain", expectFailure = true)
     assertTrue(conflict.output.contains("Conflicting selected Mosaic owners"), conflict.output)
+  }
+
+  @Test
+  fun `relocatable extraction cache and classpath controls`() {
+    val root = Files.createTempDirectory("mosaic-cache-integration").toFile()
+    val repository = File(System.getProperty("user.dir")).parentFile
+    val pluginJar = File(repository, "mosaic-compiler-plugin/build/libs/mosaic-compiler-plugin-0.2.0.jar")
+    val coreJar = File(repository, "mosaic-core/build/libs/mosaic-core-0.2.0.jar")
+    val producer = project(root, "producer", pluginJar, listOf(coreJar), role = "LIBRARY")
+    val producerSource = File(producer, "src/main/kotlin/Producer.kt")
+    producerSource.parentFile.mkdirs()
+
+    fun producerText(
+      qualifier: String,
+      inlineValue: Int = 1,
+      apiType: String = "Int",
+    ) = """
+      package producer
+      import org.buildmosaic.core.injection.*
+      const val QUALIFIER = "$qualifier"
+      class Metrics
+      suspend fun base(): Canvas = canvas { single<Metrics>(QUALIFIER) { Metrics() } }
+      inline fun ordinaryInline(): Int = $inlineValue
+      fun api(): $apiType = ${if (apiType == "Int") "1" else "1L"}
+      """.trimIndent()
+    producerSource.writeText(producerText("old"))
+    run(producer, "jar")
+    val producerJar = jar(producer)
+
+    fun consumer(parent: File): File =
+      project(
+        parent,
+        "consumer",
+        pluginJar,
+        listOf(coreJar, producerJar),
+        listOf("consumer.entry()"),
+      )
+
+    fun writeConsumerSource(consumer: File) {
+      File(consumer, "src/main/kotlin/Consumer.kt").apply {
+        parentFile.mkdirs()
+        writeText(
+          """
+          package consumer
+          import org.buildmosaic.core.*
+          import org.buildmosaic.core.injection.*
+          import producer.*
+          val CapturedTile = singleTile { source<Metrics>(QUALIFIER) }
+          suspend fun entry(): Metrics = base().create().compose(CapturedTile)
+          fun inlineControl(): Int = ordinaryInline()
+          fun apiUse(): Number = api()
+          """.trimIndent(),
+        )
+      }
+    }
+    val workspaceA = consumer(File(root, "workspace-a"))
+    writeConsumerSource(workspaceA)
+    val cacheDirectory = File(root, "local-build-cache")
+
+    fun useSharedCache(workspace: File) {
+      File(workspace, "settings.gradle.kts").appendText(
+        "\nbuildCache { local { directory = file(\"${cacheDirectory.invariantSeparatorsPath}\") } }\n",
+      )
+    }
+    useSharedCache(workspaceA)
+    val initial = run(workspaceA, "build", buildCache = true)
+    assertEquals(TaskOutcome.SUCCESS, initial.task(":extractMosaicMain")?.outcome)
+    val original = SummaryCodec.decode(File(workspaceA, "build/mosaic-analysis/main/summary.json").readBytes())
+    val repeat = run(workspaceA, "build", buildCache = true)
+    assertEquals(TaskOutcome.UP_TO_DATE, repeat.task(":extractMosaicMain")?.outcome)
+    assertEquals(TaskOutcome.UP_TO_DATE, repeat.task(":verifyMosaicMain")?.outcome)
+    assertFalse(repeat.output.contains("Mosaic K2 extraction launched"))
+
+    val workspaceB = consumer(File(root, "workspace-b"))
+    writeConsumerSource(workspaceB)
+    useSharedCache(workspaceB)
+    val restored = run(workspaceB, "clean build", buildCache = true)
+    assertEquals(TaskOutcome.FROM_CACHE, restored.task(":extractMosaicMain")?.outcome)
+    assertFalse(restored.output.contains("Mosaic K2 extraction launched"))
+    assertEquals(original, SummaryCodec.decode(File(workspaceB, "build/mosaic-analysis/main/summary.json").readBytes()))
+
+    producerSource.writeText(producerText("new"))
+    run(producer, "jar")
+    val constant = run(workspaceA, "build")
+    assertEquals(TaskOutcome.SUCCESS, constant.task(":extractMosaicMain")?.outcome)
+    assertTrue(constant.output.contains("Mosaic K2 extraction launched"))
+    val changed = SummaryCodec.decode(File(workspaceA, "build/mosaic-analysis/main/summary.json").readBytes())
+    assertNotEquals(original, changed)
+    assertTrue(File(workspaceA, "build/mosaic-analysis/main/summary.json").readText().contains("\"qualifier\":\"new\""))
+    assertFreshEquivalent(workspaceA, File(workspaceA, "build/reports/mosaic-analysis/main.txt").readText())
+
+    producerSource.writeText(producerText("new", inlineValue = 2))
+    run(producer, "jar")
+    val inline = run(workspaceA, "build")
+    assertEquals(TaskOutcome.UP_TO_DATE, inline.task(":extractMosaicMain")?.outcome)
+    assertEquals(TaskOutcome.UP_TO_DATE, inline.task(":verifyMosaicMain")?.outcome)
+    assertFalse(inline.output.contains("Mosaic K2 extraction launched"))
+
+    producerSource.writeText(producerText("new", inlineValue = 2, apiType = "Long"))
+    run(producer, "jar")
+    val abi = run(workspaceA, "build")
+    assertEquals(TaskOutcome.SUCCESS, abi.task(":extractMosaicMain")?.outcome)
+    assertTrue(abi.output.contains("Mosaic K2 extraction launched"))
+    assertFreshEquivalent(workspaceA, File(workspaceA, "build/reports/mosaic-analysis/main.txt").readText())
+
+    File(workspaceA, "class-folder").mkdirs()
+    File(workspaceA, "build.gradle.kts").appendText("\ndependencies { implementation(files(\"class-folder\")) }\n")
+    val directory = run(workspaceA, "verifyMosaicMain", expectFailure = true)
+    assertTrue(
+      directory.output.contains("requires dependency JARs") || directory.output.contains("No matching variant"),
+    )
+  }
+
+  @Test
+  fun `project dependency jar variant supplies its Mosaic summary`() {
+    val root = Files.createTempDirectory("mosaic-project-dependency").toFile()
+    val repository = File(System.getProperty("user.dir")).parentFile
+    val pluginJar = File(repository, "mosaic-compiler-plugin/build/libs/mosaic-compiler-plugin-0.2.0.jar")
+    val coreJar = File(repository, "mosaic-core/build/libs/mosaic-core-0.2.0.jar")
+    File(root, "settings.gradle.kts").writeText(
+      """
+      pluginManagement {
+        repositories { gradlePluginPortal(); mavenCentral() }
+        resolutionStrategy.eachPlugin {
+          if (requested.id.id == "org.jetbrains.kotlin.jvm") useModule("org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.10")
+        }
+      }
+      rootProject.name = "project-dependency"
+      include("producer", "consumer")
+      """.trimIndent(),
+    )
+    listOf("producer", "consumer").forEach { name ->
+      val module = File(root, name).apply { mkdirs() }
+      File(module, "build.gradle.kts").writeText(
+        """
+        plugins { kotlin("jvm") version "2.2.10"; id("org.buildmosaic.analysis") }
+        group = "fixture"
+        repositories { mavenCentral() }
+        dependencies {
+          implementation(files("${coreJar.invariantSeparatorsPath}"))
+          implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+          ${if (name == "consumer") "implementation(project(\":producer\"))" else ""}
+        }
+        mosaicAnalysis {
+          ${if (name == "producer") "role = org.buildmosaic.gradle.MosaicAnalysisRole.LIBRARY" else "roots.add(\"consumer.entry()\")"}
+        }
+        tasks.named<org.buildmosaic.gradle.ExtractMosaicTask>("extractMosaicMain") {
+          compilerPluginJar.set(file("${pluginJar.invariantSeparatorsPath}"))
+        }
+        """.trimIndent(),
+      )
+    }
+    File(root, "producer/src/main/kotlin/Producer.kt").apply {
+      parentFile.mkdirs()
+      writeText(
+        """
+        package producer
+        import org.buildmosaic.core.injection.*
+        class Metrics
+        suspend fun base(): Canvas = canvas { single<Metrics> { Metrics() } }
+        """.trimIndent(),
+      )
+    }
+    File(root, "consumer/src/main/kotlin/Consumer.kt").apply {
+      parentFile.mkdirs()
+      writeText(
+        """
+        package consumer
+        import org.buildmosaic.core.*
+        import org.buildmosaic.core.injection.*
+        import producer.*
+        val MetricsTile = singleTile { source<Metrics>() }
+        suspend fun entry(): Metrics = base().create().compose(MetricsTile)
+        """.trimIndent(),
+      )
+    }
+    val result = run(root, ":consumer:verifyMosaicMain", configurationCache = true)
+    assertEquals(TaskOutcome.SUCCESS, result.task(":consumer:verifyMosaicMain")?.outcome)
+    assertTrue(File(root, "consumer/build/reports/mosaic-analysis/main.txt").readText().contains("FULLY VERIFIED"))
   }
 
   private fun project(
@@ -562,11 +775,24 @@ class BinaryIntegrationTest {
       )
     }
 
+  private fun assertFreshEquivalent(
+    project: File,
+    incrementalReport: String,
+    expectFailure: Boolean = false,
+  ) {
+    val summary = SummaryCodec.decode(File(project, "build/mosaic-analysis/main/summary.json").readBytes())
+    val fresh = run(project, "clean build", expectFailure = expectFailure)
+    assertEquals(TaskOutcome.SUCCESS, fresh.task(":extractMosaicMain")?.outcome)
+    assertEquals(summary, SummaryCodec.decode(File(project, "build/mosaic-analysis/main/summary.json").readBytes()))
+    assertEquals(incrementalReport, File(project, "build/reports/mosaic-analysis/main.txt").readText())
+  }
+
   private fun run(
     project: File,
     task: String,
     expectFailure: Boolean = false,
     configurationCache: Boolean = false,
+    buildCache: Boolean = false,
   ): org.gradle.testkit.runner.BuildResult {
     // Count actual builds, including expected failures, in the captured JUnit output.
     System.err.println("MOSAIC_TESTKIT_INVOCATION")
@@ -574,15 +800,30 @@ class BinaryIntegrationTest {
       GradleRunner.create()
         .withProjectDir(project)
         .withArguments(
-          task,
-          "--offline",
-          if (configurationCache) "--configuration-cache" else "--no-configuration-cache",
-          "--stacktrace",
-          "--gradle-user-home",
-          File(System.getProperty("user.home"), ".gradle").absolutePath,
+          task.split(' ') +
+            listOf(
+              "--offline",
+              if (configurationCache) "--configuration-cache" else "--no-configuration-cache",
+              if (buildCache) "--build-cache" else "--no-build-cache",
+              "--stacktrace",
+              "--gradle-user-home",
+              File(System.getProperty("user.home"), ".gradle").absolutePath,
+              "--info",
+            ),
         )
         .withPluginClasspath()
-    return if (expectFailure) runner.buildAndFail() else runner.build()
+    val result = if (expectFailure) runner.buildAndFail() else runner.build()
+    val launches = result.output.lineSequence().count { it.contains("Mosaic K2 extraction launched") }
+    System.out.println(
+      "MOSAIC_TASKS project=${project.name} request=$task " +
+        "compile=${result.task(":compileKotlin")?.outcome} " +
+        "extract=${result.task(":extractMosaicMain")?.outcome} " +
+        "verify=${result.task(":verifyMosaicMain")?.outcome} k2=$launches",
+    )
+    repeat(launches) {
+      System.err.println("MOSAIC_K2_PROCESS")
+    }
+    return result
   }
 
   private fun jar(project: File): File = File(project, "build/libs/${project.name}.jar")
