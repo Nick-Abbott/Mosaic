@@ -1,6 +1,6 @@
 # First-release public API matrix
 
-Frozen against `origin/main` b8c91f7257d72463e870dc423ac7575adeff4857 before production edits. This is the API inventory and the compact fixture plan. `S` means supported with exact Canvas identity and evaluation order; `U` means supported as a named conservative unknown when a runtime value cannot be established; `O` means outside analysis scope for the stated reason; `I` means not callable by a library user.
+`S` means supported with exact Canvas identity and evaluation order; `U` means supported as a named conservative unknown when a runtime value cannot be established; `O` means outside analysis scope for the stated reason; `I` means not callable by a library user.
 
 | Public API operation | Decision and semantics |
 |---|---|
@@ -24,6 +24,12 @@ Frozen against `origin/main` b8c91f7257d72463e870dc423ac7575adeff4857 before pro
 | `Stub.create/toProvider`, `SingleStub` constructor, `Provider.get`, `Single` constructor/get, `MosaicDI` | O: public low-level DI types do not construct or query a Mosaic Canvas through their own contract; user code in callbacks is subject to ordinary callable analysis. |
 | `CanvasKey.toString` and generated value methods | O: formatting/value operations, with no Canvas lookup/register/paint contract. General user overrides and collection callbacks remain existing conservative boundaries. |
 
-## Fixture equivalence classes and interactions
+## Fixture coverage
 
-One source fixture family should select many roots. Test required and optional lookup through current Mosaic, `Mosaic.canvas`, explicit Canvas, immutable alias, and dynamic receiver. Cross reified/KClass/CanvasKey forms with null, empty, and nonempty qualifiers, known aliases, and dynamic type/key/qualifier. Verify one shared key identity across lookup, registration, and paint, including an exported top-level key from another source file and a separately compiled producer. Binary key facts must be explicit metadata, never inferred from a newer dependency initializer. Test parent expression evaluation before child registration, explicit/named parent, `withLayer`, nested provider ownership, and alias evaluation once. Test all four Tile creation functions; Tile sync/async; MultiTile single-key and collection sync/async with empty, nonempty, and unknown execution; argument work before deferred bodies. Preserve existing failure propagation distinction and Array versus collection KClass identity. Dynamic values must yield a named U, never false M/V. Use kernel tests only for new evaluator state, binary compilation only for exported key facts, and no new TestKit fixture.
+`PublicApiCoverageTest` selects many roots from one source family to cover
+required and optional lookups through Mosaic, `Mosaic.canvas`, Canvas, aliases,
+and dynamic receivers. It crosses reified, KClass, and CanvasKey identities with
+qualifiers, aliases, parent expressions, layers, providers, and Tile and
+MultiTile execution forms. Binary key exports use a separately compiled
+producer. The compiler scenario index records additional execution and unknown
+boundary fixtures; analysis-core tests own evaluator semantics.

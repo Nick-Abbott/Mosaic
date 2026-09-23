@@ -1,4 +1,6 @@
-# Mosaic compiler extraction prototype
+# Mosaic compiler analysis plugin
+
+## Purpose
 
 This published build-tooling module is a read-only Kotlin 2.2.10 K2 compiler plugin. It uses
 `CompilerPluginRegistrar` and `IrGenerationExtension` before IR lowering. It
@@ -7,6 +9,8 @@ compilation through Kotlin’s compiler-subplugin API. It emits per-source inter
 shards for the files Kotlin recompiles. `extractMosaicMain` assembles the complete
 module summary without a second compiler invocation. Standalone complete-output
 mode remains for compiler fixtures.
+
+## Supported semantic boundary
 
 The supported extraction path covers public `Tile` and `MultiTile` creation,
 reified, KClass, and CanvasKey lookup, `canvas`, `single`, `withLayer`, `paint`,
@@ -39,6 +43,8 @@ receiver provenance, unsupported control flow, and capability callbacks also
 produce explicit unknown effects. This is a narrow extractor, not a general
 Kotlin interpreter.
 
+## Known conservative boundaries
+
 Array component mapping is limited to boxed primitives, `String`, `Any`,
 List/Set/Map/Collection interfaces, primitive arrays, and nested supported
 arrays. An unrecognized generic array component produces an unknown key.
@@ -49,6 +55,8 @@ not reliably recoverable, so the summary records a provenance limitation.
 External inline helper bodies are unavailable before backend inlining; a helper
 that can affect Mosaic is explicitly unknown. The extractor never substitutes
 the newest helper body into an already compiled caller.
+
+## Incremental compiler integration and metadata
 
 The Gradle plugin assembles deterministic UTF-8 JSON at
 `META-INF/mosaic-analysis/v1/summary.json` for packaging. Source shards are
@@ -72,14 +80,7 @@ and provisional. This module is resolved automatically by the same-version
 Mosaic Gradle analysis plugin; it is not an application runtime dependency or
 included in the BOM.
 
-## Test placement
-
-`mosaic-analysis-core` tests own semantic combinations. Compiler tests check
-source-to-contract fidelity, while Gradle TestKit tests check wiring, packaging,
-and invalidation. Put a regression's decisive assertion at the cheapest layer
-that exposes it, and extend a relevant compiled fixture before adding another
-compiler or build invocation. Retain distinct failure guarantees rather than
-each historical test wrapper.
+## Extraction guarantees
 
 The [executable scenario index](src/test/SCENARIOS.md) fixes the supported
 boundary and operation/context coverage. A single normalizer evaluates each IR
@@ -113,3 +114,12 @@ Stable Tile properties require a top-level immutable declaration with a default
 getter and supported Tile initializer. Custom getters retain evaluated effects
 but yield unknown Tile provenance. Binary references require a proven stable
 Tile export from the selected producer summary; a top-level val alone is no proof.
+
+## Test placement
+
+`mosaic-analysis-core` tests own semantic combinations. Compiler tests check
+source-to-contract fidelity, while Gradle TestKit tests check wiring, packaging,
+and invalidation. Put a regression's decisive assertion at the cheapest layer
+that exposes it, and extend a relevant compiled fixture before adding another
+compiler or build invocation. Retain distinct failure guarantees rather than
+each historical test wrapper.
