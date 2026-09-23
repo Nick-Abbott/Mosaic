@@ -31,7 +31,7 @@ data class SummaryMetadata(
 object SummaryCodec {
   private const val FORMAT_VERSION = 3
   private const val SEMANTICS_VERSION = "analysis-contract-2"
-  private const val TOOL_VERSION = "prototype-8"
+  private const val TOOL_VERSION = "prototype-9"
   private const val COMPILER_VERSION = "2.2.10"
   private val json =
     Json {

@@ -14,7 +14,9 @@ runtime key identity for lookup, registration, and paint. Immutable top-level
 CanvasKey values export explicit facts; unavailable binary exports and dynamic
 key components stay named unknown. Mosaic.canvas carries its current Canvas.
 Canvas layering, Tile creation, and compose/composeAsync retain evaluation order
-and known-empty/known-nonempty/unknown MultiTile execution distinctions.
+and known-empty/known-nonempty/unknown MultiTile execution distinctions. Fresh
+local Tile values have deferred template contracts and invocation-local
+identities; unsupported capability captures remain named unknown.
 
 | Row | Existing assertion/family; missing interaction added in EC |
 |---|---|

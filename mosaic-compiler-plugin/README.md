@@ -14,8 +14,12 @@ argument evaluation in source order; parameterized Canvas helpers; ordinary
 resolved calls and getters; and the direct final template method to protected
 abstract suspend override transfer by parameter position. `multiTile` and
 `perKeyTile` execution is classified for known-empty, known-nonempty, and unknown
-requests; nested callbacks are not generally interpreted. Mutable and read-only
-List/Set/Map keys normalize to their shared runtime KClass identity. A user
+requests; nested callbacks are not generally interpreted. Fresh local Tile
+values get deferred body templates and invocation-local
+allocation identities. Immutable aliases share the value; unsupported
+capability-bearing captures are named unknown when the body executes.
+Mutable and read-only List/Set/Map keys normalize to their shared runtime
+KClass identity. A user
 constructor is exported as a callable: proven Mosaic-free initialization has
 empty effects, while capability-bearing initialization is unknown. Referenced
 stored-property initialization is extracted through its getter or field read;
@@ -48,7 +52,7 @@ The plugin produces complete main-source-set metadata as deterministic UTF-8
 JSON at `META-INF/mosaic-analysis/v1/summary.json` when packaged by the Gradle
 plugin. The discovery path stays stable; the explicit header governs
 compatibility. Format 3 uses `analysis-contract-2` semantics and Kotlin 2.2.10.
-The producer version is `prototype-8`. Unpublished prototype-7 snapshots are
+The producer version is `prototype-9`. Unpublished prototype-7 snapshots are
 rejected and must be regenerated. The payload checksum covers the canonical
 module, stable key exports, provenance limitations, and binary locators; it detects corruption,
 not producer trust. See the analysis-core README for the wire format and

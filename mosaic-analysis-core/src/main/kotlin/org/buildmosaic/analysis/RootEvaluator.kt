@@ -201,7 +201,7 @@ internal class RootEvaluator(
     context: EvaluationContext,
   ): List<EvaluationContext> {
     val found =
-      when (val resolved = resolveTileReference(effect.tile)) {
+      when (val resolved = resolveTileReference(effect.tile, context)) {
         is TileResolution.Found -> resolved
         is TileResolution.Conflict -> {
           addConflict(context, effect.id, resolved.owners, effect.site)
@@ -247,9 +247,12 @@ internal class RootEvaluator(
     }
   }
 
-  private fun resolveTileReference(reference: TileReference): TileResolution =
+  private fun resolveTileReference(
+    reference: TileReference,
+    context: EvaluationContext,
+  ): TileResolution =
     when (reference) {
-      is TileReference.Alias -> resolveTileReference(reference.reference)
+      is TileReference.Alias -> resolveTileReference(reference.reference, context)
       is TileReference.Unknown -> TileResolution.Unknown(reference.reason, reference.site)
       is TileReference.Stable ->
         when (val contract = registry.tile(reference.contractId)) {
@@ -272,7 +275,7 @@ internal class RootEvaluator(
           is Resolution.Found ->
             TileResolution.Found(
               contract.value,
-              "${reference.templateId}@${reference.allocationId}#${reference.invocationId}",
+              "${reference.templateId}@${reference.allocationId}#${reference.invocationId}:${context.activation}",
             )
           is Resolution.Conflict -> TileResolution.Conflict(reference.templateId, contract.owners)
           Resolution.Missing -> TileResolution.Missing(reference.templateId)

@@ -97,11 +97,13 @@ class MosaicIrExtractor(
   private val moduleId: String,
 ) : IrGenerationExtension {
   private val limitations = mutableListOf<String>()
+  private val freshTemplates = linkedMapOf<String, TileContract>()
 
   override fun generate(
     moduleFragment: org.jetbrains.kotlin.ir.declarations.IrModuleFragment,
     pluginContext: IrPluginContext,
   ) {
+    freshTemplates.clear()
     val canvases = mutableListOf<CanvasContract>()
     val tiles = mutableListOf<TileContract>()
     val callables = mutableListOf<CallableContract>()
@@ -182,7 +184,7 @@ class MosaicIrExtractor(
             listOfNotNull(declaration.getter, declaration.setter).forEach { accessor ->
               val id = symbolId(accessor)
               val site = location(file, accessor, id)
-              val normalizer = Normalizer(file, id)
+              val normalizer = Normalizer(file, id, collectFreshTemplates = !stableTile)
               val value =
                 when {
                   stableTile -> normalizer.body(initializer)
@@ -256,6 +258,7 @@ class MosaicIrExtractor(
       }
       file.declarations.forEach(::visit)
     }
+    tiles += freshTemplates.values
     val module = ModuleContract(moduleId, canvases, tiles, callables, overrides, keys)
     File(output).apply {
       parentFile.mkdirs()
@@ -284,6 +287,7 @@ class MosaicIrExtractor(
     val file: IrFile,
     val owner: String,
     val values: MutableMap<org.jetbrains.kotlin.ir.symbols.IrValueSymbol, Value> = mutableMapOf(),
+    val collectFreshTemplates: Boolean = true,
   ) {
     val effects = mutableListOf<Effect>()
 
@@ -509,9 +513,7 @@ class MosaicIrExtractor(
             return Value(callable = isCallableType(call.type))
           }
           target == "org.buildmosaic.core.injection.create" -> return Value(mosaic = canvas(receiver, call))
-          isTileFactory(
-            call,
-          ) -> return Value(tile = TileReference.Unknown("Fresh or captured Tile values are unsupported", site(call)))
+          isTileFactory(call) -> return freshTile(call)
           else -> {
             check(call is IrCall)
             val parent =
@@ -599,6 +601,32 @@ class MosaicIrExtractor(
         key = if (isKeyType(call.type)) Fact.Unknown("Unsupported computed CanvasKey value", site(call)) else null,
         callable = isCallableType(call.type),
       )
+    }
+
+    private fun freshTile(call: IrFunctionAccessExpression): Value {
+      if (!collectFreshTemplates) return Value()
+      val templateId = "$owner:fresh:${identity(call)}"
+      val lambda = lambdaFunction(call.argument("block") ?: call.argument("fetch"))
+      val template = Normalizer(file, templateId, values.toMutableMap())
+      val capture = lambda?.let { unsupportedTileCapture(it, values) }
+      if (capture != null) {
+        template.unknown(call, "Unsupported deferred Tile capture: $capture")
+      } else if (lambda?.body != null) {
+        lambda.parameters.filter { it.kind == IrParameterKind.ExtensionReceiver }.forEach {
+          template.bindCurrentReceiver(it, mosaic = true)
+        }
+        template.body(lambda.body)
+      } else {
+        template.unknown(call, "Tile block is unavailable")
+      }
+      freshTemplates[templateId] =
+        TileContract(
+          templateId,
+          template.effects,
+          site(call),
+          multi = call.type.classFqName?.asString() == "org.buildmosaic.core.MultiTile",
+        )
+      return Value(tile = TileReference.Fresh(templateId, valueId(call), owner))
     }
 
     private fun layer(
@@ -1024,6 +1052,42 @@ class MosaicIrExtractor(
       is IrBlock -> expression.statements.filterIsInstance<IrFunctionExpression>().lastOrNull()?.function
       else -> null
     }
+
+  /** Relevant outer values need an explicit deferred snapshot; scalar facts can be copied safely. */
+  private fun unsupportedTileCapture(
+    function: IrFunction,
+    outerValues: Map<org.jetbrains.kotlin.ir.symbols.IrValueSymbol, Value>,
+  ): String? {
+    val local: MutableSet<org.jetbrains.kotlin.ir.symbols.IrValueSymbol> =
+      function.parameters.map {
+        it.symbol
+      }.toMutableSet()
+    function.body?.acceptChildrenVoid(
+      object : IrVisitorVoid() {
+        override fun visitElement(element: IrElement) {
+          if (element is IrVariable) local += element.symbol
+          element.acceptChildrenVoid(this)
+        }
+      },
+    )
+    var reason: String? = null
+    function.body?.acceptChildrenVoid(
+      object : IrVisitorVoid() {
+        override fun visitElement(element: IrElement) {
+          if (element is IrGetValue && element.symbol !in local) {
+            val value = outerValues[element.symbol]
+            val capabilityType = isCapabilityType(element.type) || isCallableType(element.type)
+            val capabilityValue = value?.canvas != null || value?.mosaic != null || value?.tile != null || value?.callable == true
+            if (capabilityType || capabilityValue) {
+              reason = element.type.classFqName?.asString() ?: "capability value"
+            }
+          }
+          element.acceptChildrenVoid(this)
+        }
+      },
+    )
+    return reason
+  }
 
   private fun canvasParameters(
     function: IrFunction,

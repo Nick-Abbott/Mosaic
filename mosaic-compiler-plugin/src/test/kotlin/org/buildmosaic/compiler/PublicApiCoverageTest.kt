@@ -49,6 +49,7 @@ class PublicApiCoverageTest {
         val BothLookupTile = singleTile { source<Metrics>(); canvas.source<Metrics>() }
 
         suspend fun kclassMissing() { canvas {}.source(Metrics::class, "named") }
+        suspend fun kclassAliasMissing() { val type = Metrics::class; canvas {}.source(type, "named") }
         suspend fun keyMissing() { canvas {}.source(CanvasKey(Metrics::class, "named")) }
         suspend fun aliasMissing() { val k = CanvasKey(Metrics::class, "named"); val alias = k; canvas {}.source(alias) }
         suspend fun crossFileMissing() { canvas {}.source(SharedKey) }
@@ -88,11 +89,26 @@ class PublicApiCoverageTest {
         suspend fun chunkSingle() { canvas {}.create().compose(NeedsChunkTile, "a") }
         suspend fun directTile() { canvas {}.create().compose(DirectTile) }
         suspend fun directMultiTile() { canvas {}.create().compose(DirectMultiTile, "a") }
+        suspend fun localSingle() { val tile = singleTile { source<Metrics>("named"); "ok" }; canvas {}.create().compose(tile) }
+        suspend fun directFresh() { canvas {}.create().compose(singleTile { source<Metrics>("named"); "ok" }) }
+        suspend fun localDirectConstructor() { val tile = Tile { source<Metrics>("named"); "ok" }; canvas {}.create().compose(tile) }
+        suspend fun localMulti() { val tile = multiTile<String, String> { source<Metrics>("named"); emptyMap() }; canvas {}.create().compose(tile, "a") }
+        suspend fun localMultiEmpty() { val tile = multiTile<String, String> { source<Metrics>("named"); emptyMap() }; canvas {}.create().compose(tile, emptyList()) }
+        suspend fun localTileAlias() { val tile = singleTile { source<Metrics>("named"); "ok" }; val alias = tile; canvas {}.create().compose(alias) }
+        suspend fun localPerKey() { val tile = perKeyTile<String, String> { source<Metrics>("named"); "ok" }; canvas {}.create().compose(tile, "a") }
+        suspend fun localChunked() { val tile = chunkedMultiTile<String, String>(2) { source<Metrics>("named"); emptyMap() }; canvas {}.create().compose(tile, "a") }
+        suspend fun localChunkedCreationWork() { val tile = chunkedMultiTile<String, String>(canvas {}.source<Int>()) { source<Metrics>("named"); emptyMap() }; canvas {}.create().compose(tile, emptyList()) }
+        suspend fun localScalarCapture() { val qualifier = "named"; val tile = singleTile { source<Metrics>(qualifier); "ok" }; canvas {}.create().compose(tile) }
+        suspend fun localCanvasCapture() { val captured = canvas {}; val tile = singleTile { captured.source<Metrics>(); "ok" }; canvas {}.create().compose(tile) }
+        suspend fun localCapturedMultiEmpty() { val captured = canvas {}; val tile = multiTile<String, String> { captured.source<Metrics>(); emptyMap() }; canvas {}.create().compose(tile, emptyList()) }
+        suspend fun twoLocalTilesAsync() { val first = singleTile { source<Metrics>("named"); "a" }; val second = singleTile { source<Metrics>("named"); "b" }; val m = canvas {}.create(); m.composeAsync(first); m.composeAsync(second) }
         suspend fun dynamicType(type: kotlin.reflect.KClass<Metrics>) { canvas {}.source(type) }
         suspend fun dynamicKey(key: CanvasKey<Metrics>) { canvas {}.source(key) }
         suspend fun dynamicOptionalKey(key: CanvasKey<Metrics>) { canvas {}.sourceOr(key) }
         suspend fun dynamicQualifier(q: String) { canvas {}.create().source<Metrics>(q) }
         suspend fun dynamicRegistration(q: String) { canvas { single<Metrics>(q) { Metrics() } }.source<Metrics>() }
+        suspend fun dynamicRegistrationKey(key: CanvasKey<Metrics>) { canvas { single(key) { Metrics() } } }
+        suspend fun dynamicPaintKey(key: CanvasKey<Metrics>) { canvas { single<String> { paint(key); "ok" } } }
         """.trimIndent(),
       )
       compileAndExtract(listOf(keys, roots), directory, "publicapi")
@@ -109,7 +125,7 @@ class PublicApiCoverageTest {
               name,
               "publicapi.${if (name.startsWith("dynamicType")) {
                 "dynamicType(kotlin.reflect.KClass)"
-              } else if (name.startsWith("dynamicKey") || name.startsWith("dynamicOptionalKey")) {
+              } else if (name in setOf("dynamicKey", "dynamicOptionalKey", "dynamicRegistrationKey", "dynamicPaintKey")) {
                 "$name(org.buildmosaic.core.injection.CanvasKey)"
               } else if (name.startsWith("dynamicQualifier") || name.startsWith("dynamicRegistration")) {
                 "$name(kotlin.String)"
@@ -132,6 +148,18 @@ class PublicApiCoverageTest {
     )
   }
 
+  private fun exactMissing(
+    name: String,
+    classId: String = "publicapi.Metrics",
+  ) {
+    val result = report(name)
+    assertTrue(
+      result.findings.any { it.certainty == Certainty.MISSING && it.key?.classId == classId },
+      "$name: $result",
+    )
+    assertTrue(result.findings.none { it.certainty == Certainty.UNVERIFIED }, "$name: $result")
+  }
+
   private fun verified(name: String) {
     val report = report(name)
     assertEquals(RootStatus.VERIFIED, report.roots.single().status, "$name: $report")
@@ -146,6 +174,7 @@ class PublicApiCoverageTest {
   @Test fun `lookup forms share exact key identity`() {
     listOf(
       "kclassMissing",
+      "kclassAliasMissing",
       "keyMissing",
       "aliasMissing",
       "crossFileMissing",
@@ -193,7 +222,30 @@ class PublicApiCoverageTest {
       "dynamicOptionalKey",
       "dynamicQualifier",
       "dynamicRegistration",
+      "dynamicRegistrationKey",
+      "dynamicPaintKey",
     ).forEach(::unknown)
+  }
+
+  @Test fun `fresh Tile factories retain deferred bodies and allocation aliases`() {
+    listOf(
+      "localSingle",
+      "directFresh",
+      "localDirectConstructor",
+      "localMulti",
+      "localTileAlias",
+      "localPerKey",
+      "localChunked",
+      "localScalarCapture",
+    ).forEach(::exactMissing)
+    exactMissing("localChunkedCreationWork", "kotlin.Int")
+    verified("localMultiEmpty")
+    verified("localCapturedMultiEmpty")
+    unknown("localCanvasCapture")
+    assertTrue(report("localCanvasCapture").findings.any { it.reason.contains("capture", ignoreCase = true) })
+    val separate = report("twoLocalTilesAsync").findings.filter { it.key?.classId == "publicapi.Metrics" }
+    assertEquals(2, separate.size)
+    assertEquals(2, separate.map { it.dependencyPath.last().label }.toSet().size)
   }
 }
 
@@ -219,7 +271,13 @@ class BinaryCanvasKeyExportTest {
       package consumer
       import producer.*
       import org.buildmosaic.core.injection.*
-      suspend fun entry() { canvas { single<Metrics>("named") { Metrics() } }.source(SharedKey) }
+      suspend fun entry() {
+        val c = canvas {
+          single(SharedKey) { Metrics() }
+          single<String> { paint(SharedKey); "ok" }
+        }
+        c.source(SharedKey)
+      }
       """.trimIndent(),
     )
     val consumerModule = compileAndExtract(listOf(consumer), File(directory, "consumer"), "consumer", jar)
