@@ -129,7 +129,7 @@ class BinaryIntegrationTest {
     assertTrue(empty.module.tiles.isEmpty())
     assertTrue(empty.module.callables.isEmpty())
     assertEquals(TaskOutcome.FAILED, unconfigured.task(":verifyMosaicMain")?.outcome)
-    assertTrue(File(project, "build/reports/mosaic-analysis/main.txt").readText().contains("UNCONFIGURED"))
+    assertTrue(unconfigured.output.contains("APPLICATION verification requires at least one root"))
     val javaSource = File(project, "src/main/java/Extra.java")
     javaSource.parentFile.mkdirs()
     javaSource.writeText("public class Extra {}")
@@ -139,6 +139,21 @@ class BinaryIntegrationTest {
     javaSource.delete()
     run(project, "extractMosaicMain")
     assertTrue(SummaryCodec.decode(summaryFile.readBytes()).complete)
+    val roleChangedBuild =
+      File(project, "build.gradle.kts").apply {
+        appendText("\nmosaicAnalysis { role = org.buildmosaic.gradle.MosaicAnalysisRole.LIBRARY }\n")
+      }
+    val exportFirst = run(project, "verifyMosaicMain", configurationCache = true)
+    assertTrue(exportFirst.output.contains("EXPORT_ONLY"), exportFirst.output)
+    val exportSecond = run(project, "verifyMosaicMain", configurationCache = true)
+    assertTrue(exportSecond.output.contains("Configuration cache entry reused"), exportSecond.output)
+    roleChangedBuild.appendText("\ntasks.named(\"extractMosaicMain\") { enabled = false }\n")
+    summaryFile.writeBytes(byteArrayOf(1, 2, 3))
+    val invalidLocal = run(project, "verifyMosaicMain", expectFailure = true)
+    assertTrue(invalidLocal.output.contains("Invalid local Mosaic summary"), invalidLocal.output)
+    assertTrue(
+      File(project, "build/reports/mosaic-analysis/main.txt").readText().contains("Local metadata error"),
+    )
   }
 
   @Test
@@ -149,7 +164,7 @@ class BinaryIntegrationTest {
     val coreJar = File(repository, "mosaic-core/build/libs/mosaic-core-0.2.0.jar")
     assertTrue(pluginJar.isFile, pluginJar.absolutePath)
     assertTrue(coreJar.isFile, coreJar.absolutePath)
-    val platform = project(root, "platform", pluginJar, listOf(coreJar))
+    val platform = project(root, "platform", pluginJar, listOf(coreJar), role = "LIBRARY")
     val platformSource = File(platform, "src/main/kotlin/Platform.kt")
     val originalPlatform =
       """
@@ -176,12 +191,32 @@ class BinaryIntegrationTest {
       parentFile.mkdirs()
       writeText(originalPlatform)
     }
-    val platformBuild = run(platform, "jar")
+    val platformBuild = run(platform, "build")
     val platformJar = jar(platform)
     assertEquals(TaskOutcome.SUCCESS, platformBuild.task(":extractMosaicMain")?.outcome)
+    assertEquals(TaskOutcome.SUCCESS, platformBuild.task(":verifyMosaicMain")?.outcome)
+    assertTrue(File(platform, "build/reports/mosaic-analysis/main.txt").readText().contains("EXPORT_ONLY"))
     val firstPlatformHash = sha256(platformJar)
     val firstPlatformSummaryHash = summaryHash(platformJar)
     JarFile(platformJar).use { assertTrue(it.getJarEntry(SUMMARY_PATH) != null) }
+    val platformBuildFile = File(platform, "build.gradle.kts")
+    val platformBuildText = platformBuildFile.readText()
+    platformBuildFile.writeText(
+      platformBuildText.replace(
+        "role = org.buildmosaic.gradle.MosaicAnalysisRole.LIBRARY",
+        "role = org.buildmosaic.gradle.MosaicAnalysisRole.APPLICATION",
+      ),
+    )
+    val roleChanged = run(platform, "verifyMosaicMain", expectFailure = true)
+    assertTrue(roleChanged.output.contains("APPLICATION verification requires at least one root"), roleChanged.output)
+    assertTrue(
+      File(platform, "build/reports/mosaic-analysis/main.txt").readText().contains("Role: APPLICATION"),
+    )
+    platformBuildFile.writeText(platformBuildText)
+    platformBuildFile.appendText("\nmosaicAnalysis { roots.add(\"platform.platformCanvas()\") }\n")
+    val libraryRoots = run(platform, "build", expectFailure = true)
+    assertTrue(libraryRoots.output.contains("LIBRARY cannot select application roots"), libraryRoots.output)
+    platformBuildFile.writeText(platformBuildText)
 
     val adapter = project(root, "adapter", pluginJar, listOf(coreJar, platformJar))
     File(adapter, "src/main/kotlin/Adapter.kt").apply {
@@ -240,7 +275,10 @@ class BinaryIntegrationTest {
         pluginJar,
         listOf(coreJar, platformJar, adapterJar, tileJar),
         listOf("app.entry()", "app.adapterEntry()", "app.slotEntry()"),
+        enforcement = "STRICT",
       )
+    val appBuildFile = File(app, "build.gradle.kts")
+    val strictBuildText = appBuildFile.readText()
     File(app, "src/main/kotlin/App.kt").apply {
       parentFile.mkdirs()
       writeText(
@@ -376,6 +414,19 @@ class BinaryIntegrationTest {
     run(platform, "jar")
     val restored = run(app, "build")
     assertEquals(TaskOutcome.SUCCESS, restored.task(":verifyMosaicMain")?.outcome)
+    appBuildFile.writeText(
+      strictBuildText.replace(
+        "enforcement = org.buildmosaic.gradle.MosaicAnalysisEnforcement.STRICT",
+        "enforcement = org.buildmosaic.gradle.MosaicAnalysisEnforcement.STANDARD",
+      ),
+    )
+    val standardVerified = run(app, "verifyMosaicMain")
+    val standardVerifiedReport = File(app, "build/reports/mosaic-analysis/main.txt").readText()
+    assertEquals(TaskOutcome.SUCCESS, standardVerified.task(":verifyMosaicMain")?.outcome)
+    assertTrue(standardVerifiedReport.contains("Result: FULLY VERIFIED"), standardVerifiedReport)
+    appBuildFile.writeText(strictBuildText)
+    val strictVerified = run(app, "verifyMosaicMain")
+    assertEquals(TaskOutcome.SUCCESS, strictVerified.task(":verifyMosaicMain")?.outcome)
     println(
       "RESTORED_TASKS compileKotlin=${restored.task(
         ":compileKotlin",
@@ -392,6 +443,22 @@ class BinaryIntegrationTest {
       missingReport.contains("MISSING REQUIRED_LOOKUP CanvasKeyIdentity(classId=platform.PlatformConfig"),
       missingReport,
     )
+    appBuildFile.writeText(
+      strictBuildText.replace(
+        "enforcement = org.buildmosaic.gradle.MosaicAnalysisEnforcement.STRICT",
+        "enforcement = org.buildmosaic.gradle.MosaicAnalysisEnforcement.STANDARD",
+      ),
+    )
+    val standardUnknown = run(app, "verifyMosaicMain")
+    val standardReport = File(app, "build/reports/mosaic-analysis/main.txt").readText()
+    assertEquals(TaskOutcome.SUCCESS, standardUnknown.task(":verifyMosaicMain")?.outcome)
+    assertTrue(standardUnknown.output.contains("Mosaic verification passed with warnings"), standardUnknown.output)
+    assertTrue(standardReport.contains("PASSED WITH WARNINGS"), standardReport)
+    assertTrue(standardReport.contains("UNVERIFIED"), standardReport)
+    appBuildFile.writeText(strictBuildText)
+    val strictUnknown = run(app, "verifyMosaicMain", expectFailure = true)
+    assertEquals(TaskOutcome.FAILED, strictUnknown.task(":verifyMosaicMain")?.outcome)
+    assertTrue(strictUnknown.output.contains("Mosaic verification failed"), strictUnknown.output)
 
     platformJar.writeBytes(completeBytes)
     run(app, "verifyMosaicMain")
@@ -399,8 +466,8 @@ class BinaryIntegrationTest {
     val malformed = run(app, "verifyMosaicMain", expectFailure = true)
     val malformedReport = File(app, "build/reports/mosaic-analysis/main.txt").readText()
     assertEquals(TaskOutcome.FAILED, malformed.task(":verifyMosaicMain")?.outcome)
+    assertTrue(malformedReport.contains("Artifact metadata error"), malformedReport)
     assertTrue(malformedReport.contains("invalid Mosaic summary"), malformedReport)
-    assertTrue(malformedReport.contains("UNVERIFIED"), malformedReport)
     platformJar.writeBytes(completeBytes)
     run(app, "verifyMosaicMain")
 
@@ -427,6 +494,8 @@ class BinaryIntegrationTest {
     pluginJar: File,
     jars: List<File>,
     roots: List<String> = emptyList(),
+    role: String = "APPLICATION",
+    enforcement: String = "STANDARD",
   ): File =
     File(root, name).apply {
       mkdirs()
@@ -457,6 +526,8 @@ class BinaryIntegrationTest {
         }
         mosaicAnalysis {
           compilerPluginJar.set(file("${pluginJar.invariantSeparatorsPath}"))
+          role = org.buildmosaic.gradle.MosaicAnalysisRole.$role
+          enforcement = org.buildmosaic.gradle.MosaicAnalysisEnforcement.$enforcement
           $configuredRoots
         }
         """.trimIndent(),

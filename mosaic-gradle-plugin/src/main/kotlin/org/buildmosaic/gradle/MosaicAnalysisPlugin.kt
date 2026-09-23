@@ -8,6 +8,7 @@ import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.Property
 import org.gradle.api.tasks.TaskProvider
 import org.gradle.api.tasks.bundling.Jar
 import org.gradle.jvm.toolchain.JavaToolchainService
@@ -19,8 +20,22 @@ abstract class MosaicAnalysisExtension
   @Inject
   constructor(objects: ObjectFactory) {
     val roots: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
+    val role: Property<MosaicAnalysisRole> =
+      objects.property(MosaicAnalysisRole::class.java).convention(MosaicAnalysisRole.APPLICATION)
+    val enforcement: Property<MosaicAnalysisEnforcement> =
+      objects.property(MosaicAnalysisEnforcement::class.java).convention(MosaicAnalysisEnforcement.STANDARD)
     val compilerPluginJar: RegularFileProperty = objects.fileProperty()
   }
+
+enum class MosaicAnalysisRole {
+  APPLICATION,
+  LIBRARY,
+}
+
+enum class MosaicAnalysisEnforcement {
+  STANDARD,
+  STRICT,
+}
 
 class MosaicAnalysisPlugin : Plugin<Project> {
   override fun apply(project: Project) {
@@ -62,6 +77,8 @@ class MosaicAnalysisPlugin : Plugin<Project> {
         task.summaryFile.set(extract.flatMap { it.summaryFile })
         task.dependencyJars.from(project.configurations.getByName("compileClasspath"))
         task.roots.set(extension.roots)
+        task.role.set(extension.role)
+        task.enforcement.set(extension.enforcement)
         task.reportFile.set(project.layout.buildDirectory.file("reports/mosaic-analysis/main.txt"))
         task.dependsOn(extract)
       }
