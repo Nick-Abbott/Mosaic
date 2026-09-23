@@ -39,7 +39,11 @@ abstract class ExtractMosaicTask
     abstract val compileClasspath: ConfigurableFileCollection
 
     @get:CompileClasspath
-    abstract val sourceResolutionClasspath: ConfigurableFileCollection
+    abstract val sourceResolutionAbi: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val kotlinModuleMetadata: ConfigurableFileCollection
 
     @get:Classpath
     abstract val compilerClasspath: ConfigurableFileCollection
@@ -149,7 +153,7 @@ abstract class ExtractMosaicTask
       if (languageVersion.get().isNotBlank()) settings += listOf("-language-version", languageVersion.get())
       if (apiVersion.get().isNotBlank()) settings += listOf("-api-version", apiVersion.get())
       try {
-        logger.lifecycle("Mosaic K2 extraction launched for ${moduleId.get()}")
+        logger.info("Mosaic K2 extraction launched for ${moduleId.get()}")
         exec.javaexec { spec ->
           spec.executable = javaExecutable.get().asFile.absolutePath
           spec.classpath = compilerClasspath

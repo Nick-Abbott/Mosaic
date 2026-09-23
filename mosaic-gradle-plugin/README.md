@@ -77,13 +77,22 @@ and verification up to date. A dependency Mosaic contract change reruns
 verification without rerunning unchanged application extraction.
 
 Extraction runs K2 with the full compile classpath, but fingerprints a
-source-resolution view of each JAR. The view retains named classes, public
-constant values, and Kotlin module metadata. It excludes compiler-generated
-anonymous classes and source debug annotations that change with implementation
-details. Gradle applies compile classpath ABI normalization to this view.
-External public constant changes and source-visible ABI changes therefore
-invalidate extraction; ordinary body and resource changes do not. Additional
-compiler plugins and nonstandard source layouts remain unsupported.
+source-resolution ABI view of each JAR. The view retains named classes and
+public constant values. It excludes compiler-generated anonymous classes and
+source debug annotations that change with implementation details. A
+`platformCanvas()` body-only binding change demonstrated that the raw JAR under
+Gradle's compile classpath normalization includes generated lambda references
+and source debug annotations, unnecessarily rerunning application extraction.
+The narrow projection preserves the verified `UP_TO_DATE` boundary for that
+case. Gradle applies compile classpath ABI normalization to its projected JAR.
+
+Kotlin `.kotlin_module` resources are aggregated separately per JAR with their
+names and raw bytes, and tracked as a path-independent file input. They are not
+passed through compile classpath normalization, which ignores resources.
+External public constant changes, Kotlin-visible declaration metadata changes,
+and source-visible ABI changes invalidate extraction; ordinary body and
+unrelated resource changes do not. Additional compiler plugins and nonstandard
+source layouts remain unsupported.
 
 Roots are explicit callable IDs. APPLICATION with no roots fails both
 `verifyMosaicMain` and `check`/`build`, with guidance to configure roots or select

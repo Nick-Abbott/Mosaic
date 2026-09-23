@@ -145,11 +145,12 @@ class MosaicAnalysisPlugin : Plugin<Project> {
       task.javaSources.from(project.fileTree("src/main/java") { it.include("**/*.java") })
       task.supportedSourceRoot.set(project.file("src/main/kotlin").absolutePath)
       task.compileClasspath.from(project.configurations.getByName("compileClasspath"))
-      task.sourceResolutionClasspath.from(
+      val resolutionArtifacts =
         project.configurations.getByName("compileClasspath").incoming.artifactView { view ->
           view.attributes.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, MOSAIC_RESOLUTION_ARTIFACT_TYPE)
-        }.files,
-      )
+        }.files
+      task.sourceResolutionAbi.from(resolutionArtifacts.filter { it.name.endsWith(".resolution.jar") })
+      task.kotlinModuleMetadata.from(resolutionArtifacts.filter { it.name.endsWith(".kotlin-modules.bin") })
       task.compilerClasspath.from(compilerConfiguration)
       task.additionalCompilerPlugins.from(compile.map { it.pluginClasspath })
       task.friendPaths.from(compile.map { it.friendPaths })

@@ -36,7 +36,7 @@ abstract class SourceResolutionTransform : TransformAction<TransformParameters.N
     JarFile(artifact).use { jar ->
       val entries = jar.entries().asSequence().filterNot { it.isDirectory }.sortedBy { it.name }.toList()
       writeAbi(jar, entries, outputs.file("${artifact.name}.resolution.jar"))
-      writeModules(jar, entries, outputs.file("${artifact.name}.kotlin-modules.bin"))
+      writeModules(jar, entries, artifact.name, outputs.file("${artifact.name}.kotlin-modules.bin"))
     }
   }
 
@@ -93,9 +93,11 @@ abstract class SourceResolutionTransform : TransformAction<TransformParameters.N
   private fun writeModules(
     jar: JarFile,
     entries: List<JarEntry>,
+    artifactName: String,
     file: File,
   ) {
     DataOutputStream(file.outputStream().buffered()).use { output ->
+      output.writeUTF(artifactName)
       entries.filter { it.name.startsWith("META-INF/") && it.name.endsWith(".kotlin_module") }.forEach { entry ->
         val bytes = jar.getInputStream(entry).use { it.readBytes() }
         output.writeUTF(entry.name)
