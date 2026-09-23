@@ -386,21 +386,58 @@ class IrShapeTest {
     assertTrue(List::class == MutableList::class)
     assertTrue(Set::class == MutableSet::class)
     assertTrue(Map::class == MutableMap::class)
-    val report =
-      analyzeSource(
+    assertFalse(Array<String>::class == Array<Int>::class)
+    assertTrue(arrayOf<List<String>>(listOf("one"))::class == arrayOf<List<Int>>(listOf(1))::class)
+    val (module, report) =
+      extractSource(
         """
         package regression
         import org.buildmosaic.core.*
         import org.buildmosaic.core.injection.*
+        val StringsTile = singleTile { source<Array<String>>() }
         val ExampleTile = singleTile { source<List<String>>(); source<Set<String>>(); source<Map<String, String>>() }
         suspend fun entry() = canvas {
           single<MutableList<String>> { mutableListOf() }
           single<MutableSet<String>> { mutableSetOf() }
           single<MutableMap<String, String>> { mutableMapOf() }
         }.create().compose(ExampleTile)
+        suspend fun mismatch() = canvas { single<Array<Int>> { arrayOf(1) } }.create().compose(StringsTile)
+        suspend fun match() = canvas { single<Array<String>> { arrayOf("one") } }.create().compose(StringsTile)
+        val NestedTile = singleTile { source<Array<List<String>>>() }
+        suspend fun nestedMatch() = canvas { single<Array<List<Int>>> { arrayOf(listOf(1)) } }.create().compose(NestedTile)
         """.trimIndent(),
       )
-    assertFalse(report.findings.any { it.certainty == Certainty.MISSING }, report.toString())
+    assertEquals(org.buildmosaic.analysis.RootStatus.VERIFIED, report.roots.single().status, report.toString())
+    assertTrue(report.policyDecision.passed, report.toString())
+    val mismatchTarget = "regression.mismatch()"
+    assertTrue(module.callables.any { it.id == mismatchTarget }, module.toString())
+    assertTrue(
+      module.callables.single { it.id == mismatchTarget }.effects.any { it is Effect.Compose },
+      module.toString(),
+    )
+    val mismatch = analyzeModule(module, mismatchTarget)
+    val stringKey =
+      module.tiles.single { it.id == "regression.StringsTile" }.effects.filterIsInstance<Effect.Lookup>().single().key
+    val canvasEffect =
+      module.callables.single { it.id == mismatchTarget }.effects.filterIsInstance<Effect.ConstructCanvas>().first()
+    val mismatchLayer = (canvasEffect.canvas as CanvasExpression.Alias).expression as CanvasExpression.Layer
+    assertEquals("[Ljava/lang/String;", (stringKey as org.buildmosaic.analysis.Fact.Known).value.classId)
+    assertEquals(
+      "[Ljava/lang/Integer;",
+      (mismatchLayer.bindings.single().key as org.buildmosaic.analysis.Fact.Known).value.classId,
+    )
+    val nestedKey =
+      module.tiles.single { it.id == "regression.NestedTile" }.effects.filterIsInstance<Effect.Lookup>().single().key
+    assertEquals("[Ljava/util/List;", (nestedKey as org.buildmosaic.analysis.Fact.Known).value.classId)
+    assertTrue(
+      mismatch.findings.any { it.certainty == Certainty.MISSING && it.key?.classId?.contains("String") == true },
+      "$module\n$mismatch",
+    )
+    listOf("regression.match()", "regression.nestedMatch()").forEach { target ->
+      val matching = analyzeModule(module, target)
+      assertEquals(org.buildmosaic.analysis.RootStatus.VERIFIED, matching.roots.single().status, "$target: $matching")
+      assertTrue(matching.policyDecision.passed, "$target: $matching")
+    }
   }
 
   @Test
@@ -562,10 +599,12 @@ class IrShapeTest {
       const val QUALIFIER = "old"
       class Metrics
       inline fun Mosaic.helper(): Metrics = source<Metrics>()
+      inline val Mosaic.inlineMetrics: Metrics get() = source<Metrics>()
       """.trimIndent(),
     )
     val producerClasses = File(directory, "producer-classes")
-    compile(producer, producerClasses)
+    val producerFacts = File(directory, "producer/facts.txt")
+    compile(producer, producerClasses, output = producerFacts, moduleId = "producer")
     val producerJar = File(directory, "producer.jar")
     jarClasses(producerClasses, producerJar)
     val caller = File(directory, "Caller.kt")
@@ -573,18 +612,61 @@ class IrShapeTest {
       """
       package consumer
       import org.buildmosaic.core.*
+      import org.buildmosaic.core.injection.*
       import producer.*
       val Tile = singleTile { source<Metrics>(QUALIFIER); helper() }
+      val AccessorTile = singleTile { inlineMetrics }
+      suspend fun accessorEntry() = canvas { }.create().compose(AccessorTile)
       """.trimIndent(),
     )
     val output = File(directory, "caller-facts.txt")
     compile(caller, File(directory, "caller-classes"), producerJar, output)
+    val callerBytes = File(output.parentFile, "summary.json").readBytes()
     val facts = output.readLines()
     assertTrue(facts.any { it.startsWith("CONST|old|") })
     assertTrue(facts.any { it.startsWith("CALL|producer.helper|") })
     assertTrue(facts.none { it.startsWith("FIELD|producer.QUALIFIER|") })
-    val summary = SummaryCodec.decode(File(output.parentFile, "summary.json").readBytes())
-    assertTrue(summary.module.tiles.single().effects.any { it is org.buildmosaic.analysis.Effect.Unknown })
+    val summary = SummaryCodec.decode(callerBytes)
+    assertTrue(summary.module.tiles.single { it.id == "consumer.Tile" }.effects.any { it is Effect.Unknown })
+    val accessorTarget = "consumer.accessorEntry()"
+    assertTrue(summary.module.callables.any { it.id == accessorTarget }, summary.module.toString())
+    assertTrue(summary.module.callables.single { it.id == accessorTarget }.effects.any { it is Effect.Compose })
+    assertTrue(
+      summary.module.tiles.single { it.id == "consumer.AccessorTile" }.effects.any {
+        it is Effect.Unknown && it.reason.contains("inline")
+      },
+      summary.module.toString(),
+    )
+    producer.writeText(
+      """
+      package producer
+      import org.buildmosaic.core.Mosaic
+      import org.buildmosaic.core.source
+      const val QUALIFIER = "new"
+      class Metrics
+      inline fun Mosaic.helper(): Metrics = Metrics()
+      inline val Mosaic.inlineMetrics: Metrics get() = Metrics()
+      """.trimIndent(),
+    )
+    val newProducerFacts = File(directory, "new-producer/facts.txt")
+    compile(producer, File(directory, "new-producer-classes"), output = newProducerFacts, moduleId = "producer")
+    val newProducer = SummaryCodec.decode(File(newProducerFacts.parentFile, "summary.json").readBytes()).module
+    val accessorReport =
+      MosaicAnalyzer().analyze(
+        AnalysisRequest(
+          summary.module,
+          listOf(newProducer),
+          listOf(SelectedRoot(accessorTarget, accessorTarget)),
+          policy = AnalysisPolicy.STRICT,
+        ),
+      )
+    assertTrue(
+      accessorReport.findings.any { it.certainty == Certainty.UNVERIFIED && it.reason.contains("inline") },
+      "${summary.module}\n$accessorReport",
+    )
+    assertTrue(accessorReport.roots.single().specializedContracts.contains(accessorTarget), accessorReport.toString())
+    assertEquals(org.buildmosaic.analysis.RootStatus.UNVERIFIED, accessorReport.roots.single().status)
+    assertTrue(callerBytes.contentEquals(File(output.parentFile, "summary.json").readBytes()))
     // The unresolved external inline body cannot be treated as an empty Mosaic effect.
     assertTrue(
       facts.none {

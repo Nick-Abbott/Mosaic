@@ -59,6 +59,7 @@ import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
 import org.jetbrains.kotlin.ir.expressions.IrErrorExpression
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.IrExpressionBody
+import org.jetbrains.kotlin.ir.expressions.IrFunctionAccessExpression
 import org.jetbrains.kotlin.ir.expressions.IrFunctionExpression
 import org.jetbrains.kotlin.ir.expressions.IrGetField
 import org.jetbrains.kotlin.ir.expressions.IrGetValue
@@ -69,7 +70,9 @@ import org.jetbrains.kotlin.ir.expressions.IrVararg
 import org.jetbrains.kotlin.ir.expressions.IrWhen
 import org.jetbrains.kotlin.ir.expressions.IrWhileLoop
 import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
+import org.jetbrains.kotlin.ir.types.IrSimpleType
 import org.jetbrains.kotlin.ir.types.IrType
+import org.jetbrains.kotlin.ir.types.IrTypeProjection
 import org.jetbrains.kotlin.ir.types.classFqName
 import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
 import org.jetbrains.kotlin.ir.util.isFakeOverride
@@ -345,17 +348,21 @@ class MosaicIrExtractor(
             isTileFactory(element) -> Unit
             element.symbol.owner.correspondingPropertySymbol != null -> {
               val getter = element.symbol.owner
-              if (isCanvasType(getter.returnType)) {
-                effects += Effect.ConstructCanvas("$owner:getter:${element.startOffset}", canvasValue(element), site)
-              } else if (isUserPropertyGetter(getter) || isCapabilityCall(element)) {
-                effects += Effect.Call("$owner:getter:${element.startOffset}", symbolId(getter), callArguments(element, file, owner, aliases), site, dispatchReceiver(element, aliases), getter.modality != Modality.FINAL)
+              if (isCanvasType(getter.returnType) || isUserPropertyGetter(getter) || isCapabilityCall(element)) {
+                val boundary = unavailableCallableReason(element)
+                when {
+                  boundary != null -> effects += Effect.Unknown("$owner:getter:${element.startOffset}", boundary, site)
+                  isCanvasType(getter.returnType) ->
+                    effects += Effect.ConstructCanvas("$owner:getter:${element.startOffset}", canvasValue(element), site)
+                  else ->
+                    effects += Effect.Call("$owner:getter:${element.startOffset}", symbolId(getter), callArguments(element, file, owner, aliases), site, dispatchReceiver(element, aliases), getter.modality != Modality.FINAL)
+                }
               }
             }
             isCapabilityCall(element) || isUserCallable(target) -> {
-              if (isUnsupportedMosaicExtension(element)) {
-                effects += Effect.Unknown("$owner:extension:${element.startOffset}", "Mosaic extension receiver transfer is unsupported for ${symbolId(element.symbol.owner)}", site)
-              } else if (element.symbol.owner.isInline) {
-                effects += Effect.Unknown("$owner:inline:${element.startOffset}", "External inline capability helper ${symbolId(element.symbol.owner)} has no pre-inline body", site)
+              val boundary = unavailableCallableReason(element)
+              if (boundary != null) {
+                effects += Effect.Unknown("$owner:call:${element.startOffset}", boundary, site)
               } else {
                 effects += Effect.Call("$owner:call:${element.startOffset}", symbolId(element.symbol.owner), callArguments(element, file, owner, aliases), site, dispatchReceiver(element, aliases), element.symbol.owner.modality != Modality.FINAL)
               }
@@ -365,6 +372,7 @@ class MosaicIrExtractor(
         }
         is IrConstructorCall -> {
           element.arguments.filterNotNull().sortedBy { it.startOffset }.forEach(::scan)
+          effects += usedDefaultEffects(element, file, owner)
           val constructor = element.symbol.owner
           val clazz = constructor.parent as? IrClass
           if (isUserConstructor(clazz)) {
@@ -426,22 +434,12 @@ class MosaicIrExtractor(
                 ?: CanvasExpression.Unknown("Missing layer parent", site)
             layer(expression, expression.argument("build"), parent, file, owner, aliases)
           }
-          else ->
-            if (isUnsupportedMosaicExtension(expression)) {
+          else -> {
+            val boundary = unavailableCallableReason(expression)
+            if (boundary != null) {
               CanvasExpression.WithEffects(
                 callActualEffects(expression, file, owner, aliases),
-                CanvasExpression.Unknown(
-                  "Mosaic extension receiver transfer is unsupported for ${symbolId(expression.symbol.owner)}",
-                  site,
-                ),
-              )
-            } else if (expression.symbol.owner.isInline) {
-              CanvasExpression.WithEffects(
-                callActualEffects(expression, file, owner, aliases),
-                CanvasExpression.Unknown(
-                  "External inline Canvas helper ${symbolId(expression.symbol.owner)} has no pre-inline body",
-                  site,
-                ),
+                CanvasExpression.Unknown(boundary, site),
               )
             } else if (expression.symbol.owner.parameters.any {
                 it.kind == IrParameterKind.Regular && !isCanvasType(it.type)
@@ -459,6 +457,7 @@ class MosaicIrExtractor(
                 callerEffects = callActualEffects(expression, file, owner, aliases),
               )
             }
+          }
         }
       }
       else ->
@@ -553,12 +552,18 @@ class MosaicIrExtractor(
   }
 
   private fun usedDefaultEffects(
-    call: IrCall,
+    call: IrFunctionAccessExpression,
     file: IrFile,
     owner: String,
   ): List<Effect> {
-    val target = resolvedName(call)
-    if (!isUserCallable(target) && !isCapabilityCall(call)) return emptyList()
+    val target = call.symbol.owner.fqNameWhenAvailable?.asString().orEmpty()
+    val eligible =
+      when (call) {
+        is IrCall -> isUserCallable(target) || isCapabilityCall(call)
+        is IrConstructorCall -> isUserConstructor(call.symbol.owner.parent as? IrClass)
+        else -> false
+      }
+    if (!eligible) return emptyList()
     if (target.startsWith("org.buildmosaic.core.")) return emptyList()
     return call.symbol.owner.parameters.filter {
       it.kind == IrParameterKind.Regular && call.arguments[it] == null
@@ -592,9 +597,8 @@ class MosaicIrExtractor(
     ) {
       return Fact.Unknown("Explicit CanvasKey or KClass argument is outside the supported key subset", site)
     }
-    val type =
-      call.typeArguments.firstOrNull()?.classFqName?.asString()
-        ?: return Fact.Unknown("Reified Canvas key type unavailable", site)
+    val type = call.typeArguments.firstOrNull() ?: return Fact.Unknown("Reified Canvas key type unavailable", site)
+    val classId = runtimeKeyClass(type) ?: return Fact.Unknown("Runtime Canvas key class unavailable", site)
     val qualifier = call.argument("qualifier")
     val literal =
       when (qualifier) {
@@ -603,7 +607,7 @@ class MosaicIrExtractor(
         else -> return Fact.Unknown("Dynamic qualifier is unsupported", site)
       }
     if (literal != null) limitations += "Qualifier literal at ${site.path}:${site.line} in $owner has no reliable external const origin in pre-inline IR"
-    return Fact.Known(CanvasKeyIdentity(normalizeKeyClass(type), literal), site)
+    return Fact.Known(CanvasKeyIdentity(classId, literal), site)
   }
 
   private fun tileReference(
@@ -752,6 +756,45 @@ class MosaicIrExtractor(
       else -> classId
     }
 
+  private fun runtimeKeyClass(type: IrType): String? {
+    val classId = type.classFqName?.asString() ?: return null
+    if (classId != "kotlin.Array") return normalizeKeyClass(classId)
+    val element = (type as? IrSimpleType)?.arguments?.singleOrNull() as? IrTypeProjection ?: return null
+    return arrayComponentDescriptor(element.type)?.let { "[$it" }
+  }
+
+  private fun arrayComponentDescriptor(type: IrType): String? {
+    val classId = type.classFqName?.asString() ?: return null
+    if (classId == "kotlin.Array") return runtimeKeyClass(type)
+    val owner =
+      when (classId) {
+        "kotlin.Boolean" -> "java/lang/Boolean"
+        "kotlin.Byte" -> "java/lang/Byte"
+        "kotlin.Char" -> "java/lang/Character"
+        "kotlin.Short" -> "java/lang/Short"
+        "kotlin.Int" -> "java/lang/Integer"
+        "kotlin.Long" -> "java/lang/Long"
+        "kotlin.Float" -> "java/lang/Float"
+        "kotlin.Double" -> "java/lang/Double"
+        "kotlin.String" -> "java/lang/String"
+        "kotlin.Any" -> "java/lang/Object"
+        "kotlin.collections.Collection", "kotlin.collections.MutableCollection" -> "java/util/Collection"
+        "kotlin.collections.List", "kotlin.collections.MutableList" -> "java/util/List"
+        "kotlin.collections.Set", "kotlin.collections.MutableSet" -> "java/util/Set"
+        "kotlin.collections.Map", "kotlin.collections.MutableMap" -> "java/util/Map"
+        "kotlin.BooleanArray" -> return "[Z"
+        "kotlin.ByteArray" -> return "[B"
+        "kotlin.CharArray" -> return "[C"
+        "kotlin.ShortArray" -> return "[S"
+        "kotlin.IntArray" -> return "[I"
+        "kotlin.LongArray" -> return "[J"
+        "kotlin.FloatArray" -> return "[F"
+        "kotlin.DoubleArray" -> return "[D"
+        else -> return null
+      }
+    return "L$owner;"
+  }
+
   private fun returnedExpression(function: IrFunction): IrExpression? =
     when (val body = function.body) {
       is IrBlockBody -> body.statements.filterIsInstance<IrReturn>().lastOrNull()?.value
@@ -807,6 +850,15 @@ class MosaicIrExtractor(
   private fun isUnsupportedMosaicExtension(call: IrCall): Boolean =
     call.symbol.owner.parameters.any {
       it.kind == IrParameterKind.ExtensionReceiver && it.type.classFqName?.asString() == "org.buildmosaic.core.Mosaic"
+    }
+
+  private fun unavailableCallableReason(call: IrCall): String? =
+    when {
+      isUnsupportedMosaicExtension(call) ->
+        "Mosaic extension receiver transfer is unsupported for ${symbolId(call.symbol.owner)}"
+      call.symbol.owner.isInline ->
+        "External inline capability helper ${symbolId(call.symbol.owner)} has no pre-inline body"
+      else -> null
     }
 
   private fun isUserPropertyGetter(getter: IrSimpleFunction): Boolean {

@@ -30,25 +30,7 @@ class MosaicReceiverBoundaryTest {
     val directory = Files.createTempDirectory("mosaic-extension-probe").toFile()
     val source =
       File(directory, "Regression.kt").apply {
-        writeText(
-          """
-          package regression
-          import org.buildmosaic.core.*
-          import org.buildmosaic.core.injection.*
-          class Metrics
-          fun Mosaic.readMetrics(): Metrics = source<Metrics>()
-          fun parameterRead(receiver: Mosaic): Metrics = receiver.source<Metrics>()
-          val ExampleTile = singleTile {
-            val other = canvas { }.create()
-            other.readMetrics()
-          }
-          val SuppliedTile = singleTile { canvas { single<Metrics> { Metrics() } }.create().readMetrics() }
-          val ParameterTile = singleTile { parameterRead(canvas { }.create()) }
-          suspend fun entry() = canvas { single<Metrics> { Metrics() } }.create().compose(ExampleTile)
-          suspend fun suppliedEntry() = canvas { single<Metrics> { Metrics() } }.create().compose(SuppliedTile)
-          suspend fun parameterEntry() = canvas { single<Metrics> { Metrics() } }.create().compose(ParameterTile)
-          """.trimIndent(),
-        )
+        writeText(extensionReceiverFixtureSource())
       }
     val module = compileAndExtract(listOf(source), directory, "regression")
     val report = analyze(module)
@@ -72,6 +54,25 @@ class MosaicReceiverBoundaryTest {
       parameterReport.findings.none {
         it.certainty == Certainty.VERIFIED && it.key?.classId == "regression.Metrics"
       },
+    )
+    val accessorTarget = "regression.accessorEntry()"
+    assertTrue(module.callables.any { it.id == accessorTarget }, module.toString())
+    assertTrue(
+      module.callables.single { it.id == accessorTarget }.effects.any { it is Effect.Compose },
+      module.toString(),
+    )
+    assertTrue(
+      module.tiles.single { it.id == "regression.AccessorTile" }.effects.any {
+        it is Effect.Unknown && it.reason.contains("Mosaic extension receiver")
+      },
+      module.toString(),
+    )
+    val accessorReport = analyze(module, target = accessorTarget)
+    assertTrue(
+      accessorReport.findings.any {
+        it.certainty == Certainty.UNVERIFIED && it.reason.contains("Mosaic extension receiver")
+      },
+      "$module\n$accessorReport",
     )
   }
 
@@ -133,17 +134,7 @@ class DefaultBoundaryTest {
     val directory = Files.createTempDirectory("mosaic-default-probe").toFile()
     val source =
       File(directory, "Regression.kt").apply {
-        writeText(
-          """
-          package regression
-          import org.buildmosaic.core.injection.*
-          class Metrics
-          fun consume(base: Canvas, ignored: Metrics = base.source<Metrics>()) = Unit
-          suspend fun entry() { consume(canvas { }) }
-          suspend fun explicitEntry() { consume(canvas { }, ignored = Metrics()) }
-          suspend fun suppliedEntry() { consume(canvas { single<Metrics> { Metrics() } }) }
-          """.trimIndent(),
-        )
+        writeText(localDefaultFixtureSource())
       }
     val module = compileAndExtract(listOf(source), directory, "regression")
     val report = analyze(module)
@@ -159,6 +150,31 @@ class DefaultBoundaryTest {
     val supplied = analyze(module, target = "regression.suppliedEntry()")
     assertEquals(RootStatus.UNVERIFIED, supplied.roots.single().status, supplied.toString())
     assertTrue(supplied.findings.none { it.certainty == Certainty.MISSING })
+    val constructorTarget = "regression.constructorEntry()"
+    assertTrue(module.callables.any { it.id == constructorTarget }, module.toString())
+    val constructorEffects = module.callables.single { it.id == constructorTarget }.effects
+    assertTrue(constructorEffects.any { it is Effect.Call }, module.toString())
+    val defaultIndex =
+      constructorEffects.indexOfFirst { it is Effect.Unknown && it.reason.contains("default expression") }
+    assertTrue(
+      defaultIndex > constructorEffects.indexOfFirst { it is Effect.ConstructCanvas },
+      constructorEffects.toString(),
+    )
+    assertTrue(defaultIndex < constructorEffects.indexOfLast { it is Effect.Call }, constructorEffects.toString())
+    val constructorReport = analyze(module, target = constructorTarget)
+    assertTrue(
+      constructorReport.findings.any {
+        it.certainty == Certainty.UNVERIFIED && it.reason.contains("default expression")
+      },
+      "$module\n$constructorReport",
+    )
+    val explicitConstructor = analyze(module, target = "regression.explicitConstructorEntry()")
+    assertEquals(RootStatus.VERIFIED, explicitConstructor.roots.single().status, explicitConstructor.toString())
+    assertTrue(explicitConstructor.policyDecision.passed, explicitConstructor.toString())
+    val explicitEffects = module.callables.single { it.id == "regression.explicitConstructorEntry()" }.effects
+    assertTrue(
+      explicitEffects.none { it is Effect.Unknown },
+    )
   }
 
   @Test
@@ -166,33 +182,19 @@ class DefaultBoundaryTest {
     val directory = Files.createTempDirectory("mosaic-default-binary").toFile()
     val producer =
       File(directory, "Producer.kt").apply {
-        writeText(
-          """
-          package producer
-          import org.buildmosaic.core.injection.*
-          class Metrics
-          fun consume(base: Canvas, ignored: Metrics = base.source<Metrics>()) = Unit
-          """.trimIndent(),
-        )
+        writeText(binaryDefaultProducerSource())
       }
     compileAndExtract(listOf(producer), File(directory, "producer"), "producer")
     val jar = File(directory, "producer.jar")
     jarClasses(File(directory, "producer/classes"), jar, File(directory, "producer/summary.json"))
     val consumer =
       File(directory, "Entry.kt").apply {
-        writeText(
-          """
-          package regression
-          import org.buildmosaic.core.injection.*
-          import producer.consume
-          suspend fun entry() { consume(canvas { }) }
-          """.trimIndent(),
-        )
+        writeText(binaryDefaultConsumerSource())
       }
     val consumerModule = compileAndExtract(listOf(consumer), File(directory, "consumer"), "regression", jar)
     val producerModule = readJarSummary(jar)
     assertTrue(
-      consumerModule.callables.single().effects.any {
+      consumerModule.callables.single { it.id == "regression.entry()" }.effects.any {
         it is Effect.Unknown && it.reason.contains("default expression", ignoreCase = true)
       },
       consumerModule.toString(),
@@ -213,6 +215,22 @@ class DefaultBoundaryTest {
     )
     assertEquals(RootStatus.UNVERIFIED, withMetadata.roots.single().status)
     assertEquals(RootStatus.UNVERIFIED, withoutMetadata.roots.single().status)
+    val constructorTarget = "regression.constructorEntry()"
+    assertTrue(consumerModule.callables.any { it.id == constructorTarget }, consumerModule.toString())
+    val constructorEffects = consumerModule.callables.single { it.id == constructorTarget }.effects
+    assertTrue(constructorEffects.any { it is Effect.Call })
+    assertTrue(
+      constructorEffects.any { it is Effect.Unknown && it.reason.contains("Default expression is unavailable") },
+    )
+    listOf(listOf(producerModule), emptyList()).forEach { dependencies ->
+      val report = analyze(consumerModule, dependencies, constructorTarget)
+      assertTrue(
+        report.findings.any {
+          it.certainty == Certainty.UNVERIFIED && it.reason.contains("Default expression is unavailable")
+        },
+        "$consumerModule\n$report",
+      )
+    }
   }
 }
 
@@ -374,6 +392,63 @@ class StoredFieldBoundaryTest {
     assertEquals(RootStatus.UNVERIFIED, report.roots.single().status, report.toString())
   }
 }
+
+private fun extensionReceiverFixtureSource(): String =
+  """
+  package regression
+  import org.buildmosaic.core.*
+  import org.buildmosaic.core.injection.*
+  class Metrics
+  fun Mosaic.readMetrics(): Metrics = source<Metrics>()
+  val Mosaic.metricsValue: Metrics get() = source<Metrics>()
+  fun parameterRead(receiver: Mosaic): Metrics = receiver.source<Metrics>()
+  val ExampleTile = singleTile {
+    val other = canvas { }.create()
+    other.readMetrics()
+  }
+  val SuppliedTile = singleTile { canvas { single<Metrics> { Metrics() } }.create().readMetrics() }
+  val ParameterTile = singleTile { parameterRead(canvas { }.create()) }
+  val AccessorTile = singleTile { canvas { }.create().metricsValue }
+  suspend fun entry() = canvas { single<Metrics> { Metrics() } }.create().compose(ExampleTile)
+  suspend fun suppliedEntry() = canvas { single<Metrics> { Metrics() } }.create().compose(SuppliedTile)
+  suspend fun parameterEntry() = canvas { single<Metrics> { Metrics() } }.create().compose(ParameterTile)
+  suspend fun accessorEntry() = canvas { single<Metrics> { Metrics() } }.create().compose(AccessorTile)
+  """.trimIndent()
+
+private fun binaryDefaultProducerSource(): String =
+  """
+  package producer
+  import org.buildmosaic.core.*
+  import org.buildmosaic.core.injection.*
+  class Metrics
+  fun consume(base: Canvas, ignored: Metrics = base.source<Metrics>()) = Unit
+  class Holder(receiver: Mosaic, val metrics: Metrics = receiver.source<Metrics>())
+  """.trimIndent()
+
+private fun localDefaultFixtureSource(): String =
+  """
+  package regression
+  import org.buildmosaic.core.*
+  import org.buildmosaic.core.injection.*
+  class Metrics
+  fun consume(base: Canvas, ignored: Metrics = base.source<Metrics>()) = Unit
+  class Holder(receiver: Mosaic, val metrics: Metrics = receiver.source<Metrics>())
+  suspend fun entry() { consume(canvas { }) }
+  suspend fun explicitEntry() { consume(canvas { }, ignored = Metrics()) }
+  suspend fun suppliedEntry() { consume(canvas { single<Metrics> { Metrics() } }) }
+  suspend fun constructorEntry() { Holder(canvas { }.create()) }
+  suspend fun explicitConstructorEntry() { Holder(canvas { }.create(), metrics = Metrics()) }
+  """.trimIndent()
+
+private fun binaryDefaultConsumerSource(): String =
+  """
+  package regression
+  import org.buildmosaic.core.*
+  import org.buildmosaic.core.injection.*
+  import producer.*
+  suspend fun entry() { consume(canvas { }) }
+  suspend fun constructorEntry() { Holder(canvas { }.create()) }
+  """.trimIndent()
 
 private fun analyze(
   module: ModuleContract,

@@ -42,7 +42,7 @@ likewise retain initialization work. This is not a general model of JVM class
 initialization or exception safety. Used user defaults with unavailable binary
 expressions and Mosaic extension-helper calls remain unknown. The schema stays
 v1.1; summaries from older extractor versions are rejected because they may
-have omitted these effects.
+have omitted accessor or constructor-default effects or conflated array keys.
 
 Only the tested default Kotlin/JVM main layout is supported. Extraction uses the
 configured Java toolchain and fails on a Kotlin/toolchain version mismatch. The
