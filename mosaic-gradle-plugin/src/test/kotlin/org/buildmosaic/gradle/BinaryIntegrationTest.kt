@@ -96,6 +96,13 @@ class BinaryIntegrationTest {
     val pluginJar = File(repository, "mosaic-compiler-plugin/build/libs/mosaic-compiler-plugin-0.2.0.jar")
     val coreJar = File(repository, "mosaic-core/build/libs/mosaic-core-0.2.0.jar")
     val project = project(root, "deletion", pluginJar, listOf(coreJar))
+
+    fun shardBytes(workspace: File): Map<String, List<Byte>> {
+      val directory = File(workspace, "build/mosaic-analysis/main/shards")
+      return directory.walkTopDown().filter { it.isFile && it.name.endsWith(".shard.json") }
+        .associate { it.relativeTo(directory).invariantSeparatorsPath to it.readBytes().toList() }
+    }
+
     val originalBuild = File(project, "build.gradle.kts").readText()
     val source = File(project, "src/main/kotlin/Temporary.kt")
     source.parentFile.mkdirs()
@@ -161,8 +168,43 @@ class BinaryIntegrationTest {
     assertEquals(1, refreshed.tiles.count { it.id == "deletion.RenamedTile" })
     assertTrue(refreshed.tiles.none { it.id == "deletion.TemporaryTile" })
     assertTrue(refreshed.callables.any { it.id == "deletion.retained(kotlin.Int)" })
-    run(project, "clean extractMosaicMain")
-    assertEquals(refreshed, SummaryCodec.decode(summaryFile.readBytes()).module)
+    val shardDirectory = File(project, "build/mosaic-analysis/main/shards")
+    assertFalse(File(shardDirectory, "Moved.kt.shard.json").exists())
+    val incrementalShards = shardBytes(project)
+    assertEquals(
+      setOf(
+        "Temporary.kt.shard.json",
+        "Stable.kt.shard.json",
+        "Dependent.kt.shard.json",
+        "Renamed.kt.shard.json",
+        "north/Foo.kt.shard.json",
+        "south/Foo.kt.shard.json",
+      ),
+      incrementalShards.keys,
+    )
+    val incrementalSummary = SummaryCodec.decode(summaryFile.readBytes())
+    File(shardDirectory, "obsolete/Ghost.kt.shard.json").apply {
+      parentFile.mkdirs()
+      writeText("ignored stale shard")
+    }
+    val ignoredStale = run(project, "extractMosaicMain -x compileKotlin", configurationCache = true)
+    assertEquals(TaskOutcome.UP_TO_DATE, ignoredStale.task(":extractMosaicMain")?.outcome)
+    assertEquals(incrementalSummary, SummaryCodec.decode(summaryFile.readBytes()))
+
+    val cleanProject = project(File(root, "clean-history"), "deletion", pluginJar, listOf(coreJar))
+    val sourceRoot = File(project, "src/main/kotlin")
+    sourceRoot.walkTopDown().filter(File::isFile).forEach { currentSource ->
+      File(cleanProject, "src/main/kotlin/${currentSource.relativeTo(sourceRoot).invariantSeparatorsPath}").apply {
+        parentFile.mkdirs()
+        currentSource.copyTo(this)
+      }
+    }
+    run(cleanProject, "extractMosaicMain", configurationCache = true)
+    assertEquals(incrementalShards, shardBytes(cleanProject))
+    assertEquals(
+      incrementalSummary,
+      SummaryCodec.decode(File(cleanProject, "build/mosaic-analysis/main/summary.json").readBytes()),
+    )
     renamed.delete()
     stable.delete()
     dependent.delete()
@@ -552,8 +594,11 @@ class BinaryIntegrationTest {
         listOf("consumer.entry()"),
       )
 
-    fun writeConsumerSource(consumer: File) {
-      File(consumer, "src/main/kotlin/Consumer.kt").apply {
+    fun writeConsumerSource(
+      consumer: File,
+      fileName: String = "Consumer.kt",
+    ) {
+      File(consumer, "src/main/kotlin/$fileName").apply {
         parentFile.mkdirs()
         writeText(
           """
@@ -571,7 +616,7 @@ class BinaryIntegrationTest {
       }
     }
     val workspaceA = consumer(File(root, "workspace-a"))
-    writeConsumerSource(workspaceA)
+    writeConsumerSource(workspaceA, "BeforeRename.kt")
     val cacheDirectory = File(root, "local-build-cache")
 
     fun useSharedCache(workspace: File) {
@@ -582,6 +627,12 @@ class BinaryIntegrationTest {
     useSharedCache(workspaceA)
     val initial = run(workspaceA, "build", buildCache = true)
     assertEquals(TaskOutcome.SUCCESS, initial.task(":extractMosaicMain")?.outcome)
+    val sourceRootA = File(workspaceA, "src/main/kotlin")
+    File(sourceRootA, "BeforeRename.kt").copyTo(File(sourceRootA, "Consumer.kt"))
+    File(sourceRootA, "BeforeRename.kt").delete()
+    val renamed = run(workspaceA, "build", buildCache = true)
+    assertEquals(TaskOutcome.SUCCESS, renamed.task(":compileKotlin")?.outcome)
+    assertFalse(File(workspaceA, "build/mosaic-analysis/main/shards/BeforeRename.kt.shard.json").exists())
     val original = SummaryCodec.decode(File(workspaceA, "build/mosaic-analysis/main/summary.json").readBytes())
     assertEquals("producer.First", original.module.keys.single { it.id == "consumer.SelectedKey" }.key.classId)
     val workspaceB = consumer(File(root, "workspace-b"))

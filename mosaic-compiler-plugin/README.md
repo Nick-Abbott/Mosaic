@@ -53,8 +53,10 @@ the newest helper body into an already compiled caller.
 The Gradle plugin assembles deterministic UTF-8 JSON at
 `META-INF/mosaic-analysis/v1/summary.json` for packaging. Source shards are
 internal incremental state, keyed by paths relative to `src/main/kotlin`; they
-are not a public metadata format. A current-source manifest selects shards,
-including after deletion or rename. The discovery path stays stable; the explicit header governs
+are not a public metadata format. After an incremental IR invocation, the
+compiler plugin removes obsolete shard files. A current-source manifest selects
+only current shards for assembly, including when Kotlin has no sources and does
+not invoke the plugin. The discovery path stays stable; the explicit header governs
 compatibility. Format 3 uses `analysis-contract-2` semantics and Kotlin 2.2.10.
 The producer version is `prototype-10`. Unpublished prototype-7 snapshots are
 rejected and must be regenerated. The payload checksum covers the canonical

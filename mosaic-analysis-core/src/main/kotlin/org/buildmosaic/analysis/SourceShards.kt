@@ -7,6 +7,55 @@ import org.buildmosaic.analysis.metadata.WireLocator
 import org.buildmosaic.analysis.metadata.WirePayload
 import org.buildmosaic.analysis.metadata.toModel
 import org.buildmosaic.analysis.metadata.toWire
+import java.io.File
+import java.nio.file.Files
+
+/** One path convention for compiler output and Gradle's current-source inputs. */
+object SourceShardPaths {
+  private const val SUFFIX = ".shard.json"
+
+  fun sourceId(
+    sourceRoot: File,
+    source: File,
+  ): String {
+    require(!Files.isSymbolicLink(sourceRoot.toPath())) { "Mosaic source root must not be a symbolic link" }
+    val root = sourceRoot.canonicalFile.toPath()
+    val path = source.canonicalFile.toPath()
+    require(path.startsWith(root)) { "Mosaic source is outside supported root: $path" }
+    return root.relativize(path).toString().replace(File.separatorChar, '/').also(::checkSourceId)
+  }
+
+  fun shardFile(
+    shardRoot: File,
+    sourceId: String,
+  ): File {
+    checkSourceId(sourceId)
+    require(!Files.isSymbolicLink(shardRoot.toPath())) { "Mosaic shard root must not be a symbolic link" }
+    val shard = File(shardRoot, "$sourceId$SUFFIX")
+    require(shard.canonicalFile.toPath().startsWith(shardRoot.canonicalFile.toPath())) {
+      "Mosaic shard path escapes output root: $shard"
+    }
+    return shard
+  }
+
+  fun sourceIdForShard(
+    shardRoot: File,
+    shard: File,
+  ): String? {
+    val root = shardRoot.absoluteFile.toPath().normalize()
+    val path = shard.absoluteFile.toPath().normalize()
+    require(path.startsWith(root)) { "Mosaic shard is outside output root: $path" }
+    val relative = root.relativize(path).toString().replace(File.separatorChar, '/')
+    if (!relative.endsWith(SUFFIX)) return null
+    return relative.removeSuffix(SUFFIX).also(::checkSourceId)
+  }
+
+  internal fun checkSourceId(id: String) {
+    require(id.isNotBlank() && !id.startsWith('/') && '\\' !in id && id.split('/').none { it == ".." || it == "." }) {
+      "Invalid Mosaic shard source identity $id"
+    }
+  }
+}
 
 /** Internal compiler output. Shards are never packaged or accepted as dependency metadata. */
 data class SourceShard(
@@ -32,7 +81,7 @@ object SourceShardCodec {
     }
 
   fun encode(shard: SourceShard): ByteArray {
-    checkSourceId(shard.sourceId)
+    SourceShardPaths.checkSourceId(shard.sourceId)
     val payload =
       WirePayload(
         shard.module.toWire(),
@@ -47,7 +96,7 @@ object SourceShardCodec {
     require(raw.toByteArray(Charsets.UTF_8).contentEquals(bytes)) { "Malformed Mosaic shard UTF-8" }
     val envelope = json.decodeFromString<ShardEnvelope>(raw)
     require(envelope.shardVersion == 1) { "Unsupported Mosaic shard version ${envelope.shardVersion}" }
-    checkSourceId(envelope.sourceId)
+    SourceShardPaths.checkSourceId(envelope.sourceId)
     val locators = linkedMapOf<String, String>()
     envelope.payload.binaryLocators.forEach {
       require(locators.putIfAbsent(it.id, it.locator) == null) { "Duplicate Mosaic shard locator ${it.id}" }
@@ -108,11 +157,5 @@ object SourceShardCodec {
       limitations = limitations.distinct().sorted(),
       binaryLocators = locators,
     )
-  }
-
-  private fun checkSourceId(id: String) {
-    require(id.isNotBlank() && !id.startsWith('/') && '\\' !in id && id.split('/').none { it == ".." || it == "." }) {
-      "Invalid Mosaic shard source identity $id"
-    }
   }
 }

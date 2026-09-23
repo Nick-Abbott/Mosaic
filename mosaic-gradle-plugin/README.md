@@ -63,14 +63,19 @@ builds. Kotlin decides which sources to recompile. The extractor writes one
 internal shard for each file Kotlin presents, including a shard when a file no
 longer contributes Mosaic declarations. `compileKotlin` declares the complete
 shard directory as an output, so a build-cache restore supplies all shards
-required by a clean workspace. Shard storage is versioned internally and is
-not dependency metadata or a public compatibility format.
+required by a clean workspace. After writing affected shards, the compiler
+plugin removes shards for sources no longer under `src/main/kotlin`. Shard
+storage is versioned internally and is not dependency metadata or a public
+compatibility format.
 
 `extractMosaicMain` assembles and validates a complete summary without running a
 compiler. It uses the current `src/main/kotlin` source manifest, so stale shards
-from deleted or renamed files cannot enter the result. If all Kotlin sources are
-removed, it emits an explicit empty complete summary without invoking Mosaic’s
-compiler plugin. A missing current shard or malformed shard fails assembly.
+from deleted or renamed files cannot enter the result or its Gradle input
+fingerprint. Only paths for current source shards are declared as task inputs.
+If all Kotlin sources are removed, it emits an explicit empty complete summary
+without invoking Mosaic’s compiler plugin, even if `compileKotlin` reports
+`NO_SOURCE` and leaves physical shards behind. A missing current shard or
+malformed shard fails assembly.
 `jar` embeds the complete summary at
 `META-INF/mosaic-analysis/v1/summary.json`. `verifyMosaicMain` reads that local
 summary and selected dependency summaries, writes

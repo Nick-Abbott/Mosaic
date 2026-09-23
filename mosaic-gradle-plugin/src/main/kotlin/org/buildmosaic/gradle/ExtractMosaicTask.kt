@@ -1,6 +1,7 @@
 package org.buildmosaic.gradle
 
 import org.buildmosaic.analysis.SourceShardCodec
+import org.buildmosaic.analysis.SourceShardPaths
 import org.buildmosaic.analysis.SummaryCodec
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
@@ -67,7 +68,7 @@ abstract class ExtractMosaicTask : DefaultTask() {
       return sources.files.map { source ->
         val path = source.canonicalFile.toPath()
         if (path.startsWith(root)) {
-          root.relativize(path).toString().replace(File.separatorChar, '/')
+          SourceShardPaths.sourceId(File(supportedSourceRoot.get()), source)
         } else {
           "<unsupported>:${source.name}"
         }
@@ -86,7 +87,7 @@ abstract class ExtractMosaicTask : DefaultTask() {
     val root = shardDirectory.get().asFile
     val shards =
       current.map { sourceId ->
-        val shard = File(root, "$sourceId.shard.json")
+        val shard = SourceShardPaths.shardFile(root, sourceId)
         if (!shard.isFile) throw GradleException("Missing Mosaic compiler shard for current source $sourceId")
         try {
           SourceShardCodec.decode(shard.readBytes()).also {

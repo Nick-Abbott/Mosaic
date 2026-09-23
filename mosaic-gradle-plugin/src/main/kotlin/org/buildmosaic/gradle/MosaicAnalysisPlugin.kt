@@ -1,5 +1,6 @@
 package org.buildmosaic.gradle
 
+import org.buildmosaic.analysis.SourceShardPaths
 import org.gradle.api.GradleException
 import org.gradle.api.Project
 import org.gradle.api.artifacts.type.ArtifactTypeDefinition
@@ -147,13 +148,21 @@ class MosaicAnalysisPlugin : KotlinCompilerPluginSupportPlugin {
       project.extensions.getByType(
         KotlinJvmProjectExtension::class.java,
       ).sourceSets.getByName("main").kotlin
+    val sourceRoot = project.file("src/main/kotlin")
+    val shardDirectory = project.layout.buildDirectory.dir("mosaic-analysis/main/shards")
     return project.tasks.register("extractMosaicMain", ExtractMosaicTask::class.java) { task ->
       task.group = "verification"
       task.description = "Assemble compiler-produced Mosaic source shards into a complete main summary"
       task.sources.from(mainSources)
       task.javaSources.from(project.fileTree("src/main/java") { it.include("**/*.java") })
-      task.supportedSourceRoot.set(project.file("src/main/kotlin").absolutePath)
-      task.shardFiles.from(project.fileTree(project.layout.buildDirectory.dir("mosaic-analysis/main/shards")))
+      task.supportedSourceRoot.set(sourceRoot.absolutePath)
+      task.shardFiles.from(
+        mainSources.elements.map { sources ->
+          sources.map { it.asFile }.filter { it.extension == "kt" }.map { source ->
+            SourceShardPaths.shardFile(shardDirectory.get().asFile, SourceShardPaths.sourceId(sourceRoot, source))
+          }
+        },
+      )
       task.additionalCompilerPlugins.from(compile.map { it.pluginClasspath })
       task.friendPaths.from(compile.map { it.friendPaths })
       task.mosaicVersion.set(mosaicVersion)
@@ -168,7 +177,7 @@ class MosaicAnalysisPlugin : KotlinCompilerPluginSupportPlugin {
         }.flatMap { it.javaVersion }.map { it.majorVersion },
       )
       task.summaryFile.set(project.layout.buildDirectory.file("mosaic-analysis/main/summary.json"))
-      task.shardDirectory.set(project.layout.buildDirectory.dir("mosaic-analysis/main/shards"))
+      task.shardDirectory.set(shardDirectory)
       task.dependsOn(compile)
     }
   }
