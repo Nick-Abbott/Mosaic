@@ -21,9 +21,18 @@ internal class SelectedContractRegistry(modules: List<ModuleContract>) {
   fun callable(id: String): Resolution<CallableContract> = resolve(callables[id])
 
   fun directOverride(
-    receiverType: String?,
+    receiverType: String,
     baseId: String,
-  ): String? = receiverType?.let { type -> overrides[type to baseId]?.singleOrNull()?.implementationId }
+  ): Resolution<ResolvedOverride> =
+    when (val candidates = overrides[receiverType to baseId].orEmpty()) {
+      emptyList<ResolvedOverride>() -> Resolution.Missing
+      else ->
+        if (candidates.size == 1) {
+          Resolution.Found(candidates.single())
+        } else {
+          Resolution.Conflict(candidates.map { it.implementationId }.sorted())
+        }
+    }
 
   fun reusableContractIds(): List<String> =
     buildList {

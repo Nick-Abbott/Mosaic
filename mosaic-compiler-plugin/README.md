@@ -8,12 +8,16 @@ produce the snapshot.
 
 The supported extraction path covers reified `singleTile`, `source`, `sourceOr`,
 `canvas`, `single`, `withLayer`, `paint`, `create`, `compose`, and `composeAsync` in
-the tested shapes; immutable local Canvas and Tile aliases; parameterized Canvas
-helpers; ordinary resolved calls; and the direct final template method to
-protected abstract suspend override transfer. The phase-zero tests also inspect
-`multiTile` and `perKeyTile` IR shapes. Their nested callbacks are not generally
-interpreted. Unsupported control flow and capability callbacks produce unknown
-effects. This is a narrow extractor, not a general Kotlin interpreter.
+the tested shapes; immutable local Canvas, Mosaic, and Tile aliases; caller-side
+argument evaluation in source order; parameterized Canvas helpers; ordinary
+resolved calls and getters; and the direct final template method to protected
+abstract suspend override transfer by parameter position. `multiTile` and
+`perKeyTile` execution is classified for known-empty, known-nonempty, and unknown
+requests; nested callbacks are not generally interpreted. Mutable and read-only
+List/Set/Map keys normalize to their shared runtime KClass identity. Constructors
+with capability-bearing parameters or initialization, unknown Mosaic receiver
+provenance, unsupported control flow, and capability callbacks produce explicit
+unknown effects. This is a narrow extractor, not a general Kotlin interpreter.
 
 An external const qualifier arrives in this phase as a literal. Its value is
 retained in the caller's summary. The original external const declaration is
@@ -24,5 +28,6 @@ the newest helper body into an already compiled caller.
 
 The output is deterministic UTF-8 JSON at
 `META-INF/mosaic-analysis/v1/summary.json` when packaged by the Gradle plugin.
-The schema, compiler option names, and symbol-locator strategy are internal and
+The provisional schema is v1.1; older v1.0 summaries are rejected because they
+lack receiver and override-slot facts. The compiler option names and symbol-locator strategy are internal and
 provisional. This module is not published or included in the BOM.

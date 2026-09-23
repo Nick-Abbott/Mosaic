@@ -5,6 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
+@Suppress("FunctionMaxLength")
 class SummaryMetadataTest {
   @Test
   fun `summary round trips deterministically`() {
@@ -46,7 +47,43 @@ class SummaryMetadataTest {
       SummaryCodec.decode(bytes.replace("\"schemaMajor\":1", "\"schemaMajor\":2").toByteArray())
     }
     assertFailsWith<IllegalArgumentException> {
+      SummaryCodec.decode(bytes.replace("\"schemaMinor\":1", "\"schemaMinor\":0").toByteArray())
+    }
+    assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(bytes.replace("\"sample\"", "\"changed\"").toByteArray())
     }
+  }
+
+  @Test
+  fun `override slot and receiver provenance survive binary metadata`() {
+    val site = SourceLocation("sample", "Sample.kt", 1, 1)
+    val base = ContractParameter("Base.respond", "left", ParameterKind.CANVAS)
+    val implementation = ContractParameter("Impl.respond", "right", ParameterKind.CANVAS)
+    val module =
+      ModuleContract(
+        "sample",
+        callables =
+          listOf(
+            CallableContract(
+              "Base.handle",
+              effects =
+                listOf(
+                  Effect.Call(
+                    "hook",
+                    "Base.respond",
+                    site = site,
+                    receiver = DispatchReceiver.Forwarded,
+                    virtualDispatch = true,
+                  ),
+                ),
+              site = site,
+            ),
+          ),
+        overrides =
+          listOf(
+            ResolvedOverride("Impl", "Base.respond", "Impl.respond", listOf(OverrideSlot(base, implementation, 0))),
+          ),
+      )
+    assertEquals(module, SummaryCodec.decode(SummaryCodec.encode(module)).module)
   }
 }

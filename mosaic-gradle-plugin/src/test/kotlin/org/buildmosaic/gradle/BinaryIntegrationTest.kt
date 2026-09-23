@@ -33,6 +33,62 @@ import kotlin.test.assertTrue
 
 class BinaryIntegrationTest {
   @Test
+  fun `unsupported production configurations fail before extraction`() {
+    val root = Files.createTempDirectory("mosaic-boundary-integration").toFile()
+    val repository = File(System.getProperty("user.dir")).parentFile
+    val pluginJar = File(repository, "mosaic-compiler-plugin/build/libs/mosaic-compiler-plugin-0.2.0.jar")
+    val project = project(root, "boundary", pluginJar, emptyList())
+    val buildFile = File(project, "build.gradle.kts")
+    val validBuild = buildFile.readText()
+    buildFile.writeText("plugins { java; id(\"org.buildmosaic.analysis\") }")
+    assertTrue(run(project, "tasks", expectFailure = true).output.contains("requires a pure Kotlin/JVM project"))
+    buildFile.writeText(validBuild)
+    val source = File(project, "src/main/kotlin/Simple.kt")
+    source.parentFile.mkdirs()
+    source.writeText("package boundary\nclass Simple")
+    val unsupportedOptions =
+      """
+      tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile>("compileKotlin") {
+        compilerOptions.freeCompilerArgs.add("-Xcontext-receivers")
+      }
+      """.trimIndent()
+    buildFile.writeText(validBuild + "\n" + unsupportedOptions)
+    assertTrue(
+      run(project, "extractMosaicMain", expectFailure = true).output.contains("does not mirror compiler options"),
+    )
+    val extraJar = File(project, "extra-plugin.jar")
+    JarOutputStream(extraJar.outputStream()).use { }
+    buildFile.writeText(
+      validBuild +
+        "\ntasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile>(\"compileKotlin\") { pluginClasspath.from(file(\"extra-plugin.jar\")) }",
+    )
+    assertTrue(
+      run(
+        project,
+        "extractMosaicMain",
+        expectFailure = true,
+      ).output.contains("does not mirror additional Kotlin compiler plugins"),
+    )
+    buildFile.writeText(validBuild)
+    source.delete()
+    File(project, "src/main/kotlin/Script.kts").writeText("println(1)")
+    assertTrue(
+      run(project, "extractMosaicMain", expectFailure = true).output.contains("does not support Kotlin scripts"),
+    )
+    File(project, "src/main/kotlin/Script.kts").delete()
+    buildFile.writeText(
+      validBuild + "\ntasks.named<org.buildmosaic.gradle.ExtractMosaicTask>(\"extractMosaicMain\") { productionCompilerVersion.set(\"2.3.0\") }",
+    )
+    assertTrue(
+      run(project, "extractMosaicMain", expectFailure = true).output.contains("requires Kotlin Gradle plugin 2.2.10"),
+    )
+    buildFile.writeText(
+      validBuild + "\ntasks.named<org.buildmosaic.gradle.ExtractMosaicTask>(\"extractMosaicMain\") { selectedJavaVersion.set(\"999\") }",
+    )
+    assertTrue(run(project, "extractMosaicMain", expectFailure = true).output.contains("toolchain mismatch"))
+  }
+
+  @Test
   fun `fresh extraction drops deleted declarations`() {
     val root = Files.createTempDirectory("mosaic-deletion-integration").toFile()
     val repository = File(System.getProperty("user.dir")).parentFile
@@ -97,6 +153,10 @@ class BinaryIntegrationTest {
         suspend fun handle(requestId: String): String = respond(platformCanvas(), requestId)
         protected abstract suspend fun respond(base: Canvas, requestId: String): String
       }
+      abstract class SlotComponent {
+        suspend fun slotHandle(): String = slotRespond(platformCanvas(), "marker", canvas { })
+        protected abstract suspend fun slotRespond(first: Canvas, marker: String, second: Canvas): String
+      }
       """.trimIndent()
     platformSource.apply {
       parentFile.mkdirs()
@@ -149,6 +209,7 @@ class BinaryIntegrationTest {
           source<Service>()
           source<RequestContext>().id
         }
+        val MetricsOnlyTile = singleTile { source<Metrics>(); "ok" }
         """.trimIndent(),
       )
     }
@@ -161,7 +222,7 @@ class BinaryIntegrationTest {
         "app",
         pluginJar,
         listOf(coreJar, platformJar, adapterJar, tileJar),
-        listOf("app.entry()", "app.adapterEntry()"),
+        listOf("app.entry()", "app.adapterEntry()", "app.slotEntry()"),
       )
     File(app, "src/main/kotlin/App.kt").apply {
       parentFile.mkdirs()
@@ -183,7 +244,12 @@ class BinaryIntegrationTest {
             return request.create().compose(EnterpriseTile)
           }
         }
+        class SlotApplication : SlotComponent() {
+          override suspend fun slotRespond(second: Canvas, marker: String, first: Canvas): String =
+            second.create().compose(MetricsOnlyTile)
+        }
         suspend fun entry(): String = ApplicationComponent().handle("r")
+        suspend fun slotEntry(): String = SlotApplication().slotHandle()
         suspend fun adapterEntry(): String {
           val application = applicationLayer(applicationBase())
           val request = application.withLayer { single<RequestContext> { RequestContext("r") } }
@@ -197,6 +263,7 @@ class BinaryIntegrationTest {
     assertEquals(TaskOutcome.SUCCESS, initial.task(":verifyMosaicMain")?.outcome)
     assertTrue(initialReport.contains("Root app.entry(): VERIFIED"), initialReport)
     assertTrue(initialReport.contains("Root app.adapterEntry(): VERIFIED"), initialReport)
+    assertTrue(initialReport.contains("Root app.slotEntry(): VERIFIED"), initialReport)
     assertTrue(initialReport.contains("CONSTRUCTION_LOOKUP"), initialReport)
     assertFalse(initialReport.contains("Dependency metadata:"), initialReport)
     listOf(

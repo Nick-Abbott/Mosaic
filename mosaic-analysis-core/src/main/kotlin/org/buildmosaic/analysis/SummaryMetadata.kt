@@ -17,8 +17,8 @@ const val SUMMARY_PATH = "META-INF/mosaic-analysis/v1/summary.json"
 
 data class SummaryMetadata(
   val schemaMajor: Int = 1,
-  val schemaMinor: Int = 0,
-  val toolVersion: String = "prototype-1",
+  val schemaMinor: Int = 1,
+  val toolVersion: String = "prototype-2",
   val kotlinCompilerVersion: String = "2.2.10",
   val moduleId: String,
   val sourceSet: String = "main",
@@ -97,7 +97,7 @@ object SummaryCodec {
         throw IllegalArgumentException("Malformed Mosaic summary", error)
       }
     require(summary.schemaMajor == 1) { "Unsupported Mosaic summary schema major ${summary.schemaMajor}" }
-    require(summary.schemaMinor >= 0) { "Invalid Mosaic summary minor" }
+    require(summary.schemaMinor == 1) { "Unsupported Mosaic summary schema minor ${summary.schemaMinor}" }
     require(summary.complete) { "Partial Mosaic summary cannot be used as complete" }
     require(summary.moduleId == summary.module.id) { "Module identity mismatch" }
     require(summary.sourceSet.isNotBlank()) { "Missing source set identity" }

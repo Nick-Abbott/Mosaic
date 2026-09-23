@@ -284,30 +284,57 @@ internal class RootEvaluator(
         addIncomplete(caller, effect.id, effect.site, "Callable expansion depth limit reached")
         return@flatMap listOf(caller)
       }
-      val resolvedTarget = registry.directOverride(caller.knownReceiverType, effect.target) ?: effect.target
+      val receiverType =
+        when (val receiver = effect.receiver) {
+          DispatchReceiver.None -> null
+          DispatchReceiver.Forwarded -> caller.knownReceiverType
+          is DispatchReceiver.Concrete -> receiver.type
+          is DispatchReceiver.Unknown -> null
+        }
+      if (effect.virtualDispatch && receiverType == null) {
+        addUnknown(caller, effect.id, effect.site, "Virtual receiver is unresolved: ${effect.receiver}")
+        return@flatMap listOf(caller)
+      }
+      val override =
+        if (effect.virtualDispatch && receiverType != null) {
+          when (val resolved = registry.directOverride(receiverType, effect.target)) {
+            is Resolution.Found -> resolved.value
+            is Resolution.Conflict -> {
+              addConflict(caller, effect.id, resolved.owners, effect.site)
+              return@flatMap listOf(caller)
+            }
+            Resolution.Missing -> {
+              addUnknown(caller, effect.id, effect.site, "No direct override for $receiverType at ${effect.target}")
+              return@flatMap listOf(caller)
+            }
+          }
+        } else {
+          null
+        }
+      val resolvedTarget = override?.implementationId ?: effect.target
       when (val target = registry.callable(resolvedTarget)) {
         is Resolution.Found -> {
           specializedContracts += target.value.id
           val transferred =
-            if (resolvedTarget == effect.target) {
+            if (override == null) {
               evaluated
             } else {
+              val mapping = override.slots.associate { it.base to it.implementation }
+              if (evaluated.values.keys.any { it !in mapping }) {
+                addUnknown(caller, effect.id, effect.site, "Override argument slots are incomplete")
+                return@flatMap listOf(caller)
+              }
               evaluated.copy(
-                values =
-                  evaluated.values.mapKeys { (parameter, _) ->
-                    target.value.parameters.singleOrNull {
-                      it.name == parameter.name && it.kind == parameter.kind
-                    } ?: parameter
-                  },
+                values = evaluated.values.mapKeys { (parameter, _) -> mapping.getValue(parameter) },
               )
             }
           val callee = bindArguments(transferred, target.value.parameters, effect.site)
           val nested =
             callee.copy(
               dependencyPath = caller.dependencyPath + DependencyPathNode("call:${effect.target}", effect.site),
-              scope = effect.target,
+              scope = resolvedTarget,
               depth = caller.depth + 1,
-              knownReceiverType = effect.knownReceiverType ?: caller.knownReceiverType,
+              knownReceiverType = receiverType,
             )
           evaluateEffects(listOf(nested), target.value.effects).map { restoreCaller(it, caller) }
         }
@@ -367,6 +394,8 @@ internal class RootEvaluator(
       is CanvasExpression.Layer -> evaluateLayer(expression, context)
       is CanvasExpression.Choice -> evaluateCanvasChoice(expression, context)
       is CanvasExpression.RuntimeCall -> evaluateCanvasCall(expression, context)
+      is CanvasExpression.WithEffects ->
+        evaluateEffects(listOf(context), expression.effects).flatMap { evaluateCanvas(expression.result, it) }
       is CanvasExpression.Captured -> evaluateCapturedCanvas(expression, context)
       is CanvasExpression.Assumption -> evaluateAssumption(expression, context)
       is CanvasExpression.Alias -> evaluateCanvasAlias(expression, context)
@@ -500,7 +529,9 @@ internal class RootEvaluator(
     expression: CanvasExpression.RuntimeCall,
     context: EvaluationContext,
   ): List<CanvasOutcome> =
-    evaluateArguments(context, expression.arguments).flatMap { evaluated ->
+    evaluateEffects(listOf(context), expression.callerEffects).flatMap { prepared ->
+      evaluateArguments(prepared, expression.arguments)
+    }.flatMap { evaluated ->
       val caller = evaluated.context
       if (caller.blocked) return@flatMap listOf(CanvasOutcome(caller, null))
       if (caller.depth >= limits.expansionDepth) {

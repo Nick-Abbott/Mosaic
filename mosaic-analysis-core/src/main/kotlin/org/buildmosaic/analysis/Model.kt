@@ -115,6 +115,12 @@ sealed interface CanvasExpression {
     val target: String,
     val arguments: CallArguments = CallArguments(),
     val site: SourceLocation,
+    val callerEffects: List<Effect> = emptyList(),
+  ) : CanvasExpression
+
+  data class WithEffects(
+    val effects: List<Effect>,
+    val result: CanvasExpression,
   ) : CanvasExpression
 
   /** Behavior captured by the caller, which can still contain ordinary runtime references. */
@@ -212,6 +218,18 @@ enum class MultiTileExecution {
 }
 
 @JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
+sealed interface DispatchReceiver {
+  data object None : DispatchReceiver
+
+  /** The callee receives the same dispatch object as its caller. */
+  data object Forwarded : DispatchReceiver
+
+  data class Concrete(val type: String) : DispatchReceiver
+
+  data class Unknown(val reason: String) : DispatchReceiver
+}
+
+@JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 sealed interface Effect {
   val id: String
   val site: SourceLocation
@@ -244,8 +262,8 @@ sealed interface Effect {
     val target: String,
     val arguments: CallArguments = CallArguments(),
     override val site: SourceLocation,
-    /** Final concrete receiver proven at this call site; used only for direct override transfer. */
-    val knownReceiverType: String? = null,
+    val receiver: DispatchReceiver = DispatchReceiver.None,
+    val virtualDispatch: Boolean = false,
   ) : Effect
 
   data class Branch(
@@ -285,6 +303,7 @@ data class TileContract(
   val effects: List<Effect>,
   val site: SourceLocation,
   val reusable: Boolean = true,
+  val multi: Boolean = false,
 )
 
 data class CallableContract(
@@ -307,6 +326,13 @@ data class ResolvedOverride(
   val receiverType: String,
   val baseId: String,
   val implementationId: String,
+  val slots: List<OverrideSlot> = emptyList(),
+)
+
+data class OverrideSlot(
+  val base: ContractParameter,
+  val implementation: ContractParameter,
+  val position: Int,
 )
 
 data class SelectedRoot(

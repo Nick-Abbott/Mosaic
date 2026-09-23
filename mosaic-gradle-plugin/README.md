@@ -1,7 +1,7 @@
 # Mosaic Gradle analysis prototype
 
 This unpublished plugin supports pure Kotlin/JVM `main` sources under
-`src/main/kotlin` with Kotlin 2.2.10. Its provisional ID is
+`src/main/kotlin` with Kotlin Gradle plugin and compiler 2.2.10. Its provisional ID is
 `org.buildmosaic.analysis`. The plugin does not apply Kotlin or add Mosaic
 runtime dependencies. In this repository's binary integration test the plugin
 is supplied through Gradle TestKit; there is no published marker yet.
@@ -36,9 +36,14 @@ An unrelated JAR without Mosaic metadata is ignored. Missing metadata for a
 referenced declaration stays unknown. Invalid metadata is reported and its
 declarations are not used. Conflicting selected owners are rejected.
 
-Only the tested default Kotlin/JVM main layout is supported. Mixed Java/Kotlin
-sources, nonstandard or generated Kotlin source paths, KSP sources, additional
-compiler plugins, test sources, Android, and multiplatform builds are outside
-this prototype. It does not discover roots, framework lifecycle callbacks, or
-arbitrary virtual dispatch. The plugin ID, extension, tasks, schema, and report
-format are provisional; none is published or included in the BOM.
+Only the tested default Kotlin/JVM main layout is supported. Extraction uses the
+configured Java toolchain and fails on a Kotlin/toolchain version mismatch. The
+task rejects nonstandard or generated Kotlin source paths, Kotlin scripts,
+mixed Java/Kotlin sources, friend paths, additional compiler plugins, plugin
+options, opt-ins, free compiler arguments, progressive mode, nondefault JVM
+interface mode, no-JDK compilation, and KSP. Applying
+the plugin without Kotlin/JVM fails during project configuration. Android,
+multiplatform, test sources, framework lifecycle callbacks, and arbitrary virtual
+dispatch remain unsupported. A virtual call with an unresolved receiver is
+UNVERIFIED. The plugin ID, extension, tasks, v1.1 schema, and report format are
+provisional; none is published or included in the BOM.

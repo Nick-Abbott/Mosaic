@@ -37,6 +37,14 @@ abstract class ExtractMosaicTask
     @get:Classpath
     abstract val compilerClasspath: ConfigurableFileCollection
 
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val additionalCompilerPlugins: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val friendPaths: ConfigurableFileCollection
+
     @get:InputFile
     @get:PathSensitive(PathSensitivity.NONE)
     abstract val compilerPluginJar: RegularFileProperty
@@ -57,6 +65,25 @@ abstract class ExtractMosaicTask
     abstract val apiVersion: Property<String>
 
     @get:Input
+    abstract val productionCompilerVersion: Property<String>
+
+    @get:Input
+    abstract val unsupportedCompilerOptions: org.gradle.api.provider.ListProperty<String>
+
+    @get:Input
+    abstract val unsupportedProjectPlugins: org.gradle.api.provider.ListProperty<String>
+
+    @get:Input
+    abstract val expectedJavaVersion: Property<String>
+
+    @get:Input
+    abstract val selectedJavaVersion: Property<String>
+
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val javaExecutable: RegularFileProperty
+
+    @get:Input
     abstract val supportedSourceRoot: Property<String>
 
     @get:OutputFile
@@ -69,6 +96,7 @@ abstract class ExtractMosaicTask
       output.delete()
       output.parentFile.mkdirs()
       val kotlinSources = sources.files.filter { it.extension == "kt" }.sortedBy(File::getAbsolutePath)
+      validateConfiguration()
       validateSources(kotlinSources)
       if (kotlinSources.isEmpty()) {
         output.writeBytes(SummaryCodec.encode(ModuleContract(moduleId.get())))
@@ -92,6 +120,7 @@ abstract class ExtractMosaicTask
       if (apiVersion.get().isNotBlank()) settings += listOf("-api-version", apiVersion.get())
       try {
         exec.javaexec { spec ->
+          spec.executable = javaExecutable.get().asFile.absolutePath
           spec.classpath = compilerClasspath
           spec.mainClass.set("org.jetbrains.kotlin.cli.jvm.K2JVMCompiler")
           spec.args(settings + args)
@@ -104,13 +133,70 @@ abstract class ExtractMosaicTask
       }
     }
 
+    private fun validateConfiguration() {
+      requireSupported(
+        productionCompilerVersion.get().startsWith("2.2.10"),
+        "Mosaic extraction requires Kotlin Gradle plugin 2.2.10; found ${productionCompilerVersion.get()}",
+      )
+      val unsupportedPlugins =
+        additionalCompilerPlugins.files.filterNot(::isDefaultKotlinCompilerArtifact)
+      val unsupportedPluginOptions = unsupportedCompilerOptions.get().filter { it.startsWith("plugin:") }
+      val names = unsupportedPlugins.joinToString { it.name }
+      requireSupported(
+        unsupportedPlugins.isEmpty() && unsupportedPluginOptions.isEmpty(),
+        "Mosaic extraction does not mirror additional Kotlin compiler plugins: $names; $unsupportedPluginOptions",
+      )
+      requireSupported(friendPaths.files.isEmpty(), "Mosaic extraction does not support Kotlin friend paths")
+      requireSupported(
+        unsupportedCompilerOptions.get().isEmpty(),
+        "Mosaic extraction does not mirror compiler options: ${unsupportedCompilerOptions.get().joinToString()}",
+      )
+      requireSupported(
+        unsupportedProjectPlugins.get().isEmpty(),
+        "Mosaic extraction does not support project plugins: ${unsupportedProjectPlugins.get().joinToString()}",
+      )
+      val expected = expectedJavaVersion.get()
+      val selected = selectedJavaVersion.get()
+      requireSupported(
+        expected == selected,
+        "Mosaic extraction toolchain mismatch: Kotlin uses Java $expected, extraction selected Java $selected",
+      )
+    }
+
     private fun validateSources(kotlinSources: List<File>) {
-      if (javaSources.files.isNotEmpty()) {
-        throw GradleException("Mosaic prototype extraction does not support mixed Java/Kotlin sources")
-      }
+      requireSupported(
+        sources.files.none {
+          it.extension == "kts"
+        },
+        "Mosaic prototype extraction does not support Kotlin scripts",
+      )
+      requireSupported(
+        javaSources.files.isEmpty(),
+        "Mosaic prototype extraction does not support mixed Java/Kotlin sources",
+      )
       val sourceRoot = File(supportedSourceRoot.get()).canonicalFile.toPath()
-      if (kotlinSources.any { !it.canonicalFile.toPath().startsWith(sourceRoot) }) {
-        throw GradleException("Mosaic prototype extraction supports only src/main/kotlin sources")
-      }
+      requireSupported(
+        kotlinSources.all { it.canonicalFile.toPath().startsWith(sourceRoot) },
+        "Mosaic prototype extraction supports only src/main/kotlin sources",
+      )
     }
   }
+
+private fun requireSupported(
+  condition: Boolean,
+  reason: String,
+) {
+  if (!condition) throw GradleException(reason)
+}
+
+private fun isDefaultKotlinCompilerArtifact(file: File): Boolean =
+  file.name in
+    setOf(
+      "kotlin-scripting-compiler-embeddable-2.2.10.jar",
+      "kotlin-scripting-compiler-impl-embeddable-2.2.10.jar",
+      "kotlin-scripting-jvm-2.2.10.jar",
+      "kotlin-scripting-common-2.2.10.jar",
+      "kotlin-stdlib-2.2.10.jar",
+      "kotlin-script-runtime-2.2.10.jar",
+      "annotations-13.0.jar",
+    )
