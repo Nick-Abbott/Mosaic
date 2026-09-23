@@ -9,9 +9,8 @@
 
 Mosaic-test provides a fluent testing API designed specifically for the new DSL-based tile approach. Mock dependencies, simulate failures, and verify behavior with type-safe assertions - all while working seamlessly with the natural tile composition patterns.
 
-Create `TestMosaicBuilder(this)` inside `runTest`, where `this` is the
-coroutine `TestScope`. The `mosaicBuilder()` extension is a shorthand on that
-same scope. The examples use typed keys such as
+Inside `runTest`, call `mosaicBuilder()` to use the enclosing `TestScope`
+and its scheduler. The examples use typed keys such as
 `CanvasKey(String::class, "userId")` for request values.
 
 ```kotlin
@@ -40,7 +39,7 @@ fun `user tile composes mocked data`() = runTest {
   val userIdTile = singleTile { source(UserIdKey) }
   val userTile = singleTile { User(compose(userIdTile), "John Doe") }
 
-  val testMosaic = TestMosaicBuilder(this)
+  val testMosaic = mosaicBuilder()
     .withMockTile(userIdTile, "123")
     .build()
 
@@ -147,7 +146,7 @@ fun `pricing tile efficiently batches multiple SKUs`() = runTest {
     "SKU3" to Price(5.00)
   )
 
-  val testMosaic = TestMosaicBuilder(this)
+  val testMosaic = mosaicBuilder()
     .withMockTile(pricingTile, mockPrices)
     .build()
 
@@ -209,7 +208,7 @@ fun `handles slow external API calls`() = runTest {
     ExternalApiService.fetchData()
   }
 
-  val testMosaic = TestMosaicBuilder(this)
+  val testMosaic = mosaicBuilder()
     .withDelayedTile(externalApiTile, ApiResponse("data"), delayMs = 200)
     .build()
 
@@ -226,7 +225,7 @@ fun `handles slow external API calls`() = runTest {
 Control how your mocked tiles behave:
 
 ```kotlin
-val testMosaic = TestMosaicBuilder(this)
+val testMosaic = mosaicBuilder()
   .withMockTile(userTile, mockUser) // Success: return data immediately
   .withFailedTile(failingTile, UserNotFoundException("User not found"))
   .withDelayedTile(externalApiTile, mockData, delayMs = 500)

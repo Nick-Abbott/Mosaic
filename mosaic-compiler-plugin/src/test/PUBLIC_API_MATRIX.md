@@ -21,7 +21,7 @@
 | `Mosaic.compose(MultiTile, Collection)` / `composeAsync(MultiTile, Collection)` | S: evaluate both arguments; empty skips body, obvious nonempty executes body, unknown collection retains both paths. No arbitrary collection-content inference. |
 | `Mosaic.compose(MultiTile, singleKey)` / `composeAsync(MultiTile, singleKey)` | S: evaluate both arguments; always nonempty. |
 | `MosaicCanvas.close` | O: resource lifecycle, not Canvas availability. `MosaicCanvas` constructor and `CanvasBuilder`/`CanvasFactory` constructors/build method are I (`internal`). |
-| `Stub.create/toProvider`, `SingleStub` constructor, `Provider.get`, `Single` constructor/get, `MosaicDI` | O: public low-level DI types do not construct or query a Mosaic Canvas through their own contract; user code in callbacks is subject to ordinary callable analysis. |
+| `Stub.create/toProvider`, `SingleStub` constructor, `Provider.get`, `Single` constructor/get, `MosaicDI` | I: internal Canvas implementation types; not callable by library users. |
 | `CanvasKey.toString` and generated value methods | O: formatting/value operations, with no Canvas lookup/register/paint contract. General user overrides and collection callbacks remain existing conservative boundaries. |
 
 ## Fixture coverage
