@@ -16,9 +16,12 @@ tasks.register("release") {
 tasks.register("releaseToMavenCentral") {
   group = "publishing"
   description = "Publish all Mosaic publications to Maven Central"
-  subprojects.forEach { subproject ->
-    if (subproject.plugins.hasPlugin("maven-publish")) {
-      dependsOn("${subproject.name}:publishToMavenCentral")
-    }
-  }
+  dependsOn(
+    ":mosaic-core:publishToMavenCentral",
+    ":mosaic-test:publishToMavenCentral",
+    ":mosaic-bom:publishToMavenCentral",
+    ":mosaic-analysis-core:publishToMavenCentral",
+    ":mosaic-compiler-plugin:publishToMavenCentral",
+    ":mosaic-gradle-plugin:publishToMavenCentral",
+  )
 }

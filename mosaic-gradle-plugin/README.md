@@ -1,10 +1,10 @@
-# Mosaic Gradle analysis prototype
+# Mosaic Gradle analysis plugin
 
-This unpublished plugin supports pure Kotlin/JVM `main` sources under
-`src/main/kotlin` with Kotlin Gradle plugin and compiler 2.2.10. Its provisional ID is
-`org.buildmosaic.analysis`. The plugin does not apply Kotlin or add Mosaic
-runtime dependencies. In this repository's binary integration test the plugin
-is supplied through Gradle TestKit; there is no published marker yet.
+The `org.buildmosaic.analysis` plugin supports pure Kotlin/JVM `main` sources
+under `src/main/kotlin` with Kotlin Gradle plugin and compiler **2.2.10 only**.
+It is build tooling: it does not apply Kotlin or add Mosaic application runtime
+dependencies. Add Maven Central to plugin and dependency repositories. Once a
+Mosaic release containing the analysis artifacts is available, install it with:
 
 ```kotlin
 import org.buildmosaic.gradle.MosaicAnalysisEnforcement
@@ -12,11 +12,10 @@ import org.buildmosaic.gradle.MosaicAnalysisRole
 
 plugins {
   kotlin("jvm") version "2.2.10"
-  id("org.buildmosaic.analysis")
+  id("org.buildmosaic.analysis") version "<mosaic-version>"
 }
 
 mosaicAnalysis {
-  compilerPluginJar.set(file("/path/to/mosaic-compiler-plugin-0.2.0.jar"))
   role = MosaicAnalysisRole.APPLICATION
   enforcement = MosaicAnalysisEnforcement.STANDARD
   roots.add("app.entry()")
@@ -30,10 +29,27 @@ summary in their JAR:
 
 ```kotlin
 mosaicAnalysis {
-  compilerPluginJar.set(file("/path/to/mosaic-compiler-plugin-0.2.0.jar"))
   role = MosaicAnalysisRole.LIBRARY
 }
 ```
+
+The Gradle plugin resolves the same-version `mosaic-compiler-plugin` artifact
+automatically. No compiler JAR path or application dependency is needed.
+
+## Publication
+
+The release publishes `org.buildmosaic:mosaic-analysis-core`,
+`org.buildmosaic:mosaic-compiler-plugin`, and
+`org.buildmosaic:mosaic-gradle-plugin` to Maven Central at the same Mosaic
+version. Gradle generates the `org.buildmosaic.analysis` plugin marker. The
+compiler plugin is a self-contained artifact for the separate compiler process;
+analysis-core and the compiler plugin are implementation support artifacts,
+not ordinary application dependencies or BOM entries. For a release, publish
+the three support/implementation artifacts with `releaseToMavenCentral`, wait
+until they resolve from Maven Central, then validate and publish the Gradle
+plugin through the Plugin Portal with `:mosaic-gradle-plugin:publishPlugins`.
+Local installation tests use a temporary Maven repository and do not run a
+remote publication task.
 
 Applications also export contracts. A library with roots is contradictory and
 fails with a configuration error.
@@ -80,9 +96,10 @@ capability-bearing initialization marked unknown. If the referenced constructor
 summary is absent, verification is unknown. Referenced stored-property reads
 likewise retain initialization work. This is not a general model of JVM class
 initialization or exception safety. Used user defaults with unavailable binary
-expressions and Mosaic extension-helper calls remain unknown. The schema stays
-v1.1; summaries from older extractor versions are rejected because they may
-have omitted accessor or constructor-default effects or conflated array keys.
+expressions and Mosaic extension-helper calls remain unknown. The metadata is
+format 3 with `analysis-contract-2`; summaries from older extractor versions
+are rejected because they may have omitted accessor or constructor-default
+effects or conflated array keys.
 
 Only the tested default Kotlin/JVM main layout is supported. Extraction uses the
 configured Java toolchain and fails on a Kotlin/toolchain version mismatch. The
@@ -93,5 +110,5 @@ interface mode, no-JDK compilation, and KSP. Applying
 the plugin without Kotlin/JVM fails during project configuration. Android,
 multiplatform, test sources, framework lifecycle callbacks, and arbitrary virtual
 dispatch remain unsupported. A virtual call with an unresolved receiver is
-UNVERIFIED. The plugin ID, extension, tasks, v1.1 schema, and report format are
-provisional; none is published or included in the BOM.
+UNVERIFIED. The plugin ID, extension, tasks, format-3 schema, and report format are
+provisional. The analysis tooling is not included in the BOM.

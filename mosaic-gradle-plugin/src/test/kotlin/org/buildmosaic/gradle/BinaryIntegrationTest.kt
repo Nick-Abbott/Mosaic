@@ -551,10 +551,12 @@ class BinaryIntegrationTest {
           implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
         }
         mosaicAnalysis {
-          compilerPluginJar.set(file("${pluginJar.invariantSeparatorsPath}"))
           role = org.buildmosaic.gradle.MosaicAnalysisRole.$role
           enforcement = org.buildmosaic.gradle.MosaicAnalysisEnforcement.$enforcement
           $configuredRoots
+        }
+        tasks.named<org.buildmosaic.gradle.ExtractMosaicTask>("extractMosaicMain") {
+          compilerPluginJar.set(file("${pluginJar.invariantSeparatorsPath}"))
         }
         """.trimIndent(),
       )

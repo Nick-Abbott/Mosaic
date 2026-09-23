@@ -1,11 +1,17 @@
+import org.gradle.plugins.signing.Sign
+
 plugins {
   id("com.vanniktech.maven.publish")
   signing
 }
 
+val installTestRepository = providers.gradleProperty("mosaic.installTestRepository").orNull
+
 mavenPublishing {
-  publishToMavenCentral()
-  signAllPublications()
+  if (installTestRepository == null) {
+    publishToMavenCentral()
+    signAllPublications()
+  }
 
   coordinates(
     groupId = project.group.toString(),
@@ -43,6 +49,22 @@ mavenPublishing {
 
 // Use the GPG command line tool for signing
 signing {
+  isRequired = installTestRepository == null
   useGpgCmd()
-  sign(publishing.publications)
+  if (installTestRepository == null) sign(publishing.publications)
+}
+
+tasks.withType<Sign>().configureEach {
+  if (installTestRepository != null) enabled = false
+}
+
+publishing {
+  repositories {
+    installTestRepository?.let { installRepository ->
+      maven {
+        name = "installTest"
+        url = uri(installRepository)
+      }
+    }
+  }
 }
