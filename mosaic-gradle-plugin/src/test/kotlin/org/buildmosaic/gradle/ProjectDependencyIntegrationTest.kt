@@ -20,8 +20,8 @@ class ProjectDependencyIntegrationTest {
   fun `project dependency jar variant supplies its Mosaic summary`() {
     val root = Files.createTempDirectory("mosaic-project-dependency").toFile()
     val repository = File(System.getProperty("user.dir")).parentFile
-    val pluginJar = File(repository, "mosaic-compiler-plugin/build/libs/mosaic-compiler-plugin-0.2.0.jar")
-    val coreJar = File(repository, "mosaic-core/build/libs/mosaic-core-0.2.0.jar")
+    val pluginJar = File(repository, "mosaic-compiler-plugin/build/libs/mosaic-compiler-plugin-${mosaicVersion()}.jar")
+    val coreJar = File(repository, "mosaic-core/build/libs/mosaic-core-${mosaicVersion()}.jar")
     File(root, "settings.gradle.kts").writeText(
       """
       pluginManagement {

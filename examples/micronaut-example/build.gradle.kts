@@ -5,9 +5,11 @@ plugins {
   id("io.micronaut.application") version "4.5.4"
 }
 
+val mosaicVersion: String by rootProject.extra
+
 dependencies {
   implementation(project(":tile-library"))
-  implementation("org.buildmosaic:mosaic-core:0.1.0")
+  implementation("org.buildmosaic:mosaic-core:$mosaicVersion")
 
   // Micronaut dependencies
   implementation("io.micronaut:micronaut-http-server-netty")
@@ -23,7 +25,7 @@ dependencies {
   testImplementation("io.micronaut.test:micronaut-test-junit5")
   testImplementation("io.micronaut:micronaut-http-client")
   testImplementation(kotlin("test"))
-  testImplementation("org.buildmosaic:mosaic-test:0.1.0")
+  testImplementation("org.buildmosaic:mosaic-test:$mosaicVersion")
   testImplementation(libs.kotlinx.coroutines.test)
 }
 

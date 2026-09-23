@@ -158,3 +158,7 @@ internal fun rewriteSummary(
   copy.copyTo(jar, overwrite = true)
   copy.delete()
 }
+
+internal fun mosaicVersion(): String =
+  File(System.getProperty("user.dir")).parentFile.resolve("gradle.properties").readLines()
+    .first { it.startsWith("mosaic.version=") }.substringAfter('=')

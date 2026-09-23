@@ -15,7 +15,7 @@ import java.util.jar.JarFile
 
 /** Copies the selected resource byte for byte; verification owns decoding and compatibility checks. */
 @CacheableTransform
-abstract class MosaicSummaryTransform : TransformAction<TransformParameters.None> {
+internal abstract class MosaicSummaryTransform : TransformAction<TransformParameters.None> {
   @get:InputArtifact
   @get:PathSensitive(PathSensitivity.NAME_ONLY)
   abstract val inputArtifact: Provider<FileSystemLocation>

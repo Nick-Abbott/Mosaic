@@ -22,12 +22,12 @@ mavenPublishing {
   pom {
     name.set(project.name)
     description.set(project.description)
-    url.set("https://github.com/Nick-Abbott/Mosaic/${project.name}/")
+    url.set("https://github.com/Nick-Abbott/Mosaic/tree/main/${project.name}")
 
     licenses {
       license {
         name.set("The Apache License, Version 2.0")
-        url.set("http://www.apache.org/licenses/LICENSE-2.0.txt")
+        url.set("https://www.apache.org/licenses/LICENSE-2.0.txt")
       }
     }
 

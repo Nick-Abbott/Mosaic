@@ -40,21 +40,19 @@ fun Application.module() {
   routing {
     get("/orders/{id}") {
       val orderId = call.parameters["id"] ?: error("Missing order ID")
-      val mosaic =
+      val orderPage =
         canvas.withLayer {
-          single(OrderKey.qualifier) { orderId }
-        }.create()
-      val orderPage = mosaic.compose(OrderPageTile)
+          single(OrderKey) { orderId }
+        }.create().compose(OrderPageTile)
       call.respond(orderPage)
     }
 
     get("/orders/{id}/total") {
       val orderId = call.parameters["id"] ?: error("Missing order ID")
-      val mosaic =
+      val total =
         canvas.withLayer {
-          single(OrderKey.qualifier) { orderId }
-        }.create()
-      val total = mosaic.compose(OrderTotalTile)
+          single(OrderKey) { orderId }
+        }.create().compose(OrderTotalTile)
       call.respond(mapOf("total" to total))
     }
   }

@@ -2,8 +2,8 @@
 
 [![Tests](https://github.com/Nick-Abbott/Mosaic/workflows/Test%20Badge/badge.svg)](https://github.com/Nick-Abbott/Mosaic/actions?query=workflow%3A%22Test+Badge%22)
 [![Build](https://github.com/Nick-Abbott/Mosaic/workflows/Build%20Badge/badge.svg)](https://github.com/Nick-Abbott/Mosaic/actions?query=workflow%3A%22Build+Badge%22)
-[![Kotlin](https://img.shields.io/badge/kotlin-2.2.0-blue.svg)](https://kotlinlang.org)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Kotlin](https://img.shields.io/badge/kotlin-2.2.10-blue.svg)](https://kotlinlang.org)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](../LICENSE)
 
 **The next-generation DSL-based framework for composable backend orchestration.**
 
@@ -15,13 +15,15 @@ Mosaic-core introduces a revolutionary DSL approach that eliminates boilerplate 
 
 ```kotlin
 dependencies {
-  implementation("org.buildmosaic:mosaic-core:0.1.0")
+  implementation("org.buildmosaic:mosaic-core:0.3.0")
 }
 ```
 
 ### **Your First Tile**
 
 ```kotlin
+val UserIdKey = CanvasKey(String::class, "userId")
+
 val userTile = singleTile<User> {
   val userId = source(UserIdKey)
   UserService.fetchUser(userId)
@@ -72,7 +74,7 @@ val productTile = perKeyTile<String, Product> { sku ->
 Creates a tile that processes requests in configurable chunks:
 
 ```kotlin
-val inventoryTile = chunkedMultiTile<String, Inventory>(chunkSize = 50) { skus ->
+val inventoryTile = chunkedMultiTile<String, Inventory>(batchSize = 50) { skus ->
   // Processes up to 50 SKUs at a time to respect API limits
   InventoryService.checkInventory(skus)
 }
@@ -86,12 +88,12 @@ Compose tiles using simple `compose()` calls - no complex class hierarchies:
 
 ```kotlin
 val orderSummaryTile = singleTile<OrderSummary> {
-  // These run concurrently automatically
-  val order = compose(orderTile)
-  val customer = compose(customerTile) 
-  val lineItems = compose(lineItemsTile)
-  
-  OrderSummary(order, customer, lineItems)
+  // Start independent work before awaiting the results
+  val order = composeAsync(orderTile)
+  val customer = composeAsync(customerTile)
+  val lineItems = composeAsync(lineItemsTile)
+
+  OrderSummary(order.await(), customer.await(), lineItems.await())
 }
 ```
 
@@ -102,12 +104,12 @@ Seamlessly mix single and multi tiles:
 ```kotlin
 val enrichedOrderTile = singleTile<EnrichedOrder> {
   val order = compose(orderTile)
-  
+
   // Batch fetch all required data
   val products = compose(productTile, order.skus)
   val prices = compose(pricingTile, order.skus)
   val inventory = compose(inventoryTile, order.skus)
-  
+
   EnrichedOrder(order, products, prices, inventory)
 }
 ```
@@ -119,7 +121,7 @@ Use standard Kotlin control flow within tiles:
 ```kotlin
 val paymentProcessorTile = singleTile<PaymentProcessor> {
   val customer = compose(customerTile)
-  
+
   when (customer.tier) {
     CustomerTier.PREMIUM -> compose(premiumProcessorTile)
     CustomerTier.BUSINESS -> compose(businessProcessorTile)
@@ -132,18 +134,19 @@ val paymentProcessorTile = singleTile<PaymentProcessor> {
 
 ### **Parallel Execution**
 
-The DSL automatically optimizes for concurrency:
+Start independent tile work with `composeAsync`; sequential `compose` calls
+remain sequential:
 
 ```kotlin
 val dashboardTile = singleTile<Dashboard> {
   // All these tiles start executing immediately in parallel
-  val user = compose(userTile)
-  val orders = compose(recentOrdersTile)
-  val recommendations = compose(recommendationsTile)
-  val notifications = compose(notificationsTile)
-  
-  // Results are awaited only when accessed
-  Dashboard(user, orders, recommendations, notifications)
+  val user = composeAsync(userTile)
+  val orders = composeAsync(recentOrdersTile)
+  val recommendations = composeAsync(recommendationsTile)
+  val notifications = composeAsync(notificationsTile)
+
+  // Await the results after starting all four tiles
+  Dashboard(user.await(), orders.await(), recommendations.await(), notifications.await())
 }
 ```
 
@@ -155,9 +158,9 @@ Generate keys dynamically based on other tile results:
 val relatedProductsTile = singleTile<List<Product>> {
   val order = compose(orderTile)
   val categoryIds = order.items.map { it.categoryId }.distinct()
-  
+
   // Dynamic multi-tile call based on order contents
-  val productsByCategory = get(productsByCategoryTile, categoryIds)
+  val productsByCategory = compose(productsByCategoryTile, categoryIds)
   productsByCategory.values.flatten().take(10)
 }
 ```
@@ -185,14 +188,14 @@ Access dependencies and data sources through the Canvas system:
 
 ```kotlin
 // Define your data sources as keys
-object UserIdKey : SourceKey<String>
-object LocaleKey : SourceKey<String>
+val UserIdKey = CanvasKey(String::class, "userId")
+val LocaleKey = CanvasKey(String::class, "locale")
 
 val userPreferencesTile = singleTile<Preferences> {
   val userId = source(UserIdKey)
-  val locale = source(LocaleKey) ?: "en-US"
-  
-  PreferencesService.getPreferences(userId, locale)
+  val locale = sourceOr(LocaleKey) ?: "en-US"
+
+  source<PreferencesService>().getPreferences(userId, locale)
 }
 ```
 
@@ -201,28 +204,31 @@ val userPreferencesTile = singleTile<Preferences> {
 Create a Canvas with your dependencies and data sources:
 
 ```kotlin
-val canvas = canvas {
+suspend fun createApplicationCanvas(): MosaicCanvas = canvas {
   // Configure your dependency injection here
   single<UserService> { UserServiceImpl() }
   single<PreferencesService> { PreferencesServiceImpl() }
 }
 
-// Create a mosaic instance with specific data sources
-val mosaic = canvas.withLayer {
-  single(UserIdKey.qualifier) { "user-123" }
-  single(LocaleKey.qualifier) { "en-US" }
-}.create()
-
-// Execute tiles
-val preferences = mosaic.compose(userPreferencesTile)
+// Add request values and compose the response.
+suspend fun loadPreferences(applicationCanvas: Canvas): Preferences =
+  applicationCanvas.withLayer {
+    single(UserIdKey) { "user-123" }
+    single(LocaleKey) { "en-US" }
+  }.create().compose(userPreferencesTile)
 ```
+
+A Canvas closes only its locally created `AutoCloseable` bindings when closed;
+closing a child does not close parent resources. Close a resource-owning
+application Canvas at shutdown, and explicitly scope a child if it owns
+resources needing cleanup.
 
 ## 🎯 **Key Advantages**
 
 ### **Zero Boilerplate**
 - No abstract classes or inheritance hierarchies
 - No manual cache management
-- No explicit concurrency handling
+- Use `composeAsync` when independent work should overlap
 
 ### **Natural Composition**
 - Write tiles like regular suspend functions
@@ -230,30 +236,33 @@ val preferences = mosaic.compose(userPreferencesTile)
 - Standard Kotlin control flow works everywhere
 
 ### **Automatic Optimization**
-- Intelligent batching and deduplication
-- Concurrent execution without manual async/await
+- MultiTile batching strategies and per-key deduplication
+- Explicit `composeAsync` for overlapping independent work
 - Request-scoped caching built-in
 
 ### **Type Safety**
 - Full Kotlin type inference
-- Compile-time dependency validation
+- Typed Canvas lookups; missing bindings fail at runtime without optional analysis
 - Generic type parameters preserved
+
+For supported Kotlin/JVM application roots, the optional
+[analysis plugin](../mosaic-gradle-plugin/README.md) can check Canvas bindings at
+build time. Runtime composition does not require that plugin or Mosaic KSP.
 
 ## 📦 **Framework Integration**
 
 ### **Standalone Usage**
 
 ```kotlin
-val canvas = canvas {
+suspend fun createApplicationCanvas(): MosaicCanvas = canvas {
   single<UserService> { UserServiceImpl() }
   single<DashboardService> { DashboardServiceImpl() }
 }
 
-val mosaic = canvas.withLayer {
-  single(UserIdKey.qualifier) { "123" }
-}.create()
-
-val result = mosaic.compose(userDashboardTile)
+suspend fun dashboard(applicationCanvas: Canvas): Dashboard =
+  applicationCanvas.withLayer {
+    single(UserIdKey) { "123" }
+  }.create().compose(userDashboardTile)
 ```
 
 ### **Spring Integration**
@@ -262,8 +271,8 @@ val result = mosaic.compose(userDashboardTile)
 @Configuration
 class MosaicConfig {
   @Bean
-  suspend fun mosaicCanvas(): Canvas {
-    return canvas {
+  fun mosaicCanvas(): Canvas = runBlocking {
+    canvas {
       single<UserService> { UserServiceImpl() }
       single<DashboardService> { DashboardServiceImpl() }
     }
@@ -272,14 +281,13 @@ class MosaicConfig {
 
 @RestController
 class UserController(private val canvas: Canvas) {
-  
+
   @GetMapping("/users/{userId}/dashboard")
-  suspend fun getUserDashboard(@PathVariable userId: String): Dashboard = 
+  fun getUserDashboard(@PathVariable userId: String): Dashboard =
     runBlocking {
-      val mosaic = canvas.withLayer {
-        single(UserIdKey.qualifier) { userId }
-      }.create()
-      mosaic.compose(userDashboardTile)
+      canvas.withLayer {
+        single(UserIdKey) { userId }
+      }.create().compose(userDashboardTile)
     }
 }
 ```
@@ -298,11 +306,10 @@ fun Application.module() {
   routing {
     get("/users/{userId}/dashboard") {
       val userId = call.parameters["userId"]!!
-      val mosaic = canvas.withLayer {
-        single(UserIdKey.qualifier) { userId }
-      }.create()
-      
-      call.respond(mosaic.compose(userDashboardTile))
+      val dashboard = canvas.withLayer {
+        single(UserIdKey) { userId }
+      }.create().compose(userDashboardTile)
+      call.respond(dashboard)
     }
   }
 }
@@ -316,13 +323,13 @@ fun Application.module() {
 - Concurrent access to same tile returns shared result
 
 ### **Batch Optimization**
-- Multi-tiles automatically batch requests
+- Multi-tiles group uncached keys for the fetch strategy you choose
 - Chunked processing for large datasets
 - Configurable batch sizes and strategies
 
 ### **Concurrency**
-- Tiles execute concurrently by default
-- No manual async/await required
+- `composeAsync` starts independent work before awaiting results
+- Sequential `compose` calls execute sequentially
 - Framework handles synchronization
 
 ## 🔗 **Related Modules**

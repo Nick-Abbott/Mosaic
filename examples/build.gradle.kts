@@ -7,6 +7,10 @@ plugins {
   alias(libs.plugins.ktlint) apply false
 }
 
+extra["mosaicVersion"] =
+  providers.fileContents(layout.projectDirectory.file("../gradle.properties")).asText.get()
+    .lineSequence().first { it.startsWith("mosaic.version=") }.substringAfter('=')
+
 subprojects {
   repositories {
     mavenCentral()

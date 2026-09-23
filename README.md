@@ -29,9 +29,9 @@ Add Mosaic to your Gradle project:
 
 ```kotlin
 dependencies {
-  implementation("org.buildmosaic:mosaic-core:0.2.0")
+  implementation("org.buildmosaic:mosaic-core:0.3.0")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")
-  testImplementation("org.buildmosaic:mosaic-test:0.2.0")
+  testImplementation("org.buildmosaic:mosaic-test:0.3.0")
   testImplementation(kotlin("test"))
 }
 ```
@@ -41,7 +41,7 @@ versions:
 
 ```kotlin
 dependencies {
-  implementation(platform("org.buildmosaic:mosaic-bom:0.2.0"))
+  implementation(platform("org.buildmosaic:mosaic-bom:0.3.0"))
   implementation("org.buildmosaic:mosaic-core")
   testImplementation("org.buildmosaic:mosaic-test")
 }
@@ -335,6 +335,35 @@ val OrderTile = singleTile {
 - **Type Safety**: Compile-time guarantees for dependency resolution
 - **Automatic Cleanup**: Canvas implements `AutoCloseable` for resource management
 
+## 🔍 **Optional Static Canvas Analysis**
+
+Mosaic runtime does not require the analysis plugin. Canvas dependencies normally
+resolve at runtime. If a configured application root composes a Tile requiring
+`source<UserService>()` but its Canvas never provides `UserService`, the optional
+plugin can report that missing binding during the build.
+
+```kotlin
+import org.buildmosaic.gradle.MosaicAnalysisEnforcement
+import org.buildmosaic.gradle.MosaicAnalysisRole
+
+plugins {
+  kotlin("jvm") version "2.2.10"
+  id("org.buildmosaic.analysis") version "0.3.0"
+}
+
+mosaicAnalysis {
+  role = MosaicAnalysisRole.APPLICATION
+  enforcement = MosaicAnalysisEnforcement.STANDARD
+  roots.add("app.entry()")
+}
+```
+
+`APPLICATION` verifies configured roots; `LIBRARY` exports contracts for
+consuming applications. `STANDARD` fails proven missing requirements and warns
+when analysis cannot verify a path; `STRICT` also fails those unverifiable paths.
+Analysis currently supports Kotlin/JVM **2.2.10 only**. See the
+[analysis Gradle plugin guide](mosaic-gradle-plugin/README.md) for details.
+
 ## 🔧 **Batch Operations with MultiTile**
 
 MultiTile abstracts batching strategy from consumers. **Key insight: if you request the same key multiple times, even in different lists, Mosaic automatically deduplicates and only fetches uncached keys.**
@@ -554,6 +583,7 @@ Mosaic transforms backend development by making data composition as natural as f
 
 - **[mosaic-core](../mosaic-core/README.md)**: The core framework for composable backend orchestration
 - **[mosaic-test](../mosaic-test/README.md)**: Testing framework for tiles
+- **[Changelog](CHANGELOG.md)**: User-facing release history
 
 ## 📄 **License**
 

@@ -4,9 +4,11 @@ plugins {
   application
 }
 
+val mosaicVersion: String by rootProject.extra
+
 dependencies {
   implementation(project(":tile-library"))
-  implementation("org.buildmosaic:mosaic-core:0.2.0")
+  implementation("org.buildmosaic:mosaic-core:$mosaicVersion")
   implementation("io.ktor:ktor-server-core:2.3.12")
   implementation("io.ktor:ktor-server-netty:2.3.12")
   implementation("io.ktor:ktor-server-content-negotiation:2.3.12")
@@ -17,7 +19,7 @@ dependencies {
   testImplementation("io.ktor:ktor-server-tests:2.3.12")
   testImplementation("io.ktor:ktor-client-content-negotiation:2.3.12")
   testImplementation(kotlin("test"))
-  testImplementation("org.buildmosaic:mosaic-test:0.2.0")
+  testImplementation("org.buildmosaic:mosaic-test:$mosaicVersion")
   testImplementation(libs.kotlinx.coroutines.test)
 }
 

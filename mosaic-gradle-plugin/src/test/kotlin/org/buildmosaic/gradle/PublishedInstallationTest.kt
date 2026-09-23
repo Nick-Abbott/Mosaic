@@ -26,6 +26,8 @@ class PublishedInstallationTest {
     run(
       repositoryRoot,
       ":mosaic-core:publishAllPublicationsToInstallTestRepository",
+      ":mosaic-test:publishAllPublicationsToInstallTestRepository",
+      ":mosaic-bom:publishAllPublicationsToInstallTestRepository",
       ":mosaic-analysis-core:publishAllPublicationsToInstallTestRepository",
       ":mosaic-compiler-plugin:publishAllPublicationsToInstallTestRepository",
       ":mosaic-gradle-plugin:publishAllPublicationsToInstallTestRepository",
@@ -39,6 +41,25 @@ class PublishedInstallationTest {
     assertTrue(marker.contains("<groupId>org.buildmosaic</groupId>"))
     assertTrue(marker.contains("<artifactId>mosaic-gradle-plugin</artifactId>"))
     assertTrue(marker.contains("<version>$version</version>"))
+    for (module in listOf(
+      "mosaic-core",
+      "mosaic-test",
+      "mosaic-analysis-core",
+      "mosaic-compiler-plugin",
+      "mosaic-gradle-plugin",
+    )) {
+      val artifact = maven.resolve("org/buildmosaic/$module/$version/$module-$version")
+      assertTrue(artifact.resolveSibling("$module-$version.jar").isFile)
+      assertTrue(artifact.resolveSibling("$module-$version-sources.jar").isFile)
+      assertTrue(artifact.resolveSibling("$module-$version-javadoc.jar").isFile)
+      val pom = artifact.resolveSibling("$module-$version.pom").readText()
+      assertTrue(pom.contains("<url>https://github.com/Nick-Abbott/Mosaic/tree/main/$module</url>"), pom)
+      assertTrue(pom.contains("<name>The Apache License, Version 2.0</name>"), pom)
+    }
+    val bom = maven.resolve("org/buildmosaic/mosaic-bom/$version/mosaic-bom-$version.pom").readText()
+    assertTrue(bom.contains("<artifactId>mosaic-core</artifactId>"), bom)
+    assertTrue(bom.contains("<artifactId>mosaic-test</artifactId>"), bom)
+    assertTrue(!bom.contains("<artifactId>mosaic-analysis-core</artifactId>"), bom)
     val pluginPom =
       maven.resolve("org/buildmosaic/mosaic-gradle-plugin/$version/mosaic-gradle-plugin-$version.pom").readText()
     assertTrue(pluginPom.contains("<artifactId>mosaic-analysis-core</artifactId>"))
@@ -109,18 +130,76 @@ class PublishedInstallationTest {
     assertEquals("prototype-10", summary.toolVersion)
     assertTrue(summary.module.callables.any { it.id == "app.entry()" && it.effects.isNotEmpty() })
     JarFile(consumer.resolve("build/libs/app-99.0.0.jar")).use { assertTrue(it.getEntry(SUMMARY_PATH) != null) }
-  }
 
-  private fun run(
-    project: File,
-    vararg arguments: String,
-  ): org.gradle.testkit.runner.BuildResult =
-    GradleRunner.create().withProjectDir(project)
-      .withArguments(
-        *arguments,
-        "--stacktrace",
-        "--gradle-user-home",
-        File(System.getProperty("user.home"), ".gradle").absolutePath,
-      )
-      .build()
+    verifyRuntimeConsumer(workspace, maven, version, useBom = false)
+    verifyRuntimeConsumer(workspace, maven, version, useBom = true)
+  }
 }
+
+private fun verifyRuntimeConsumer(
+  workspace: File,
+  maven: File,
+  version: String,
+  useBom: Boolean,
+) {
+  val consumer = workspace.resolve(if (useBom) "bom-consumer" else "runtime-consumer").apply { mkdirs() }
+  consumer.resolve("settings.gradle.kts").writeText(
+    """
+    pluginManagement { repositories { gradlePluginPortal() } }
+    dependencyResolutionManagement { repositories { maven(url = uri("${maven.invariantSeparatorsPath}")); mavenCentral() } }
+    rootProject.name = "consumer"
+    """.trimIndent(),
+  )
+  val core = if (useBom) "org.buildmosaic:mosaic-core" else "org.buildmosaic:mosaic-core:$version"
+  val test = if (useBom) "org.buildmosaic:mosaic-test" else "org.buildmosaic:mosaic-test:$version"
+  val platform = if (useBom) "implementation(platform(\"org.buildmosaic:mosaic-bom:$version\"))" else ""
+  consumer.resolve("build.gradle.kts").writeText(
+    """
+    plugins { kotlin("jvm") version "2.2.10" }
+    dependencies {
+      $platform
+      implementation("$core")
+      testImplementation("$test")
+      testImplementation(kotlin("test"))
+    }
+    tasks.test { useJUnitPlatform() }
+    """.trimIndent(),
+  )
+  consumer.resolve("src/test/kotlin/TileTest.kt").apply {
+    parentFile.mkdirs()
+    writeText(
+      """
+      import kotlinx.coroutines.test.runTest
+      import org.buildmosaic.core.singleTile
+      import org.buildmosaic.test.TestMosaicBuilder
+      import kotlin.test.Test
+
+      class TileTest {
+        @Test fun composes() = runTest {
+          val input = singleTile { "original" }
+          val response = singleTile { compose(input).uppercase() }
+          val mosaic = TestMosaicBuilder(this).withMockTile(input, "published").build()
+          mosaic.assertEquals(response, "PUBLISHED")
+        }
+      }
+      """.trimIndent(),
+    )
+  }
+  val result = run(consumer, "test", "dependencies", "--configuration", "testRuntimeClasspath")
+  assertEquals(TaskOutcome.SUCCESS, result.task(":test")?.outcome)
+  assertTrue(result.output.contains("org.buildmosaic:mosaic-core:$version"), result.output)
+  assertTrue(result.output.contains("org.buildmosaic:mosaic-test:$version"), result.output)
+}
+
+private fun run(
+  project: File,
+  vararg arguments: String,
+): org.gradle.testkit.runner.BuildResult =
+  GradleRunner.create().withProjectDir(project)
+    .withArguments(
+      *arguments,
+      "--stacktrace",
+      "--gradle-user-home",
+      File(System.getProperty("user.home"), ".gradle").absolutePath,
+    )
+    .build()

@@ -7,16 +7,11 @@ This module provides a Bill of Materials (BOM) for Mosaic, making it easier to m
 ### Gradle (Kotlin DSL)
 
 ```kotlin
-// In your build.gradle.kts
-plugins {
-    // Apply the Mosaic BOM
-    id("java")
-    kotlin("jvm") version "1.9.0" // or your preferred Kotlin version
-}
+// In an existing Kotlin/JVM project's build.gradle.kts
 
 dependencies {
-    // Import the BOM (replace VERSION with the desired version)
-    implementation(platform("org.buildmosaic:mosaic-bom:VERSION"))
+    // Import the BOM (replace 0.3.0 with the desired version)
+    implementation(platform("org.buildmosaic:mosaic-bom:0.3.0"))
     
     // Add Mosaic dependencies without version numbers
     implementation("org.buildmosaic:mosaic-core")
@@ -27,16 +22,11 @@ dependencies {
 ### Gradle (Groovy DSL)
 
 ```groovy
-// In your build.gradle
-plugins {
-    // Apply the Mosaic BOM
-    id 'java'
-    id 'org.jetbrains.kotlin.jvm' version '1.9.0' // or your preferred Kotlin version
-}
+// In an existing Kotlin/JVM project's build.gradle
 
 dependencies {
     // Import the BOM
-    implementation platform('org.buildmosaic:mosaic-bom:VERSION')
+    implementation platform('org.buildmosaic:mosaic-bom:0.3.0')
     
     // Add Mosaic dependencies without version numbers
     implementation 'org.buildmosaic:mosaic-core'
@@ -53,7 +43,7 @@ dependencies {
             <dependency>
                 <groupId>org.buildmosaic</groupId>
                 <artifactId>mosaic-bom</artifactId>
-                <version>VERSION</version>
+                <version>0.3.0</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -90,6 +80,8 @@ The BOM includes the following Mosaic artifacts:
 
 Mosaic uses ordinary library dependencies. The BOM aligns `mosaic-core` and
 `mosaic-test`; no Mosaic-specific registration plugin or processor is needed.
+The Kotlin 2.2.10 restriction applies to the optional analysis plugin, not to
+the BOM itself.
 
 ## Versioning
 

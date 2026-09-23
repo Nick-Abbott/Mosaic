@@ -17,12 +17,12 @@ tasks.withType<Test> {
 
 dependencies {
   // Core Mosaic dependency
-  implementation(project(":mosaic-core"))
+  api(project(":mosaic-core"))
 
   // Coroutines dependency for main source set
-  implementation(libs.kotlinx.coroutines.core)
+  api(libs.kotlinx.coroutines.core)
 
   // Testing dependencies - needed for main source set since this is a testing framework
   implementation(kotlin("test"))
-  implementation(libs.kotlinx.coroutines.test)
+  api(libs.kotlinx.coroutines.test)
 }

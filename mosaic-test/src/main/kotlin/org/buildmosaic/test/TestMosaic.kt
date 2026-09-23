@@ -36,23 +36,14 @@ import kotlin.test.assertFailsWith as testAssertFailsWith
  * This class should be built using [TestMosaicBuilder] for advanced usage.
  *
  * ```kotlin
- * // In a test class
- * private val testMosaic = TestMosaicBuilder()
- *   .withMockTile<MyTile>("test data")
+ * val testMosaic = TestMosaicBuilder(testScope)
+ *   .withMockTile(DependencyTile, expectedDependency)
  *   .build()
- *
- * @Test
- * fun `test tile behavior`() = runBlocking {
- *   // When
- *   val result = testMosaic.getTile<MyTile>().get()
- *
- *   // Then
- *   testMosaic.assertEquals(MyTile::class, "test data")
- * }
+ * testMosaic.assertEquals(ResponseTile, expectedResponse)
  * ```
  *
  */
-class TestMosaic(
+class TestMosaic internal constructor(
   canvas: Canvas,
   private val mockTileCache: Map<Tile<*>, Tile<*>>,
   private val mockMultiTileCache: Map<MultiTile<*, *>, MultiTile<*, *>>,
