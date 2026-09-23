@@ -35,6 +35,14 @@ root verification fails on proven missing lookups and localized unknown effects.
 An unrelated JAR without Mosaic metadata is ignored. Missing metadata for a
 referenced declaration stays unknown. Invalid metadata is reported and its
 declarations are not used. Conflicting selected owners are rejected.
+Selected binary constructors use producer constructor contracts, including
+capability-bearing initialization marked unknown. If the referenced constructor
+summary is absent, verification is unknown. Referenced stored-property reads
+likewise retain initialization work. This is not a general model of JVM class
+initialization or exception safety. Used user defaults with unavailable binary
+expressions and Mosaic extension-helper calls remain unknown. The schema stays
+v1.1; summaries from older extractor versions are rejected because they may
+have omitted these effects.
 
 Only the tested default Kotlin/JVM main layout is supported. Extraction uses the
 configured Java toolchain and fails on a Kotlin/toolchain version mismatch. The

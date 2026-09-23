@@ -50,6 +50,11 @@ class SummaryMetadataTest {
       SummaryCodec.decode(bytes.replace("\"schemaMinor\":1", "\"schemaMinor\":0").toByteArray())
     }
     assertFailsWith<IllegalArgumentException> {
+      SummaryCodec.decode(
+        bytes.replace("\"toolVersion\":\"prototype-3\"", "\"toolVersion\":\"prototype-2\"").toByteArray(),
+      )
+    }
+    assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(bytes.replace("\"sample\"", "\"changed\"").toByteArray())
     }
   }

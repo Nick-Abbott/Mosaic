@@ -203,7 +203,7 @@ class IrShapeTest {
       )
     assertTrue(
       report.findings.any {
-        it.certainty == Certainty.UNVERIFIED && it.reason.contains("Constructor capability effects")
+        it.certainty == Certainty.UNVERIFIED && it.reason.contains("Constructor initialization may have Mosaic effects")
       },
       report.toString(),
     )

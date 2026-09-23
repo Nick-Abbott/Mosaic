@@ -18,7 +18,7 @@ const val SUMMARY_PATH = "META-INF/mosaic-analysis/v1/summary.json"
 data class SummaryMetadata(
   val schemaMajor: Int = 1,
   val schemaMinor: Int = 1,
-  val toolVersion: String = "prototype-2",
+  val toolVersion: String = "prototype-3",
   val kotlinCompilerVersion: String = "2.2.10",
   val moduleId: String,
   val sourceSet: String = "main",
@@ -98,6 +98,7 @@ object SummaryCodec {
       }
     require(summary.schemaMajor == 1) { "Unsupported Mosaic summary schema major ${summary.schemaMajor}" }
     require(summary.schemaMinor == 1) { "Unsupported Mosaic summary schema minor ${summary.schemaMinor}" }
+    require(summary.toolVersion == "prototype-3") { "Unsupported Mosaic extractor version ${summary.toolVersion}" }
     require(summary.complete) { "Partial Mosaic summary cannot be used as complete" }
     require(summary.moduleId == summary.module.id) { "Module identity mismatch" }
     require(summary.sourceSet.isNotBlank()) { "Missing source set identity" }

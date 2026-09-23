@@ -41,6 +41,7 @@ import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.declarations.IrAnonymousInitializer
 import org.jetbrains.kotlin.ir.declarations.IrClass
+import org.jetbrains.kotlin.ir.declarations.IrConstructor
 import org.jetbrains.kotlin.ir.declarations.IrDeclaration
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
 import org.jetbrains.kotlin.ir.declarations.IrFile
@@ -55,7 +56,9 @@ import org.jetbrains.kotlin.ir.expressions.IrBlockBody
 import org.jetbrains.kotlin.ir.expressions.IrCall
 import org.jetbrains.kotlin.ir.expressions.IrConst
 import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
+import org.jetbrains.kotlin.ir.expressions.IrErrorExpression
 import org.jetbrains.kotlin.ir.expressions.IrExpression
+import org.jetbrains.kotlin.ir.expressions.IrExpressionBody
 import org.jetbrains.kotlin.ir.expressions.IrFunctionExpression
 import org.jetbrains.kotlin.ir.expressions.IrGetField
 import org.jetbrains.kotlin.ir.expressions.IrGetValue
@@ -72,6 +75,7 @@ import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
 import org.jetbrains.kotlin.ir.util.isFakeOverride
 import org.jetbrains.kotlin.ir.visitors.IrVisitorVoid
 import org.jetbrains.kotlin.ir.visitors.acceptChildrenVoid
+import org.jetbrains.kotlin.ir.visitors.acceptVoid
 import java.io.File
 
 /** Read-only K2 IR collector for the deliberately small prototype DSL subset. */
@@ -161,7 +165,8 @@ class MosaicIrExtractor(
                 val getterEffects =
                   when {
                     stableTileGetter -> emptyList()
-                    getter.origin == IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR && initializer?.let(::containsCapability) != true -> emptyList()
+                    getter.origin == IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR ->
+                      initializer?.let { extractEffects(it, file, id, mutableMapOf()) }.orEmpty()
                     getter.body != null -> extractEffects(getter.body!!, file, id, mutableMapOf())
                     else -> listOf(Effect.Unknown("$id:body", "Getter body is unavailable", site))
                   }
@@ -169,6 +174,25 @@ class MosaicIrExtractor(
               }
               locators[id] = binaryLocator(getter, file)
             }
+          }
+          is IrConstructor -> {
+            val id = symbolId(declaration)
+            val site = location(file, declaration, id)
+            val clazz = declaration.parent as? IrClass
+            val hasCapabilityInitialization =
+              declaration.body?.let(::containsCapability) == true ||
+                clazz?.declarations?.filterIsInstance<IrAnonymousInitializer>()?.any(::containsCapability) == true ||
+                clazz?.declarations?.filterIsInstance<IrProperty>()?.any {
+                  it.backingField?.initializer?.expression?.let(::containsCapability) == true
+                } == true
+            val effects =
+              if (hasCapabilityInitialization) {
+                listOf(Effect.Unknown("$id:initialization", "Constructor initialization may have Mosaic effects", site))
+              } else {
+                emptyList()
+              }
+            callables += CallableContract(id, canvasParameters(declaration, id), effects, site)
+            locators[id] = binaryLocator(declaration, file)
           }
           is IrSimpleFunction -> {
             if (declaration.isFakeOverride || declaration.correspondingPropertySymbol != null) return
@@ -252,6 +276,24 @@ class MosaicIrExtractor(
         is IrTypeOperatorCall -> scan(element.argument)
         is IrVararg -> element.elements.forEach(::scan)
         is IrSpreadElement -> scan(element.expression)
+        is IrGetField -> {
+          val property = element.symbol.owner.correspondingPropertySymbol?.owner
+          val getter = property?.getter
+          when {
+            getter != null && symbolId(getter) != owner ->
+              effects += Effect.Call("$owner:field:${element.startOffset}", symbolId(getter), site = location(file, element, owner))
+            property != null -> {
+              val initializer = property.backingField?.initializer?.expression
+              if (initializer == null) {
+                effects += Effect.Unknown("$owner:field:${element.startOffset}", "Stored field initialization is unavailable", location(file, element, owner))
+              } else {
+                effects += extractEffects(initializer, file, owner, aliases.toMutableMap())
+              }
+            }
+            isCapabilityType(element.type) ->
+              effects += Effect.Unknown("$owner:field:${element.startOffset}", "Capability field provenance is unavailable", location(file, element, owner))
+          }
+        }
         is IrWhen, is IrWhileLoop -> {
           if (containsCapability(
               element,
@@ -310,7 +352,9 @@ class MosaicIrExtractor(
               }
             }
             isCapabilityCall(element) || isUserCallable(target) -> {
-              if (element.symbol.owner.isInline) {
+              if (isUnsupportedMosaicExtension(element)) {
+                effects += Effect.Unknown("$owner:extension:${element.startOffset}", "Mosaic extension receiver transfer is unsupported for ${symbolId(element.symbol.owner)}", site)
+              } else if (element.symbol.owner.isInline) {
                 effects += Effect.Unknown("$owner:inline:${element.startOffset}", "External inline capability helper ${symbolId(element.symbol.owner)} has no pre-inline body", site)
               } else {
                 effects += Effect.Call("$owner:call:${element.startOffset}", symbolId(element.symbol.owner), callArguments(element, file, owner, aliases), site, dispatchReceiver(element, aliases), element.symbol.owner.modality != Modality.FINAL)
@@ -323,19 +367,10 @@ class MosaicIrExtractor(
           element.arguments.filterNotNull().sortedBy { it.startOffset }.forEach(::scan)
           val constructor = element.symbol.owner
           val clazz = constructor.parent as? IrClass
-          val initializerCapability = clazz?.declarations?.filterIsInstance<IrAnonymousInitializer>()?.any(::containsCapability) == true
-          val propertyInitializerCapability =
-            clazz?.declarations?.filterIsInstance<IrProperty>()?.any { property ->
-              property.backingField?.initializer?.expression?.let { initializer ->
-                !(initializer is IrCall && isTileFactory(initializer)) && containsCapability(initializer)
-              } == true
-            } == true
-          val constructorCapability =
-            constructor.parameters.any {
-              isCapabilityType(it.type)
-            } || constructor.body?.let(::containsCapability) == true
-          val initializationCapability = initializerCapability || propertyInitializerCapability
-          if (constructorCapability || initializationCapability) {
+          if (isUserConstructor(clazz)) {
+            val targetId = symbolId(constructor)
+            effects += Effect.Call("$owner:constructor:${element.startOffset}", targetId, site = location(file, element, owner))
+          } else if (constructor.parameters.any { isCapabilityType(it.type) }) {
             effects += Effect.Unknown("$owner:constructor:${element.startOffset}", "Constructor capability effects are not summarized", location(file, element, owner))
           }
         }
@@ -392,7 +427,15 @@ class MosaicIrExtractor(
             layer(expression, expression.argument("build"), parent, file, owner, aliases)
           }
           else ->
-            if (expression.symbol.owner.isInline) {
+            if (isUnsupportedMosaicExtension(expression)) {
+              CanvasExpression.WithEffects(
+                callActualEffects(expression, file, owner, aliases),
+                CanvasExpression.Unknown(
+                  "Mosaic extension receiver transfer is unsupported for ${symbolId(expression.symbol.owner)}",
+                  site,
+                ),
+              )
+            } else if (expression.symbol.owner.isInline) {
               CanvasExpression.WithEffects(
                 callActualEffects(expression, file, owner, aliases),
                 CanvasExpression.Unknown(
@@ -501,10 +544,39 @@ class MosaicIrExtractor(
           "org.buildmosaic.core.injection.Canvas.withLayer",
           "org.buildmosaic.core.injection.CanvasBuilder.single",
         ) || isTileFactory(call)
+    val withDefaults = effects + usedDefaultEffects(call, file, owner)
     return if (!knownCallback && actuals.any { lambdaBody(it)?.let(::containsCapability) == true }) {
-      effects + Effect.Unknown("$owner:callback:${call.startOffset}", "Unsupported capability-bearing callback", location(file, call, owner))
+      withDefaults + Effect.Unknown("$owner:callback:${call.startOffset}", "Unsupported capability-bearing callback", location(file, call, owner))
     } else {
-      effects
+      withDefaults
+    }
+  }
+
+  private fun usedDefaultEffects(
+    call: IrCall,
+    file: IrFile,
+    owner: String,
+  ): List<Effect> {
+    val target = resolvedName(call)
+    if (!isUserCallable(target) && !isCapabilityCall(call)) return emptyList()
+    if (target.startsWith("org.buildmosaic.core.")) return emptyList()
+    return call.symbol.owner.parameters.filter {
+      it.kind == IrParameterKind.Regular && call.arguments[it] == null
+    }.mapNotNull { parameter ->
+      val default = parameter.defaultValue
+      val unavailable = default == null || (default as? IrExpressionBody)?.expression is IrErrorExpression
+      if (!unavailable && default?.let(::containsCapability) != true) return@mapNotNull null
+      Effect.Unknown(
+        "$owner:default:${call.startOffset}:${parameter.name.asString()}",
+        if (unavailable) {
+          "Default expression is unavailable for ${symbolId(call.symbol.owner)}.${parameter.name.asString()}"
+        } else {
+          "Capability-bearing default expression is unsupported for ${symbolId(
+            call.symbol.owner,
+          )}.${parameter.name.asString()}"
+        },
+        location(file, call, owner),
+      )
     }
   }
 
@@ -725,6 +797,18 @@ class MosaicIrExtractor(
       !target.startsWith("java.") &&
       !target.startsWith("org.buildmosaic.core.")
 
+  private fun isUserConstructor(clazz: IrClass?): Boolean {
+    val name = clazz?.fqNameWhenAvailable?.asString().orEmpty()
+    return name.isNotBlank() &&
+      !name.startsWith("kotlin.") && !name.startsWith("kotlinx.") &&
+      !name.startsWith("java.") && !name.startsWith("org.buildmosaic.core.")
+  }
+
+  private fun isUnsupportedMosaicExtension(call: IrCall): Boolean =
+    call.symbol.owner.parameters.any {
+      it.kind == IrParameterKind.ExtensionReceiver && it.type.classFqName?.asString() == "org.buildmosaic.core.Mosaic"
+    }
+
   private fun isUserPropertyGetter(getter: IrSimpleFunction): Boolean {
     val target = getter.fqNameWhenAvailable?.asString().orEmpty()
     return target.isNotBlank() &&
@@ -736,20 +820,32 @@ class MosaicIrExtractor(
 
   private fun containsCapability(element: IrElement): Boolean {
     var found = false
-    element.acceptChildrenVoid(
+    element.acceptVoid(
       object : IrVisitorVoid() {
         override fun visitElement(element: IrElement) {
           element.acceptChildrenVoid(this)
         }
 
         override fun visitCall(expression: IrCall) {
-          if (isCapabilityCall(expression) || isUserCallable(resolvedName(expression))) found = true
+          val userGetter =
+            expression.symbol.owner.correspondingPropertySymbol != null &&
+              isUserPropertyGetter(expression.symbol.owner)
+          if (isCapabilityCall(expression) || isUserCallable(resolvedName(expression)) || userGetter) found = true
           super.visitCall(expression)
         }
 
         override fun visitGetField(expression: IrGetField) {
           if (isCapabilityType(expression.type)) found = true
           super.visitGetField(expression)
+        }
+
+        override fun visitConstructorCall(expression: IrConstructorCall) {
+          if (expression.symbol.owner.parameters.any { isCapabilityType(it.type) } ||
+            isUserConstructor(expression.symbol.owner.parent as? IrClass)
+          ) {
+            found = true
+          }
+          super.visitConstructorCall(expression)
         }
       },
     )
@@ -781,7 +877,7 @@ class MosaicIrExtractor(
     val fq = declaration.fqNameWhenAvailable?.asString() ?: declaration.name.asString()
     val params =
       declaration.parameters.filter {
-        it.kind == IrParameterKind.Regular
+        it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.ExtensionReceiver
       }.joinToString(",") { it.type.classFqName?.asString() ?: it.type.toString() }
     return "$fq($params)"
   }
@@ -795,12 +891,21 @@ class MosaicIrExtractor(
     val facade = File(file.fileEntry.name).nameWithoutExtension + "Kt"
     val jvmOwner = classOwner ?: listOf(packagePath, facade).filter { it.isNotBlank() }.joinToString("/")
     val parameters =
-      function.parameters.filter { it.kind == IrParameterKind.Regular }.joinToString(
+      function.parameters.filter {
+        it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.ExtensionReceiver
+      }.joinToString(
         "",
       ) { jvmType(it.type) }
     val suspendCall = (function as? IrSimpleFunction)?.isSuspend == true
     val continuation = if (suspendCall) "Lkotlin/coroutines/Continuation;" else ""
-    val returnType = if (suspendCall) "Ljava/lang/Object;" else jvmType(function.returnType)
+    val returnType =
+      if (function is IrConstructor) {
+        "V"
+      } else if (suspendCall) {
+        "Ljava/lang/Object;"
+      } else {
+        jvmType(function.returnType)
+      }
     val kotlinName = function.name.asString()
     val jvmName =
       if (kotlinName.startsWith("<get-") && kotlinName.endsWith('>')) {
