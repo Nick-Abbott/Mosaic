@@ -45,9 +45,10 @@ the newest helper body into an already compiled caller.
 
 The output is deterministic UTF-8 JSON at
 `META-INF/mosaic-analysis/v1/summary.json` when packaged by the Gradle plugin.
-The provisional schema remains v1.1. The extractor version is `prototype-5`;
+The provisional schema remains v1.1. The extractor version is `prototype-6`;
 older extractor output is rejected because it can omit evaluation work or
-apply different dispatch and continuation rules to Canvas results. The model
+apply different dispatch and continuation rules to Canvas results, or treat
+implicit callbacks and bound reference receivers as effect-free. The model
 adds evaluated-value references and dispatch ownership on Canvas calls. The
 compiler option names and symbol-locator strategy are internal and provisional.
 This module is not published or included in the BOM.
@@ -77,3 +78,11 @@ result; incomplete expansion and unknown behavior preserve continuation. The
 small effect-free whitelist and structural proof do not exempt whole packages,
 ordinary return types or unavailable bodies. Constructor delegation remains a
 symbolic call; unsupported stored initialization stays a named boundary.
+
+Ordinary calls and structural omission share the same eligibility decision.
+Equality, hashing collection construction, and error-message conversion require
+a scalar type proof (or a statically empty collection); otherwise they report a
+localized implicit-callback boundary. Lists/arrays retain their callback-free
+creation behavior. Bound references evaluate receivers, while lambda and
+reference bodies remain deferred. This does not interpret arbitrary callbacks
+or prove general exception safety.

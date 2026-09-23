@@ -93,3 +93,56 @@ Canvas or a generic root failure. Unknown ordinary Canvas-helper arguments are
 no longer rejected solely for their type: their work runs through the same plan.
 The former blanket rejection assertion was corrected; the known missing lookup
 is still required, and harmless ordinary actuals can verify.
+
+## Classifier audit (Kotlin 2.2.10, fixed before classifier edits)
+
+Both ordinary normalization and structural omission must use the same operation
+proof. Arguments/receivers execute before that proof; callable bodies do not
+execute on reference creation. The following covers the whole existing whitelist
+and every structural early-return category. New assertions share EC's compilation.
+
+| Classifier category | Evidence / expected outcome and EC roots |
+|---|---|
+| `EQEQ` | May dispatch user `equals`: `structuralEquality` U (implicit equals), `conditionalEquality` U (control). Harmless constructors isolate dispatch. Primitive/String operand proof: `primitiveEquality`, `stringEquality`, existing `harmlessControl` V. |
+| `setOf`, `mutableSetOf`, `mapOf`, `mutableMapOf` | Kotlin 2.2.10 stdlib bytecode populates sets/maps; element/key hashing/equality may call user code. `setCallbacks`, `mutableSetCallbacks`, `mapCallbacks`, `mutableMapCallbacks`, `opaqueSet` U (implicit hashCode/equals). Scalar elements/keys and statically empty inputs V: `safeCollections`, `safeMaps`, `safeSetSpread`. Map values require no hashing proof. |
+| `error` | Stdlib bytecode invokes message `Object.toString`: `errorCallback` U (implicit toString); `errorConstant` V within Canvas-availability scope (general exceptions are excluded). |
+| Any constructor, String toString, primitive operations | Exact built-ins only; final scalar implementations do not dispatch user callbacks. Existing domain/primitive controls V. No package-prefix exemption. |
+| `less`, `greater`, `lessOrEqual`, `greaterOrEqual` | Compiler primitive comparison intrinsics; any preceding user `compareTo` is an evaluated child. Existing harmless loop/comparison V. |
+| empty collections, lists, arrays, `System.nanoTime` | No element callbacks during creation/read; evaluated actual work retained. `safeCollections` V even with user-valued elements; existing receiver/named/vararg/spread order unchanged. |
+| Constants/value reads | No evaluated children. Existing alias and ordering assertions unchanged. |
+| Lambda creation | Body deferred: `unusedLambda`, `deferredCreation` V; invocation/escape assertions remain U. |
+| Function reference creation | Inspect evaluated bound receivers/arguments only. Exact `boundReference(kotlin.Boolean)` U (control), `directBoundReference` M (Metrics construction). Unbound references in `deferredCreation` V; referenced bodies stay deferred. |
+| Function access | Actuals, callable escape, used defaults, intrinsic eligibility, final/non-inline/body/recursion checks all required. An unproven implicit callback must not fall through to an empty body proof. Existing inline/default/invocation tests unchanged. |
+| Field read / object read | Field receiver must be inspected, delegated/capability/unavailable initialization cannot prove harmless. `conditionalField` U, `directField` M; Unit singleton remains the only harmless object exemption. Existing object/delegate tests U. |
+| Variable and field/value writes | Child work retained; mutable capability declarations and callable field escapes cannot bypass normalizer boundaries. `mutableAlias` and selected `CallbackField` setter U (control). |
+| Instance initializer marker | Constructor adapter owns explicit stored initialization; marker is not independent proof of a harmless constructor. Existing initialization/super tests retained. |
+| Blocks, returns, casts, branches, loops, varargs/spreads, throws | Recursively prove evaluated children; no unconditional flattening of unsupported paths. Exception interpretation remains outside scope. Existing control/default tests retained. |
+| All remaining nodes | No structural proof: localized U. No arbitrary operator/collection callback analysis added. |
+
+The field fixture records the compiler's actual access representation rather than
+assuming `@JvmField` guarantees a raw field node at the pre-lowering phase.
+
+Structural cross-checks `conditionalSet`, `conditionalMap`, `conditionalError`
+are U for control flow with unproved callbacks; `conditionalScalars` is V.
+`conditionalEquality` takes user-valued parameters so constructor eligibility
+cannot mask the equality decision.
+
+Call eligibility audit also covers reference-typed actuals (KFunction as well as
+Function types) and Mosaic extension ownership: `conditionalReferenceEscape`
+and `conditionalExtension` U (control), even when the final callee body is empty.
+These share the normal call boundary checks rather than a separate body shortcut.
+
+Frozen classifier run before production edits: Kotlin 2.2.10, 38 EC assertions,
+16 failures (all incorrectly VERIFIED), 22 passing controls; one shared fixture
+compilation. Both reviewed roots fail at their named assertions, not root lookup.
+
+The C5 reference-escape assertion also checks an immutable alias typed as Any
+(`conditionalReferenceAlias`): reading the resolved binding must retain its
+callable fact without replaying initialization. This equivalence check exposed
+a remaining structural omission during implementation (V before the alias-fact
+fix); it now requires the same control-flow U as the direct reference.
+
+Final focused run: all 38 assertions pass, including the alias equivalence.
+Executed JUnit time was 2.272s before / 2.330s after, one compiler invocation
+each (warm dependencies; single samples, not a speedup claim). The full root
+gate retains 36 compiler invocations and 24 TestKit builds; no fixture added.

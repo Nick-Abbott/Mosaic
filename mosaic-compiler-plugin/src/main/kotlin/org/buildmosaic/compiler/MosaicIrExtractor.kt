@@ -346,7 +346,7 @@ class MosaicIrExtractor(
           is IrFunctionExpression -> Value(callable = true)
           is IrFunctionReference -> {
             // Creating a reference evaluates bound receivers, not the referenced body.
-            element.arguments.filterNotNull().forEach(::evaluate)
+            evaluatedChildren(element).forEach(::evaluate)
             Value(callable = true)
           }
           is IrFunctionAccessExpression -> operation(element)
@@ -367,7 +367,7 @@ class MosaicIrExtractor(
           is IrSetField -> {
             element.receiver?.let(::evaluate)
             evaluate(element.value)
-            if (isCapabilityType(element.value.type) || isCallableType(element.value.type)) {
+            if (unsupportedFieldValue(element.value.type)) {
               unknown(element, "Unsupported mutable or escaped field provenance")
             }
             Value()
@@ -412,7 +412,7 @@ class MosaicIrExtractor(
     }
 
     private fun field(expression: IrGetField): Value {
-      expression.receiver?.let(::evaluate)
+      evaluatedChildren(expression).forEach(::evaluate)
       val property = expression.symbol.owner.correspondingPropertySymbol?.owner
       if (property?.isDelegated == true) unknown(expression, "Unsupported delegated property initialization")
       val initializer = expression.symbol.owner.initializer?.expression
@@ -482,25 +482,14 @@ class MosaicIrExtractor(
         }
       }
       val getter = (function as? IrSimpleFunction)?.correspondingPropertySymbol?.owner
-      val boundary =
-        when {
-          function is IrSimpleFunction && function.isInline && !effectFreeIntrinsic(target) -> "External inline capability helper ${symbolId(
-            function,
-          )} has no pre-inline body"
-          function.parameters.any {
-            it.kind == IrParameterKind.ExtensionReceiver && it.type.classFqName?.asString() == "org.buildmosaic.core.Mosaic"
-          } -> "Mosaic extension receiver transfer is unsupported for ${symbolId(function)}"
-          getter?.isDelegated == true -> "Unsupported delegated property accessor"
-          actuals.entries.any { it.key.kind != IrParameterKind.Regular && it.value.callable } -> "Unsupported callable invocation"
-          actuals.values.any { it.callable } -> "Unsupported capability-bearing callback escape"
-          else -> null
-        }
+      val eligibility = callableEligibility(call) { actuals[it]?.callable == true }
+      val boundary = (eligibility as? CallableEligibility.Unsupported)?.reason
       if (boundary != null) {
         if (isCanvasType(call.type)) return materialize(call, CanvasExpression.Unknown(boundary, site(call)))
         unknown(call, boundary)
         return Value(callable = isCallableType(call.type))
       }
-      if (effectFreeIntrinsic(target)) return Value(callable = isCallableType(call.type))
+      if (eligibility == CallableEligibility.EffectFree) return Value(callable = isCallableType(call.type))
       val arguments =
         CallArguments(
           actuals.mapNotNull { (parameter, value) ->
@@ -624,19 +613,103 @@ class MosaicIrExtractor(
         "org.buildmosaic.core.chunkedMultiTile",
       )
 
-  /** Explicit Mosaic-effect-free primitives. No package or result-type exemptions. */
-  private fun effectFreeIntrinsic(target: String): Boolean =
-    target in
-      setOf(
-        "kotlin.Any.<init>", "kotlin.String.toString",
-        "kotlin.error", "kotlin.collections.emptyList", "kotlin.collections.emptySet",
-        "kotlin.collections.listOf", "kotlin.collections.setOf", "kotlin.collections.mutableListOf",
-        "kotlin.collections.mutableSetOf", "kotlin.collections.arrayListOf", "kotlin.arrayOf",
-        "kotlin.collections.emptyMap", "kotlin.collections.mapOf", "kotlin.collections.mutableMapOf",
-        "kotlin.intArrayOf", "kotlin.emptyArray", "kotlin.internal.ir.less", "kotlin.internal.ir.EQEQ",
-        "kotlin.internal.ir.greater", "kotlin.internal.ir.lessOrEqual", "kotlin.internal.ir.greaterOrEqual",
-        "java.lang.System.nanoTime",
-      ) || target in primitiveOperations
+  private sealed interface CallableEligibility {
+    data object EffectFree : CallableEligibility
+
+    data object Contract : CallableEligibility
+
+    data class Unsupported(val reason: String) : CallableEligibility
+  }
+
+  /** Shared by execution and structural omission; a body cannot override an unsupported boundary. */
+  private fun callableEligibility(
+    call: IrFunctionAccessExpression,
+    callableActual: (IrValueParameter) -> Boolean = { call.arguments[it]?.let(::callableValue) == true },
+  ): CallableEligibility {
+    val function = call.symbol.owner
+    val intrinsic = intrinsicEligibility(call)
+    val boundary =
+      when {
+        intrinsic is CallableEligibility.Unsupported -> intrinsic.reason
+        function is IrSimpleFunction && function.isInline && intrinsic != CallableEligibility.EffectFree ->
+          "External inline capability helper ${symbolId(function)} has no pre-inline body"
+        function.parameters.any {
+          it.kind == IrParameterKind.ExtensionReceiver && it.type.classFqName?.asString() == "org.buildmosaic.core.Mosaic"
+        } -> "Mosaic extension receiver transfer is unsupported for ${symbolId(function)}"
+        (function as? IrSimpleFunction)?.correspondingPropertySymbol?.owner?.isDelegated == true ->
+          "Unsupported delegated property accessor"
+        function.parameters.any {
+          it.kind != IrParameterKind.Regular && callableActual(it)
+        } -> "Unsupported callable invocation"
+        function.parameters.any(callableActual) -> "Unsupported capability-bearing callback escape"
+        else -> null
+      }
+    return boundary?.let(CallableEligibility::Unsupported) ?: intrinsic
+  }
+
+  /** Read immutable compiler bindings as facts, without replaying their initialization effects. */
+  private fun callableValue(expression: IrExpression): Boolean =
+    when {
+      expression is IrFunctionReference || expression is IrFunctionExpression || isCallableType(expression.type) -> true
+      expression is IrTypeOperatorCall -> callableValue(expression.argument)
+      expression is IrGetValue ->
+        (expression.symbol.owner as? IrVariable)?.takeUnless { it.isVar }?.initializer?.let(::callableValue) == true
+      else -> false
+    }
+
+  private enum class ImplicitCallback(val description: String) {
+    EQUALITY("equals"),
+    HASHING("hashCode or equals"),
+    STRING_CONVERSION("toString"),
+  }
+
+  /** Exact built-ins plus type proofs for operations with implicit callbacks. */
+  private fun intrinsicEligibility(call: IrFunctionAccessExpression): CallableEligibility {
+    val target = call.symbol.owner.fqNameWhenAvailable?.asString().orEmpty()
+    val actuals = call.arguments.filterNotNull()
+    val callback =
+      when (target) {
+        "kotlin.internal.ir.EQEQ" -> ImplicitCallback.EQUALITY
+        "kotlin.collections.setOf", "kotlin.collections.mutableSetOf",
+        "kotlin.collections.mapOf", "kotlin.collections.mutableMapOf",
+        -> ImplicitCallback.HASHING
+        "kotlin.error" -> ImplicitCallback.STRING_CONVERSION
+        else -> null
+      }
+    if (callback != null) {
+      val safe =
+        if (callback == ImplicitCallback.HASHING) {
+          // Hashing depends on elements (sets) or keys (maps), never map values.
+          call.typeArguments.firstOrNull()?.let(::scalarType) == true ||
+            actuals.all { it is IrVararg && it.elements.isEmpty() }
+        } else {
+          actuals.all { scalarType(it.type) || it is IrConst && it.value == null }
+        }
+      return if (safe) {
+        CallableEligibility.EffectFree
+      } else {
+        CallableEligibility.Unsupported(
+          "Implicit ${callback.description} callback is unsupported for $target",
+        )
+      }
+    }
+    return if (target in effectFreeOperations || target in primitiveOperations) CallableEligibility.EffectFree else CallableEligibility.Contract
+  }
+
+  private fun scalarType(type: IrType): Boolean = type.classFqName?.asString() in scalarClasses
+
+  private val scalarClasses =
+    setOf("Int", "Long", "Float", "Double", "Short", "Byte", "Char", "Boolean", "String").map { "kotlin.$it" }.toSet()
+
+  private val effectFreeOperations =
+    setOf(
+      "kotlin.Any.<init>", "kotlin.String.toString",
+      "kotlin.collections.emptyList", "kotlin.collections.emptySet", "kotlin.collections.emptyMap",
+      "kotlin.collections.listOf", "kotlin.collections.mutableListOf", "kotlin.collections.arrayListOf",
+      "kotlin.arrayOf", "kotlin.intArrayOf", "kotlin.emptyArray", "kotlin.internal.ir.less",
+      "kotlin.internal.ir.greater", "kotlin.internal.ir.lessOrEqual", "kotlin.internal.ir.greaterOrEqual",
+      "java.lang.System.nanoTime",
+    )
 
   private val primitiveOperations =
     setOf("Int", "Long", "Float", "Double", "Short", "Byte", "Char", "Boolean").flatMap { type ->
@@ -645,36 +718,47 @@ class MosaicIrExtractor(
       }
     }.toSet()
 
+  /** Creation evaluates captures, not deferred bodies. Field access evaluates its receiver. */
+  private fun evaluatedChildren(element: IrElement): List<IrElement> =
+    when (element) {
+      is IrFunctionExpression -> emptyList()
+      is IrFunctionReference -> element.arguments.filterNotNull()
+      is IrGetField -> listOfNotNull(element.receiver)
+      else ->
+        buildList {
+          element.acceptChildrenVoid(
+            object : IrVisitorVoid() {
+              override fun visitElement(element: IrElement) {
+                add(element)
+              }
+            },
+          )
+        }
+    }
+
+  private fun unsupportedFieldValue(type: IrType): Boolean = isCapabilityType(type) || isCallableType(type)
+
   /** A bounded structural proof used only to omit demonstrably irrelevant computation. */
   private fun provenHarmless(
     element: IrElement,
     active: Set<IrFunction> = emptySet(),
   ): Boolean {
-    fun children(): Boolean {
-      var harmless = true
-      element.acceptChildrenVoid(
-        object : IrVisitorVoid() {
-          override fun visitElement(element: IrElement) {
-            if (!provenHarmless(element, active)) harmless = false
-          }
-        },
-      )
-      return harmless
-    }
+    fun children(): Boolean = evaluatedChildren(element).all { provenHarmless(it, active) }
     return when (element) {
       is IrConst, is IrGetValue -> true
-      is IrFunctionExpression, is IrFunctionReference -> true // creation is not execution
+      is IrFunctionExpression, is IrFunctionReference -> children() // evaluated captures only, never the body
       is IrFunctionAccessExpression -> {
         val function = element.symbol.owner
         val name = function.fqNameWhenAvailable?.asString().orEmpty()
-        val actualsHarmless = children() && element.arguments.filterNotNull().none { isCallableType(it.type) }
+        val eligibility = callableEligibility(element)
+        val actualsHarmless = children()
         val defaultsHarmless =
           function.parameters.filter {
             it.kind == IrParameterKind.Regular && element.arguments[it] == null && it.varargElementType == null
           }.all { it.defaultValue?.let { default -> provenHarmless(default, active) } == true }
-        if (!actualsHarmless || !defaultsHarmless) {
+        if (!actualsHarmless || !defaultsHarmless || eligibility is CallableEligibility.Unsupported) {
           false
-        } else if (effectFreeIntrinsic(name)) {
+        } else if (eligibility == CallableEligibility.EffectFree) {
           true
         } else if (function is IrSimpleFunction && function.modality == Modality.FINAL && !function.isInline) {
           function.body?.takeIf { function !in active && !isIntrinsic(name) }?.let {
@@ -685,14 +769,16 @@ class MosaicIrExtractor(
         }
       }
       is IrGetField ->
-        !isCapabilityType(element.type) && element.symbol.owner.initializer?.let {
-          provenHarmless(it, active)
-        } == true
+        children() && !isCapabilityType(element.type) &&
+          element.symbol.owner.correspondingPropertySymbol?.owner?.isDelegated != true && element.symbol.owner.initializer?.let {
+            provenHarmless(it, active)
+          } == true
       is IrGetObjectValue -> element.symbol.owner.fqNameWhenAvailable?.asString() == "kotlin.Unit"
-      is IrSetField -> !isCapabilityType(element.value.type) && children()
-      is IrSetValue -> !isCapabilityType(element.value.type) && children()
+      is IrSetField -> !unsupportedFieldValue(element.value.type) && children()
+      is IrSetValue -> !isCapabilityType(element.symbol.owner.type) && children()
+      is IrVariable -> (!element.isVar || !isCapabilityType(element.type)) && children()
       is IrInstanceInitializerCall -> true // constructor adapter handles stored initializers explicitly
-      is IrBlockBody, is IrBlock, is IrExpressionBody, is IrReturn, is IrVariable,
+      is IrBlockBody, is IrBlock, is IrExpressionBody, is IrReturn,
       is IrTypeOperatorCall, is IrWhen, is IrBranch, is IrLoop, is IrVararg, is IrSpreadElement, is IrThrow,
       -> children()
       else -> false
@@ -723,7 +809,8 @@ class MosaicIrExtractor(
 
   private fun isCallableType(type: IrType): Boolean =
     type.classFqName?.asString()?.let {
-      it.startsWith("kotlin.Function") || it.startsWith("kotlin.coroutines.SuspendFunction")
+      it.startsWith("kotlin.Function") || it.startsWith("kotlin.coroutines.SuspendFunction") ||
+        it.startsWith("kotlin.reflect.KFunction") || it.startsWith("kotlin.reflect.KSuspendFunction")
     } == true
 
   private fun isTileType(type: IrType): Boolean =

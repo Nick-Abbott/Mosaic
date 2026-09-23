@@ -5,6 +5,7 @@ package org.buildmosaic.compiler
 import org.buildmosaic.analysis.AnalysisPolicy
 import org.buildmosaic.analysis.AnalysisRequest
 import org.buildmosaic.analysis.Certainty
+import org.buildmosaic.analysis.FindingKind
 import org.buildmosaic.analysis.MosaicAnalyzer
 import org.buildmosaic.analysis.RootStatus
 import org.buildmosaic.analysis.SelectedRoot
@@ -15,12 +16,20 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /** One compilation, independently selected roots. See SCENARIOS.md for the fixed boundary. */
+@Suppress("LargeClass") // Keep independently named assertions on one shared compiler fixture.
 class ExecutionCatalogTest {
   private fun report(name: String) =
     MosaicAnalyzer().analyze(
-      AnalysisRequest(module, roots = listOf(SelectedRoot(name, "catalog.$name()")), policy = AnalysisPolicy.STRICT),
+      AnalysisRequest(
+        module,
+        roots = listOf(SelectedRoot(name, "catalog.${if ('(' in name) name else "$name()"}")),
+        policy = AnalysisPolicy.STRICT,
+      ),
     ).also { report ->
-      assertTrue(report.roots.single().specializedContracts.contains("catalog.$name()"), report.toString())
+      assertTrue(
+        report.roots.single().specializedContracts.contains("catalog.${if ('(' in name) name else "$name()"}"),
+        report.toString(),
+      )
       assertTrue(report.findings.none { it.reason.contains("Selected root target is missing") }, report.toString())
     }
 
@@ -176,6 +185,100 @@ class ExecutionCatalogTest {
     verified("harmlessControl")
   }
 
+  @Test fun `F6 structural equality cannot omit user equals`() {
+    assertTrue(module.callables.single { it.id == "catalog.CallbackValue.<init>()" }.effects.isEmpty())
+    unknown("structuralEquality", "Implicit equals")
+  }
+
+  @Test fun `F6 equality inside control flow remains localized`() {
+    unknown("conditionalEquality(catalog.CallbackValue,catalog.CallbackValue)", "Unsupported control flow")
+  }
+
+  @Test fun `C5 bound reference evaluates receiver inside conditional`() {
+    val name = "boundReference(kotlin.Boolean)"
+    unknown(name, "Unsupported control flow")
+    assertTrue(report(name).findings.none { it.certainty == Certainty.MISSING })
+  }
+
+  @Test fun `C5 directly bound receiver retains construction failure`() {
+    missing("directBoundReference")
+    val finding = report("directBoundReference").findings.single { it.key?.classId == "catalog.Metrics" }
+    assertEquals(FindingKind.CONSTRUCTION_LOOKUP, finding.kind)
+  }
+
+  @Test fun `C5 unused lambda and unbound references defer their bodies`() {
+    verified("deferredCreation(kotlin.Boolean)")
+  }
+
+  @Test fun `F6 scalar equality and callback free collection controls verify`() {
+    verified("primitiveEquality(kotlin.Int,kotlin.Int)")
+    verified("stringEquality(kotlin.String,kotlin.String)")
+    verified("harmlessControl")
+    verified("safeCollections")
+    verified("safeMaps(kotlin.Array)")
+    verified("safeSetSpread(kotlin.Array)")
+    verified("conditionalScalars(kotlin.Array)")
+    verified("errorConstant")
+  }
+
+  @Test fun `F6 set construction cannot omit user hashing`() {
+    unknown("setCallbacks", "Implicit hashCode or equals")
+  }
+
+  @Test fun `F6 mutable set construction cannot omit user hashing`() {
+    unknown("mutableSetCallbacks", "Implicit hashCode or equals")
+  }
+
+  @Test fun `F6 map construction cannot omit user key hashing`() {
+    unknown("mapCallbacks(kotlin.Array)", "Implicit hashCode or equals")
+  }
+
+  @Test fun `F6 mutable map construction cannot omit user key hashing`() {
+    unknown("mutableMapCallbacks(kotlin.Array)", "Implicit hashCode or equals")
+  }
+
+  @Test fun `F6 opaque set elements do not prove harmless hashing`() {
+    unknown("opaqueSet(kotlin.Array)", "Implicit hashCode or equals")
+  }
+
+  @Test fun `F6 structural omission shares set eligibility`() {
+    unknown("conditionalSet(kotlin.Array)", "Unsupported control flow")
+  }
+
+  @Test fun `F6 structural omission shares map eligibility`() {
+    unknown("conditionalMap(kotlin.Array)", "Unsupported control flow")
+  }
+
+  @Test fun `F6 structural omission shares message conversion eligibility`() {
+    unknown("conditionalError(catalog.CallbackValue)", "Unsupported control flow")
+  }
+
+  @Test fun `F6 error message cannot omit user toString`() {
+    unknown("errorCallback", "Implicit toString")
+  }
+
+  @Test fun `F6 structural proof respects mutable capability alias boundary`() {
+    unknown("mutableAlias(kotlin.Boolean,org.buildmosaic.core.injection.Canvas)", "Unsupported control flow")
+  }
+
+  @Test fun `C5 structural proof rejects reference escape`() {
+    unknown("conditionalReferenceEscape", "Unsupported control flow")
+    unknown("conditionalReferenceAlias", "Unsupported control flow")
+  }
+
+  @Test fun `B2 structural proof respects extension receiver eligibility`() {
+    unknown("conditionalExtension(org.buildmosaic.core.Mosaic)", "Unsupported control flow")
+  }
+
+  @Test fun `F6 field receiver evaluation is retained`() {
+    unknown("conditionalField(kotlin.Boolean)", "Unsupported control flow")
+    missing("directField")
+  }
+
+  @Test fun `F6 structural proof respects callable field escape boundary`() {
+    unknown("CallbackField.<set-callback>(kotlin.Function0)", "Unsupported control flow")
+  }
+
   companion object {
     private val module by lazy {
       val directory = Files.createTempDirectory("mosaic-execution-catalog").toFile()
@@ -183,8 +286,53 @@ class ExecutionCatalogTest {
       source.writeText(
         """
         package catalog
+        import kotlinx.coroutines.runBlocking
         import org.buildmosaic.core.*
         import org.buildmosaic.core.injection.*
+        class CallbackValue {
+            override fun equals(other: Any?): Boolean { runBlocking { canvas {}.source<Metrics>() }; return true }
+            override fun hashCode(): Int { runBlocking { canvas {}.source<Metrics>() }; return 0 }
+            override fun toString(): String { runBlocking { canvas {}.source<Metrics>() }; return "" }
+        }
+        fun structuralEquality() { CallbackValue() == CallbackValue() }
+        fun conditionalEquality(a: CallbackValue, b: CallbackValue) { if (a == b) defaults() }
+        suspend fun missingReceiver(): Canvas = canvas { single<String> { paint<Metrics>(); "" } }
+        suspend fun boundReference(enabled: Boolean) { if (enabled) { val unused = missingReceiver()::create } }
+        suspend fun directBoundReference() { val unused = missingReceiver()::create }
+        fun deferredCreation(enabled: Boolean) { if (enabled) { val lambda = { empty.source<Metrics>() }; val ref = ::work; val extension = Canvas::create } }
+        fun primitiveEquality(a: Int, b: Int) { if (a == b) defaults() }
+        fun stringEquality(a: String, b: String) { if (a == b) defaults() }
+        fun safeCollections() {
+            setOf(1, 2); mutableSetOf("a", "b"); emptySet<CallbackValue>(); emptyMap<CallbackValue, Int>()
+            listOf(CallbackValue()); arrayOf(CallbackValue()); mutableListOf(CallbackValue()); arrayListOf(CallbackValue())
+            intArrayOf(1); emptyArray<CallbackValue>(); setOf<CallbackValue>(); mutableSetOf<CallbackValue>()
+        }
+        fun safeMaps(entries: Array<Pair<String, CallbackValue>>) { mapOf(*entries); mutableMapOf(*entries) }
+        fun safeSetSpread(elements: Array<String>) { setOf(*elements); mutableSetOf(*elements) }
+        fun setCallbacks() { setOf(CallbackValue(), CallbackValue()) }
+        fun mutableSetCallbacks() { mutableSetOf(CallbackValue()) }
+        fun mapCallbacks(entries: Array<Pair<CallbackValue, Int>>) { mapOf(*entries) }
+        fun mutableMapCallbacks(entries: Array<Pair<CallbackValue, Int>>) { mutableMapOf(*entries) }
+        fun opaqueSet(elements: Array<Any>) { setOf(*elements) }
+        fun conditionalSet(elements: Array<CallbackValue>) { if (true) setOf(*elements) }
+        fun conditionalMap(entries: Array<Pair<CallbackValue, Int>>) { if (true) mapOf(*entries) }
+        fun conditionalError(value: CallbackValue) { if (true) error(value) }
+        fun conditionalScalars(elements: Array<String>) { if (true) { setOf(*elements); error("not executed") } }
+        fun conditionalReferenceEscape() { if (true) ignore(::work) }
+        fun conditionalReferenceAlias() { val ref: Any = ::work; if (true) ignore(ref) }
+        fun Mosaic.noWork() {}
+        fun conditionalExtension(base: Mosaic) { if (true) base.noWork() }
+        fun errorCallback() { error(CallbackValue()) }
+        fun errorConstant() { error("not executed") }
+        fun mutableAlias(enabled: Boolean, base: Canvas) { if (enabled) { var alias = base } }
+        class FieldBox { @JvmField val value = 1 }
+        suspend fun fieldReceiver(): FieldBox { missingReceiver(); return FieldBox() }
+        suspend fun conditionalField(enabled: Boolean) { if (enabled) fieldReceiver().value }
+        suspend fun directField() { fieldReceiver().value }
+        class CallbackField {
+            var callback: () -> Unit = {}
+                set(value) { if (true) field = value }
+        }
         class Metrics
         class First
         class Second
