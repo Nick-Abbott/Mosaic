@@ -128,22 +128,22 @@ internal class RootEvaluator(
   ): List<EvaluationContext> {
     return evaluateCanvas(effect.canvas, context).map { outcome ->
       if (outcome.state == null) return@map outcome.context.copy(blocked = true)
-      if (effect.kind == LookupKind.OPTIONAL) {
-        addOptionalFinding(effect, outcome.context, "Optional lookup has no provider obligation")
-        return@map outcome.context
-      }
-      val key = effect.key as? Fact.Known
-      if (key == null) {
-        val unknown = effect.key as Fact.Unknown
+      val resolvedKey = resolveKey(effect.key)
+      if (resolvedKey is Fact.Unknown) {
         addLookupFinding(
           effect,
           outcome.context,
           null,
-          LookupResolution(Certainty.UNVERIFIED, reason = "Required Canvas key is unknown: ${unknown.reason}"),
-          unknown.site,
+          LookupResolution(Certainty.UNVERIFIED, reason = "Canvas key is unknown: ${resolvedKey.reason}"),
+          resolvedKey.site,
         )
         return@map outcome.context
       }
+      if (effect.kind == LookupKind.OPTIONAL) {
+        addOptionalFinding(effect, outcome.context, "Optional lookup has no provider obligation")
+        return@map outcome.context
+      }
+      val key = resolvedKey as Fact.Known
       val rawResolution = resolveLookup(outcome.state, key.value)
       val resolution = normalizeResolution(effect.kind, outcome.context, rawResolution)
       addLookupFinding(effect, outcome.context, key, resolution)
@@ -201,7 +201,7 @@ internal class RootEvaluator(
     context: EvaluationContext,
   ): List<EvaluationContext> {
     val found =
-      when (val resolved = resolveTileReference(effect.tile)) {
+      when (val resolved = resolveTileReference(effect.tile, context)) {
         is TileResolution.Found -> resolved
         is TileResolution.Conflict -> {
           addConflict(context, effect.id, resolved.owners, effect.site)
@@ -247,9 +247,12 @@ internal class RootEvaluator(
     }
   }
 
-  private fun resolveTileReference(reference: TileReference): TileResolution =
+  private fun resolveTileReference(
+    reference: TileReference,
+    context: EvaluationContext,
+  ): TileResolution =
     when (reference) {
-      is TileReference.Alias -> resolveTileReference(reference.reference)
+      is TileReference.Alias -> resolveTileReference(reference.reference, context)
       is TileReference.Unknown -> TileResolution.Unknown(reference.reason, reference.site)
       is TileReference.Stable ->
         when (val contract = registry.tile(reference.contractId)) {
@@ -272,7 +275,7 @@ internal class RootEvaluator(
           is Resolution.Found ->
             TileResolution.Found(
               contract.value,
-              "${reference.templateId}@${reference.allocationId}#${reference.invocationId}",
+              "${reference.templateId}@${reference.allocationId}#${reference.invocationId}:${context.activation}",
             )
           is Resolution.Conflict -> TileResolution.Conflict(reference.templateId, contract.owners)
           Resolution.Missing -> TileResolution.Missing(reference.templateId)
@@ -544,10 +547,10 @@ internal class RootEvaluator(
   ): List<CanvasOutcome> {
     val knownBindings =
       expression.bindings.mapNotNull { binding ->
-        val key = binding.key as? Fact.Known ?: return@mapNotNull null
+        val key = resolveKey(binding.key) as? Fact.Known ?: return@mapNotNull null
         KnownBinding(key.value, binding.site, key.evidence, key.provenance, key.capturedOrigin)
       }
-    val unknownBindingSites = expression.bindings.mapNotNull { (it.key as? Fact.Unknown)?.site }
+    val unknownBindingSites = expression.bindings.mapNotNull { (resolveKey(it.key) as? Fact.Unknown)?.site }
     val unknownRegistrations = expression.unknownRegistrations.map { it.site } + unknownBindingSites
     val layer =
       CanvasState.Layer(
@@ -943,7 +946,8 @@ internal class RootEvaluator(
     context: EvaluationContext,
     reason: String,
   ) {
-    val key = effect.key as? Fact.Known
+    val resolvedKey = resolveKey(effect.key)
+    val key = resolvedKey as? Fact.Known
     record(
       context,
       Finding(
@@ -953,7 +957,7 @@ internal class RootEvaluator(
         certainty = Certainty.VERIFIED,
         key = key?.value,
         site = effect.site,
-        factProvenance = key?.provenance ?: (effect.key as? Fact.Unknown)?.site,
+        factProvenance = key?.provenance ?: (resolvedKey as? Fact.Unknown)?.site,
         capturedOrigins = context.capturedOrigins + setOfNotNull(key?.capturedOrigin),
         dependencyPath = context.dependencyPath,
         pathCondition = context.conditions.map { it.display },
@@ -962,6 +966,17 @@ internal class RootEvaluator(
       ),
     )
   }
+
+  private fun resolveKey(fact: Fact<CanvasKeyIdentity>): Fact<CanvasKeyIdentity> =
+    when (fact) {
+      is Fact.Known, is Fact.Unknown -> fact
+      is Fact.ExportedKey ->
+        when (val exported = registry.key(fact.declaration)) {
+          is Resolution.Found -> Fact.Known(exported.value.key, exported.value.site)
+          is Resolution.Conflict -> Fact.Unknown("Conflicting exported CanvasKey ${fact.declaration}", fact.site)
+          Resolution.Missing -> Fact.Unknown("No exported stable CanvasKey fact for ${fact.declaration}", fact.site)
+        }
+    }
 
   private fun addDuplicate(
     context: EvaluationContext,

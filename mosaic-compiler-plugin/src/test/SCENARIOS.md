@@ -5,6 +5,18 @@ U = named UNVERIFIED boundary, D = deferred, R = rejected. Analysis concerns
 selected-root Canvas availability, not general exceptions or deadlocks.
 K names refer to analysis-core tests; C/B to compiler tests; G to TestKit.
 `ExecutionCatalogTest` (EC) compiles one family and selects each named root.
+`PublicApiCoverageTest` compiles one two-file family and selects public API roots;
+`BinaryCanvasKeyExportTest` compiles one producer and one consumer. The
+[public API matrix](PUBLIC_API_MATRIX.md) fixes support decisions and interactions.
+
+Current production guarantee: reified, KClass, and CanvasKey forms share exact
+runtime key identity for lookup, registration, and paint. Immutable top-level
+CanvasKey values export explicit facts; unavailable binary exports and dynamic
+key components stay named unknown. Mosaic.canvas carries its current Canvas.
+Canvas layering, Tile creation, and compose/composeAsync retain evaluation order
+and known-empty/known-nonempty/unknown MultiTile execution distinctions. Fresh
+local Tile values have deferred template contracts and invocation-local
+identities; unsupported capability captures remain named unknown.
 
 | Row | Existing assertion/family; missing interaction added in EC |
 |---|---|

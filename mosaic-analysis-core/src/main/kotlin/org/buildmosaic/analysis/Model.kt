@@ -27,6 +27,9 @@ sealed interface Fact<out T> {
     val reason: String,
     val site: SourceLocation,
   ) : Fact<Nothing>
+
+  /** A stable key value exported by its producer; resolved only from selected metadata. */
+  data class ExportedKey(val declaration: String, val site: SourceLocation) : Fact<Nothing>
 }
 
 /** The exact normalized runtime Canvas identity. Generic arguments are intentionally absent. */
@@ -320,7 +323,10 @@ data class ModuleContract(
   val tiles: List<TileContract> = emptyList(),
   val callables: List<CallableContract> = emptyList(),
   val overrides: List<ResolvedOverride> = emptyList(),
+  val keys: List<KeyContract> = emptyList(),
 )
+
+data class KeyContract(val id: String, val key: CanvasKeyIdentity, val site: SourceLocation)
 
 data class ResolvedOverride(
   val receiverType: String,

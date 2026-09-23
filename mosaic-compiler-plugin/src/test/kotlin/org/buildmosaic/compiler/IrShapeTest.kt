@@ -725,7 +725,7 @@ class IrShapeTest {
     assertTrue(tiles.getValue("fixture.BatchTile").effects.any { it is Effect.Unknown })
     assertTrue(
       tiles.getValue("fixture.ExplicitKeyTile").effects.any {
-        it is Effect.Lookup && it.key is org.buildmosaic.analysis.Fact.Unknown
+        it is Effect.Lookup && it.key is org.buildmosaic.analysis.Fact.Known
       },
     )
     val platform =
