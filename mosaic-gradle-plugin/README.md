@@ -44,11 +44,12 @@ The release publishes `org.buildmosaic:mosaic-analysis-core`,
 version. Gradle generates the `org.buildmosaic.analysis` plugin marker. The
 compiler plugin is a self-contained artifact for the separate compiler process;
 analysis-core and the compiler plugin are implementation support artifacts,
-not ordinary application dependencies or BOM entries. Publish and make the
-Central artifacts available before running `:mosaic-gradle-plugin:publishPlugins`
-for the Gradle Plugin Portal. The root `releaseToMavenCentral` task includes all
-three analysis publications. Local installation tests use a temporary Maven
-repository and do not run a remote publication task.
+not ordinary application dependencies or BOM entries. For a release, publish
+the three support/implementation artifacts with `releaseToMavenCentral`, wait
+until they resolve from Maven Central, then validate and publish the Gradle
+plugin through the Plugin Portal with `:mosaic-gradle-plugin:publishPlugins`.
+Local installation tests use a temporary Maven repository and do not run a
+remote publication task.
 
 Applications also export contracts. A library with roots is contradictory and
 fails with a configuration error.
@@ -95,9 +96,10 @@ capability-bearing initialization marked unknown. If the referenced constructor
 summary is absent, verification is unknown. Referenced stored-property reads
 likewise retain initialization work. This is not a general model of JVM class
 initialization or exception safety. Used user defaults with unavailable binary
-expressions and Mosaic extension-helper calls remain unknown. The schema stays
-v1.1; summaries from older extractor versions are rejected because they may
-have omitted accessor or constructor-default effects or conflated array keys.
+expressions and Mosaic extension-helper calls remain unknown. The metadata is
+format 3 with `analysis-contract-2`; summaries from older extractor versions
+are rejected because they may have omitted accessor or constructor-default
+effects or conflated array keys.
 
 Only the tested default Kotlin/JVM main layout is supported. Extraction uses the
 configured Java toolchain and fails on a Kotlin/toolchain version mismatch. The
@@ -108,5 +110,5 @@ interface mode, no-JDK compilation, and KSP. Applying
 the plugin without Kotlin/JVM fails during project configuration. Android,
 multiplatform, test sources, framework lifecycle callbacks, and arbitrary virtual
 dispatch remain unsupported. A virtual call with an unresolved receiver is
-UNVERIFIED. The plugin ID, extension, tasks, v1.1 schema, and report format are
+UNVERIFIED. The plugin ID, extension, tasks, format-3 schema, and report format are
 provisional. The analysis tooling is not included in the BOM.

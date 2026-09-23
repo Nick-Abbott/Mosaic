@@ -138,13 +138,7 @@ abstract class ExtractMosaicTask
     }
 
     private fun validateConfiguration() {
-      val compilerArtifactVersion =
-        JarFile(compilerPluginJar.get().asFile).use { it.manifest?.mainAttributes?.getValue("Implementation-Version") }
-      requireSupported(
-        compilerArtifactVersion == mosaicVersion.get(),
-        "Mosaic compiler plugin version mismatch: installed Gradle plugin is ${mosaicVersion.get()}, " +
-          "compiler artifact is ${compilerArtifactVersion ?: "unversioned"}",
-      )
+      validateCompilerPluginVersion(compilerPluginJar.get().asFile, mosaicVersion.get())
       requireSupported(
         productionCompilerVersion.get().matches(Regex("2\\.2\\.10(?:-release-[0-9]+)?")),
         "Mosaic extraction requires Kotlin Gradle plugin 2.2.10; found ${productionCompilerVersion.get()}",
@@ -192,6 +186,18 @@ abstract class ExtractMosaicTask
       )
     }
   }
+
+internal fun validateCompilerPluginVersion(
+  jar: File,
+  installedVersion: String,
+) {
+  val artifactVersion = JarFile(jar).use { it.manifest?.mainAttributes?.getValue("Implementation-Version") }
+  requireSupported(
+    artifactVersion == installedVersion,
+    "Mosaic compiler plugin version mismatch: installed Gradle plugin is $installedVersion, " +
+      "compiler artifact is ${artifactVersion ?: "unversioned"}",
+  )
+}
 
 private fun requireSupported(
   condition: Boolean,
