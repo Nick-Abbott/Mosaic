@@ -1,3 +1,26 @@
+import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.tasks.Classpath
+import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
+import org.gradle.process.CommandLineArgumentProvider
+
+abstract class CompilerFixtureArguments : CommandLineArgumentProvider {
+  @get:InputFile
+  @get:PathSensitive(PathSensitivity.ABSOLUTE)
+  abstract val pluginJar: RegularFileProperty
+
+  @get:Classpath
+  abstract val fixtureClasspath: ConfigurableFileCollection
+
+  override fun asArguments(): Iterable<String> =
+    listOf(
+      "-Dmosaic.plugin.jar=${pluginJar.get().asFile.absolutePath}",
+      "-Dmosaic.fixture.classpath=${fixtureClasspath.asPath}",
+    )
+}
+
 description = "Experimental Kotlin IR extraction for Mosaic"
 
 plugins {
@@ -24,11 +47,8 @@ tasks.jar {
 tasks.test {
   useJUnitPlatform()
   dependsOn(tasks.jar)
-  notCompatibleWithConfigurationCache(
-    "The phase-zero compiler subprocess fixture resolves its compiler classpath at execution time",
-  )
-  doFirst {
-    systemProperty("mosaic.plugin.jar", tasks.jar.get().archiveFile.get().asFile.absolutePath)
-    systemProperty("mosaic.fixture.classpath", classpath.asPath)
-  }
+  val fixtureArguments = objects.newInstance<CompilerFixtureArguments>()
+  fixtureArguments.pluginJar.set(tasks.jar.flatMap { it.archiveFile })
+  fixtureArguments.fixtureClasspath.from(classpath)
+  jvmArgumentProviders.add(fixtureArguments)
 }

@@ -42,3 +42,12 @@ older extractor output is rejected because an older complete snapshot could
 omit referenced initialization work. No new schema fields were needed. The
 compiler option names and symbol-locator strategy are internal and provisional.
 This module is not published or included in the BOM.
+
+## Test placement
+
+`mosaic-analysis-core` tests own semantic combinations. Compiler tests check
+source-to-contract fidelity, while Gradle TestKit tests check wiring, packaging,
+and invalidation. Put a regression's decisive assertion at the cheapest layer
+that exposes it, and extend a relevant compiled fixture before adding another
+compiler or build invocation. Retain distinct failure guarantees rather than
+each historical test wrapper.

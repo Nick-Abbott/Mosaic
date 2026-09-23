@@ -240,29 +240,42 @@ class IrShapeTest {
   }
 
   @Test
-  fun `lookup uses its actual Mosaic receiver`() {
-    val report =
-      analyzeSource(
+  fun `lookup follows current and separate Mosaic receivers`() {
+    val (module, separateReport) =
+      extractSource(
         """
         package regression
         import org.buildmosaic.core.*
         import org.buildmosaic.core.injection.*
         class Metrics
-        val ExampleTile = singleTile { val other = canvas { }.create(); other.source<Metrics>() }
-        suspend fun entry() = canvas { single<Metrics> { Metrics() } }.create().compose(ExampleTile)
+        val SeparateTile = singleTile { val other = canvas { }.create(); other.source<Metrics>() }
+        val CurrentTile = singleTile { val same = this; same.source<Metrics>() }
+        val OwnCanvasTile = singleTile { val other = canvas { single<Metrics> { Metrics() } }.create(); other.source<Metrics>() }
+        suspend fun entry() = canvas { single<Metrics> { Metrics() } }.create().compose(SeparateTile)
+        suspend fun currentEntry() = canvas { single<Metrics> { Metrics() } }.create().compose(CurrentTile)
+        suspend fun ownCanvasEntry() = canvas { }.create().compose(OwnCanvasTile)
         """.trimIndent(),
       )
     assertTrue(
-      report.findings.any {
+      separateReport.findings.any {
         it.certainty == Certainty.MISSING && it.key?.classId == "regression.Metrics"
       },
-      report.toString(),
+      separateReport.toString(),
     )
+    listOf("regression.currentEntry()", "regression.ownCanvasEntry()").forEach { target ->
+      val report = analyzeModule(module, target)
+      assertEquals(org.buildmosaic.analysis.RootStatus.VERIFIED, report.roots.single().status, "$target: $report")
+      assertTrue(report.policyDecision.passed, "$target: $report")
+      assertTrue(
+        report.findings.any { it.certainty == Certainty.VERIFIED && it.key?.classId == "regression.Metrics" },
+        "$target: $report",
+      )
+    }
   }
 
   @Test
-  fun `known empty MultiTile compose skips its body`() {
-    val (module, report) =
+  fun `MultiTile execution follows known and unknown key requests`() {
+    val (module, emptyReport) =
       extractSource(
         """
         package regression
@@ -270,82 +283,52 @@ class IrShapeTest {
         import org.buildmosaic.core.injection.*
         class Metrics
         val BatchTile = multiTile<String, String> { source<Metrics>(); emptyMap() }
-        suspend fun entry() = canvas { }.create().compose(BatchTile, emptyList())
+        suspend fun empty() = canvas { }.create().compose(BatchTile, emptyList())
+        suspend fun emptyAsync() = canvas { }.create().composeAsync(BatchTile, emptyList())
+        suspend fun emptyLiteral() = canvas { }.create().composeAsync(BatchTile, listOf<String>())
+        suspend fun nonemptyAsync() = canvas { }.create().composeAsync(BatchTile, listOf("x"))
+        suspend fun unknown(keys: Collection<String>) = canvas { }.create().composeAsync(BatchTile, keys)
         """.trimIndent(),
+        rootTarget = "regression.empty()",
       )
     assertTrue(module.tiles.single().multi)
     assertTrue(module.tiles.single().effects.any { it is Effect.Lookup && it.key.toString().contains("Metrics") })
-    assertEquals(
-      MultiTileExecution.KNOWN_EMPTY,
-      module.callables.single {
-        it.id == "regression.entry()"
-      }.effects.filterIsInstance<Effect.Compose>().single().execution,
-    )
-    assertEquals(org.buildmosaic.analysis.RootStatus.VERIFIED, report.roots.single().status, report.toString())
-    val (asyncModule, asyncReport) =
-      extractSource(
-        sourceText =
-          """
-          package regression
-          import org.buildmosaic.core.*
-          import org.buildmosaic.core.injection.*
-          class Metrics
-          val BatchTile = multiTile<String, String> { source<Metrics>(); emptyMap() }
-          suspend fun entry() = canvas { }.create().composeAsync(BatchTile, emptyList())
-          """.trimIndent(),
-      )
-    assertEquals(
-      MultiTileExecution.KNOWN_EMPTY,
-      asyncModule.callables.single {
-        it.id == "regression.entry()"
-      }.effects.filterIsInstance<Effect.Compose>().single().execution,
-    )
-    assertEquals(org.buildmosaic.analysis.RootStatus.VERIFIED, asyncReport.roots.single().status)
-  }
 
-  @Test
-  fun `nonempty and unknown MultiTile requests retain execution uncertainty`() {
-    val source =
-      """
-      package regression
-      import org.buildmosaic.core.*
-      import org.buildmosaic.core.injection.*
-      class Metrics
-      val BatchTile = multiTile<String, String> { source<Metrics>(); emptyMap() }
-      suspend fun entry() = canvas { }.create().composeAsync(BatchTile, listOf("x"))
-      """.trimIndent()
-    val (nonempty, report) = extractSource(source)
+    fun execution(target: String): MultiTileExecution =
+      module.callables.single { it.id == target }.effects.filterIsInstance<Effect.Compose>().single().execution
+
+    assertEquals(MultiTileExecution.KNOWN_EMPTY, execution("regression.empty()"))
     assertEquals(
-      MultiTileExecution.KNOWN_NON_EMPTY,
-      nonempty.callables.single {
-        it.id == "regression.entry()"
-      }.effects.filterIsInstance<Effect.Compose>().single().execution,
+      org.buildmosaic.analysis.RootStatus.VERIFIED,
+      emptyReport.roots.single().status,
+      emptyReport.toString(),
     )
+    assertTrue(emptyReport.policyDecision.passed, emptyReport.toString())
+    listOf("regression.emptyAsync()", "regression.emptyLiteral()").forEach { target ->
+      assertEquals(MultiTileExecution.KNOWN_EMPTY, execution(target))
+      val report = analyzeModule(module, target)
+      assertEquals(org.buildmosaic.analysis.RootStatus.VERIFIED, report.roots.single().status, "$target: $report")
+      assertTrue(report.policyDecision.passed, "$target: $report")
+    }
+
+    val nonemptyTarget = "regression.nonemptyAsync()"
+    assertEquals(MultiTileExecution.KNOWN_NON_EMPTY, execution(nonemptyTarget))
+    val nonemptyReport = analyzeModule(module, nonemptyTarget)
     assertTrue(
-      report.findings.any {
-        it.certainty == Certainty.MISSING && it.key?.classId == "regression.Metrics"
+      nonemptyReport.findings.any { it.certainty == Certainty.MISSING && it.key?.classId == "regression.Metrics" },
+      nonemptyReport.toString(),
+    )
+
+    val unknownTarget = "regression.unknown(kotlin.collections.Collection)"
+    assertEquals(MultiTileExecution.UNKNOWN, execution(unknownTarget))
+    val unknownReport = analyzeModule(module, unknownTarget)
+    assertTrue(unknownReport.roots.single().specializedContracts.contains(unknownTarget), unknownReport.toString())
+    assertTrue(
+      unknownReport.findings.any {
+        it.certainty == Certainty.UNVERIFIED && it.key?.classId == "regression.Metrics" &&
+          it.pathCondition.any { condition -> condition.toString().contains("multi-tile executes") }
       },
-      report.toString(),
-    )
-    val (emptyLiteral, emptyReport) = extractSource(source.replace("listOf(\"x\")", "listOf<String>()"))
-    assertEquals(
-      MultiTileExecution.KNOWN_EMPTY,
-      emptyLiteral.callables.single {
-        it.id == "regression.entry()"
-      }.effects.filterIsInstance<Effect.Compose>().single().execution,
-    )
-    assertEquals(org.buildmosaic.analysis.RootStatus.VERIFIED, emptyReport.roots.single().status)
-    val unknownSource =
-      source.replace(
-        "listOf(\"x\")",
-        "keys",
-      ).replace("suspend fun entry()", "suspend fun entry(keys: Collection<String>)")
-    val (unknown, unknownReport) = extractSource(unknownSource)
-    assertEquals(
-      MultiTileExecution.UNKNOWN,
-      unknown.callables.single {
-        it.id.startsWith("regression.entry(")
-      }.effects.filterIsInstance<Effect.Compose>().single().execution,
+      unknownReport.toString(),
     )
     assertEquals(org.buildmosaic.analysis.RootStatus.UNVERIFIED, unknownReport.roots.single().status)
   }
@@ -396,45 +379,6 @@ class IrShapeTest {
       },
       receiverReport.toString(),
     )
-  }
-
-  @Test
-  fun `explicit current aliases and separately supplied Mosaic receivers resolve`() {
-    val current =
-      analyzeSource(
-        """
-        package regression
-        import org.buildmosaic.core.*
-        import org.buildmosaic.core.injection.*
-        class Metrics
-        val ExampleTile = singleTile { val same = this; same.source<Metrics>() }
-        suspend fun entry() = canvas { single<Metrics> { Metrics() } }.create().compose(ExampleTile)
-        """.trimIndent(),
-      )
-    assertTrue(
-      current.findings.any {
-        it.certainty == Certainty.VERIFIED && it.key?.classId == "regression.Metrics"
-      },
-      current.toString(),
-    )
-    val separate =
-      analyzeSource(
-        """
-        package regression
-        import org.buildmosaic.core.*
-        import org.buildmosaic.core.injection.*
-        class Metrics
-        val ExampleTile = singleTile { val other = canvas { single<Metrics> { Metrics() } }.create(); other.source<Metrics>() }
-        suspend fun entry() = canvas { }.create().compose(ExampleTile)
-        """.trimIndent(),
-      )
-    assertTrue(
-      separate.findings.any {
-        it.certainty == Certainty.VERIFIED && it.key?.classId == "regression.Metrics"
-      },
-      separate.toString(),
-    )
-    assertFalse(separate.findings.any { it.certainty == Certainty.MISSING }, separate.toString())
   }
 
   @Test
@@ -524,22 +468,27 @@ class IrShapeTest {
 
   private fun extractSource(
     sourceText: String,
+    rootTarget: String = "regression.entry()",
   ): Pair<org.buildmosaic.analysis.ModuleContract, org.buildmosaic.analysis.AnalysisReport> {
     val directory = Files.createTempDirectory("mosaic-ir-regression").toFile()
     val source = File(directory, "Regression.kt").apply { writeText(sourceText) }
     val probe = File(directory, "probe/facts.txt")
     compile(source, File(directory, "classes"), output = probe, moduleId = "regression")
     val module = SummaryCodec.decode(File(probe.parentFile, "summary.json").readBytes()).module
-    val report =
-      MosaicAnalyzer().analyze(
-        AnalysisRequest(
-          module,
-          roots = listOf(SelectedRoot("entry", "regression.entry()")),
-          policy = AnalysisPolicy.STRICT,
-        ),
-      )
-    return module to report
+    return module to analyzeModule(module, rootTarget)
   }
+
+  private fun analyzeModule(
+    module: org.buildmosaic.analysis.ModuleContract,
+    rootTarget: String,
+  ): org.buildmosaic.analysis.AnalysisReport =
+    MosaicAnalyzer().analyze(
+      AnalysisRequest(
+        module,
+        roots = listOf(SelectedRoot(rootTarget, rootTarget)),
+        policy = AnalysisPolicy.STRICT,
+      ),
+    )
 
   @Test
   fun `unchanged binary caller retains external const literal after provider rebuild`() {

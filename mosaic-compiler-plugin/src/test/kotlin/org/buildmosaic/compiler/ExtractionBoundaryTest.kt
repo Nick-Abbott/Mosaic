@@ -37,18 +37,23 @@ class MosaicReceiverBoundaryTest {
           import org.buildmosaic.core.injection.*
           class Metrics
           fun Mosaic.readMetrics(): Metrics = source<Metrics>()
+          fun parameterRead(receiver: Mosaic): Metrics = receiver.source<Metrics>()
           val ExampleTile = singleTile {
             val other = canvas { }.create()
             other.readMetrics()
           }
+          val SuppliedTile = singleTile { canvas { single<Metrics> { Metrics() } }.create().readMetrics() }
+          val ParameterTile = singleTile { parameterRead(canvas { }.create()) }
           suspend fun entry() = canvas { single<Metrics> { Metrics() } }.create().compose(ExampleTile)
+          suspend fun suppliedEntry() = canvas { single<Metrics> { Metrics() } }.create().compose(SuppliedTile)
+          suspend fun parameterEntry() = canvas { single<Metrics> { Metrics() } }.create().compose(ParameterTile)
           """.trimIndent(),
         )
       }
     val module = compileAndExtract(listOf(source), directory, "regression")
     val report = analyze(module)
     assertTrue(
-      module.tiles.single().effects.any {
+      module.tiles.single { it.id == "regression.ExampleTile" }.effects.any {
         it is Effect.Unknown && it.reason.contains("Mosaic extension receiver")
       },
       module.toString(),
@@ -59,30 +64,8 @@ class MosaicReceiverBoundaryTest {
         it.certainty == Certainty.UNVERIFIED && it.reason.contains("Mosaic extension receiver")
       },
     )
-  }
-
-  @Test
-  fun `helper receivers never borrow Tile Canvas`() {
-    val directory = Files.createTempDirectory("mosaic-helper-controls").toFile()
-    val source =
-      File(directory, "Regression.kt").apply {
-        writeText(
-          """
-          package regression
-          import org.buildmosaic.core.*
-          import org.buildmosaic.core.injection.*
-          class Metrics
-          fun Mosaic.extensionRead(): Metrics = source<Metrics>()
-          fun parameterRead(receiver: Mosaic): Metrics = receiver.source<Metrics>()
-          val ExtensionTile = singleTile { canvas { single<Metrics> { Metrics() } }.create().extensionRead() }
-          val ParameterTile = singleTile { parameterRead(canvas { }.create()) }
-          suspend fun entry() = canvas { single<Metrics> { Metrics() } }.create().compose(ExtensionTile)
-          suspend fun parameterEntry() = canvas { single<Metrics> { Metrics() } }.create().compose(ParameterTile)
-          """.trimIndent(),
-        )
-      }
-    val module = compileAndExtract(listOf(source), directory, "regression")
-    assertEquals(RootStatus.UNVERIFIED, analyze(module).roots.single().status)
+    val suppliedReport = analyze(module, target = "regression.suppliedEntry()")
+    assertEquals(RootStatus.UNVERIFIED, suppliedReport.roots.single().status, suppliedReport.toString())
     val parameterReport = analyze(module, target = "regression.parameterEntry()")
     assertEquals(RootStatus.UNVERIFIED, parameterReport.roots.single().status, parameterReport.toString())
     assertTrue(
@@ -146,7 +129,7 @@ class MosaicReceiverBoundaryTest {
 
 class DefaultBoundaryTest {
   @Test
-  fun `used capability default cannot disappear`() {
+  fun `used default and explicit actual stay distinct`() {
     val directory = Files.createTempDirectory("mosaic-default-probe").toFile()
     val source =
       File(directory, "Regression.kt").apply {
@@ -157,6 +140,8 @@ class DefaultBoundaryTest {
           class Metrics
           fun consume(base: Canvas, ignored: Metrics = base.source<Metrics>()) = Unit
           suspend fun entry() { consume(canvas { }) }
+          suspend fun explicitEntry() { consume(canvas { }, ignored = Metrics()) }
+          suspend fun suppliedEntry() { consume(canvas { single<Metrics> { Metrics() } }) }
           """.trimIndent(),
         )
       }
@@ -167,26 +152,10 @@ class DefaultBoundaryTest {
     assertTrue(effects.indexOfFirst { it is Effect.ConstructCanvas } < effects.indexOfFirst { it is Effect.Unknown })
     assertTrue(effects.indexOfFirst { it is Effect.Unknown } < effects.indexOfLast { it is Effect.Call })
     assertEquals(RootStatus.UNVERIFIED, report.roots.single().status, report.toString())
-  }
-
-  @Test
-  fun `explicit actual suppresses default lookup`() {
-    val directory = Files.createTempDirectory("mosaic-default-controls").toFile()
-    val source =
-      File(directory, "Regression.kt").apply {
-        writeText(
-          """
-          package regression
-          import org.buildmosaic.core.injection.*
-          class Metrics
-          fun consume(base: Canvas, ignored: Metrics = base.source<Metrics>()) = Unit
-          suspend fun entry() { consume(canvas { }, ignored = Metrics()) }
-          suspend fun suppliedEntry() { consume(canvas { single<Metrics> { Metrics() } }) }
-          """.trimIndent(),
-        )
-      }
-    val module = compileAndExtract(listOf(source), directory, "regression")
-    assertEquals(RootStatus.VERIFIED, analyze(module).roots.single().status)
+    val explicit = analyze(module, target = "regression.explicitEntry()")
+    assertEquals(RootStatus.VERIFIED, explicit.roots.single().status, explicit.toString())
+    assertTrue(explicit.policyDecision.passed, explicit.toString())
+    assertTrue(module.callables.single { it.id == "regression.explicitEntry()" }.effects.none { it is Effect.Unknown })
     val supplied = analyze(module, target = "regression.suppliedEntry()")
     assertEquals(RootStatus.UNVERIFIED, supplied.roots.single().status, supplied.toString())
     assertTrue(supplied.findings.none { it.certainty == Certainty.MISSING })
