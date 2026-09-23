@@ -131,7 +131,7 @@ The separate [examples build](examples/) includes [Spring Boot](examples/spring-
 - [mosaic-compiler-plugin](mosaic-compiler-plugin/README.md): compiler integration artifact
 - [mosaic-gradle-plugin](mosaic-gradle-plugin/README.md): optional analysis plugin
 
-See the [0.3.0 release notes](docs/releases/0.3.0.md) and [release procedure](docs/releases/README.md).
+See the [changelog](CHANGELOG.md), [0.3.0 release notes](docs/releases/0.3.0.md), and [release procedure](docs/releases/README.md).
 
 ## License
 
