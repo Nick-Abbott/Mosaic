@@ -22,6 +22,7 @@ import org.buildmosaic.analysis.DiscoveryKind
 import org.buildmosaic.analysis.DispatchReceiver
 import org.buildmosaic.analysis.Effect
 import org.buildmosaic.analysis.Fact
+import org.buildmosaic.analysis.KeyContract
 import org.buildmosaic.analysis.LookupKind
 import org.buildmosaic.analysis.ModuleContract
 import org.buildmosaic.analysis.MultiTileExecution
@@ -54,6 +55,7 @@ import org.jetbrains.kotlin.ir.expressions.IrBlock
 import org.jetbrains.kotlin.ir.expressions.IrBlockBody
 import org.jetbrains.kotlin.ir.expressions.IrBranch
 import org.jetbrains.kotlin.ir.expressions.IrCall
+import org.jetbrains.kotlin.ir.expressions.IrClassReference
 import org.jetbrains.kotlin.ir.expressions.IrConst
 import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
 import org.jetbrains.kotlin.ir.expressions.IrDelegatingConstructorCall
@@ -104,6 +106,7 @@ class MosaicIrExtractor(
     val tiles = mutableListOf<TileContract>()
     val callables = mutableListOf<CallableContract>()
     val overrides = mutableListOf<ResolvedOverride>()
+    val keys = mutableListOf<KeyContract>()
     val locators = linkedMapOf<String, String>()
     moduleFragment.files.sortedBy { it.fileEntry.name }.forEach { file ->
       fun visit(declaration: IrDeclaration) {
@@ -147,9 +150,12 @@ class MosaicIrExtractor(
           }
           is IrProperty -> {
             val initializer = declaration.backingField?.initializer?.expression
+            stableKeyProperty(declaration)?.let { key ->
+              keys += KeyContract(propertyId(declaration), key, location(file, declaration, propertyId(declaration)))
+            }
             val stableTile = tilePropertyEligibility(declaration) == TilePropertyEligibility.LOCAL_STABLE
             if (stableTile) {
-              val call = initializer as IrCall
+              val call = initializer as IrFunctionAccessExpression
               val lambda = call.argument("block") ?: call.argument("fetch")
               val normalizer = Normalizer(file, propertyId(declaration))
               val function = lambdaFunction(lambda)
@@ -162,7 +168,15 @@ class MosaicIrExtractor(
               } else {
                 normalizer.effects += Effect.Unknown("${propertyId(declaration)}:body", "Tile block is unavailable", location(file, declaration, propertyId(declaration)))
               }
-              tiles += TileContract(propertyId(declaration), normalizer.effects, location(file, declaration, propertyId(declaration)), multi = call.symbol.owner.name.asString() != "singleTile")
+              tiles +=
+                TileContract(
+                  propertyId(declaration), normalizer.effects, location(file, declaration, propertyId(declaration)),
+                  multi =
+                    call.symbol.owner.name.asString() !in setOf("singleTile", "<init>") ||
+                      call.symbol.owner.parent.let {
+                        it is IrClass && it.fqNameWhenAvailable?.asString() == "org.buildmosaic.core.MultiTile"
+                      },
+                )
               declaration.getter?.let { locators[propertyId(declaration)] = binaryLocator(it, file) }
             }
             listOfNotNull(declaration.getter, declaration.setter).forEach { accessor ->
@@ -242,7 +256,7 @@ class MosaicIrExtractor(
       }
       file.declarations.forEach(::visit)
     }
-    val module = ModuleContract(moduleId, canvases, tiles, callables, overrides)
+    val module = ModuleContract(moduleId, canvases, tiles, callables, overrides, keys)
     File(output).apply {
       parentFile.mkdirs()
       writeBytes(SummaryCodec.encode(module, limitations = limitations, binaryLocators = locators))
@@ -257,6 +271,9 @@ class MosaicIrExtractor(
     val dispatch: DispatchReceiver = DispatchReceiver.None,
     val callable: Boolean = false,
     val builder: Boolean = false,
+    val key: Fact<CanvasKeyIdentity>? = null,
+    val keyClass: String? = null,
+    val qualifier: Fact<String?>? = null,
   )
 
   private val identities = java.util.IdentityHashMap<IrElement, Int>()
@@ -346,7 +363,13 @@ class MosaicIrExtractor(
           }
           is IrGetValue -> values[element.symbol] ?: parameterValue(element)
           is IrTypeOperatorCall -> evaluate(element.argument)
-          is IrConst -> Value()
+          is IrConst ->
+            if (element.type.classFqName?.asString() == "kotlin.String" || element.value == null) {
+              Value(qualifier = Fact.Known(element.value as? String, site(element)))
+            } else {
+              Value()
+            }
+          is IrClassReference -> Value(keyClass = runtimeKeyClass(element.classType))
           is IrVararg -> {
             element.elements.forEach(::evaluate)
             Value()
@@ -423,6 +446,9 @@ class MosaicIrExtractor(
     private fun field(expression: IrGetField): Value {
       evaluatedChildren(expression).forEach(::evaluate)
       val property = expression.symbol.owner.correspondingPropertySymbol?.owner
+      if (property != null && isKeyType(expression.type)) {
+        propertyKey(property, file, expression)?.let { return it }
+      }
       if (property?.isDelegated == true) unknown(expression, "Unsupported delegated property initialization")
       val initializer = expression.symbol.owner.initializer?.expression
       if (property?.parent is IrFile && initializer != null) return evaluate(initializer)
@@ -443,32 +469,42 @@ class MosaicIrExtractor(
 
     private fun operation(call: IrFunctionAccessExpression): Value {
       val function = call.symbol.owner
-      val target = function.fqNameWhenAvailable?.asString().orEmpty()
+      val target = if (call is IrCall) resolvedName(call) else function.fqNameWhenAvailable?.asString().orEmpty()
       val actuals = prepare(call)
-      val intrinsic = call is IrCall && isIntrinsic(target)
+      val intrinsic =
+        call is IrCall && isIntrinsic(target) || isTileFactory(call) ||
+          target == "org.buildmosaic.core.injection.CanvasKey.<init>"
       if (!intrinsic) effects += usedDefaultEffects(call, file, owner)
       val receiver =
         actuals.entries.firstOrNull { it.key.kind == IrParameterKind.ExtensionReceiver }
           ?.value ?: actuals.entries.firstOrNull { it.key.kind == IrParameterKind.DispatchReceiver }?.value ?: Value()
 
       fun argument(name: String) = actuals.entries.firstOrNull { it.key.name.asString() == name }?.value ?: Value()
+      if (call is IrConstructorCall && target == "org.buildmosaic.core.injection.CanvasKey.<init>") {
+        val qualifier = if (call.argument("qualifier") == null) null else argument("qualifier").qualifier ?: Fact.Unknown("Dynamic Canvas qualifier", site(call))
+        return Value(key = resolvedKey(argument("type").keyClass, qualifier, site(call)))
+      }
       if (intrinsic) {
         when {
-          isSource(target) -> {
+          target == "org.buildmosaic.core.Mosaic.<get-canvas>" ->
+            return Value(
+              canvas = receiver.mosaic ?: CanvasExpression.Unknown("Unresolved Mosaic receiver transfer", site(call)),
+            )
+          isSource(target) && call is IrCall -> {
             val lookup =
               if (target.startsWith("org.buildmosaic.core.injection.")) {
                 canvas(receiver, call)
               } else {
                 receiver.mosaic ?: CanvasExpression.Unknown("Unresolved Mosaic receiver transfer", site(call))
               }
-            effects += Effect.Lookup(valueId(call), lookup, key(call, file, owner), if (target.endsWith("sourceOr")) LookupKind.OPTIONAL else LookupKind.REQUIRED, site(call))
+            effects += Effect.Lookup(valueId(call), lookup, key(call, actuals, file, owner), if (target.endsWith("sourceOr")) LookupKind.OPTIONAL else LookupKind.REQUIRED, site(call))
             return Value(callable = isCallableType(call.type))
           }
-          target == "org.buildmosaic.core.injection.CanvasFactory.paint" -> {
-            effects += Effect.Lookup(valueId(call), receiver.canvas ?: CanvasExpression.Unknown("CanvasFactory receiver transfer is unsupported", site(call)), key(call, file, owner), LookupKind.PAINT, site(call))
+          target == "org.buildmosaic.core.injection.CanvasFactory.paint" && call is IrCall -> {
+            effects += Effect.Lookup(valueId(call), receiver.canvas ?: CanvasExpression.Unknown("CanvasFactory receiver transfer is unsupported", site(call)), key(call, actuals, file, owner), LookupKind.PAINT, site(call))
             return Value(callable = isCallableType(call.type))
           }
-          target == "org.buildmosaic.core.Mosaic.compose" || target == "org.buildmosaic.core.Mosaic.composeAsync" -> {
+          (target == "org.buildmosaic.core.Mosaic.compose" || target == "org.buildmosaic.core.Mosaic.composeAsync") && call is IrCall -> {
             effects += Effect.Compose(valueId(call), receiver.mosaic ?: CanvasExpression.Unknown("Unresolved Mosaic receiver transfer", site(call)), argument("tile").tile ?: TileReference.Unknown("Unsupported Tile value provenance", site(call)), if (target.endsWith("composeAsync")) DiscoveryKind.COMPOSE_ASYNC else DiscoveryKind.COMPOSE, multiTileExecution(call), site(call))
             return Value(callable = isCallableType(call.type))
           }
@@ -477,6 +513,7 @@ class MosaicIrExtractor(
             call,
           ) -> return Value(tile = TileReference.Unknown("Fresh or captured Tile values are unsupported", site(call)))
           else -> {
+            check(call is IrCall)
             val parent =
               if (target.endsWith(
                   "withLayer",
@@ -491,6 +528,9 @@ class MosaicIrExtractor(
         }
       }
       val getter = (function as? IrSimpleFunction)?.correspondingPropertySymbol?.owner
+      if (getter != null && isKeyType(call.type)) {
+        propertyKey(getter, file, call)?.let { return it }
+      }
       val eligibility = callableEligibility(call) { actuals[it]?.callable == true }
       val boundary = (eligibility as? CallableEligibility.Unsupported)?.reason
       if (boundary != null) {
@@ -554,7 +594,11 @@ class MosaicIrExtractor(
         } else {
           null
         }
-      return Value(tile = tile, callable = isCallableType(call.type))
+      return Value(
+        tile = tile,
+        key = if (isKeyType(call.type)) Fact.Unknown("Unsupported computed CanvasKey value", site(call)) else null,
+        callable = isCallableType(call.type),
+      )
     }
 
     private fun layer(
@@ -593,7 +637,7 @@ class MosaicIrExtractor(
           } else {
             provider.evaluate(ctorBody)
           }
-          bindings += Binding(key(statement, file, owner), provider.effects, site(statement))
+          bindings += Binding(key(statement, prepared, file, owner), provider.effects, site(statement))
         } else if (statement is IrVariable) {
           builder.evaluate(statement)
         } else if (!provenHarmless(statement)) {
@@ -615,7 +659,7 @@ class MosaicIrExtractor(
     // Binary IR cannot prove what the getter returns. Defer to the selected producer's export.
     if (property.parent !is IrFile) return TilePropertyEligibility.REQUIRES_EXPORT
     val initializer = property.backingField?.initializer?.expression
-    return if (property.getter?.origin == IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR && initializer is IrCall && isTileFactory(initializer)) {
+    return if (property.getter?.origin == IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR && initializer is IrFunctionAccessExpression && isTileFactory(initializer)) {
       TilePropertyEligibility.LOCAL_STABLE
     } else {
       TilePropertyEligibility.UNSUPPORTED
@@ -625,11 +669,14 @@ class MosaicIrExtractor(
   private fun isIntrinsic(target: String): Boolean =
     isSource(target) || target in
       setOf(
+        "org.buildmosaic.core.Mosaic.<get-canvas>",
+        "org.buildmosaic.core.injection.CanvasKey.<init>",
         "org.buildmosaic.core.injection.CanvasFactory.paint", "org.buildmosaic.core.Mosaic.compose",
         "org.buildmosaic.core.Mosaic.composeAsync", "org.buildmosaic.core.injection.create",
         "org.buildmosaic.core.injection.canvas", "org.buildmosaic.core.injection.Canvas.withLayer",
         "org.buildmosaic.core.singleTile", "org.buildmosaic.core.multiTile", "org.buildmosaic.core.perKeyTile",
         "org.buildmosaic.core.chunkedMultiTile",
+        "org.buildmosaic.core.Tile.<init>", "org.buildmosaic.core.MultiTile.<init>",
       )
 
   private sealed interface CallableEligibility {
@@ -835,29 +882,74 @@ class MosaicIrExtractor(
   private fun isTileType(type: IrType): Boolean =
     type.classFqName?.asString() in setOf("org.buildmosaic.core.Tile", "org.buildmosaic.core.MultiTile")
 
+  private fun isKeyType(type: IrType): Boolean =
+    type.classFqName?.asString() == "org.buildmosaic.core.injection.CanvasKey"
+
   private fun key(
     call: IrCall,
+    actuals: Map<IrValueParameter, Value>,
     file: IrFile,
     owner: String,
   ): Fact<CanvasKeyIdentity> {
     val site = location(file, call, owner)
-    if (call.symbol.owner.parameters.any {
-        it.kind == IrParameterKind.Regular && it.name.asString() in setOf("key", "type")
+
+    fun actual(name: String): Value? = actuals.entries.firstOrNull { it.key.name.asString() == name }?.value
+    actual("key")?.let { return it.key ?: Fact.Unknown("Dynamic CanvasKey value", site) }
+    val classId =
+      if (call.symbol.owner.parameters.any { it.name.asString() == "type" }) {
+        actual("type")?.keyClass
+      } else {
+        call.typeArguments.firstOrNull()?.let(::runtimeKeyClass)
       }
-    ) {
-      return Fact.Unknown("Explicit CanvasKey or KClass argument is outside the supported key subset", site)
+    val qualifier = if (call.argument("qualifier") == null) null else actual("qualifier")?.qualifier ?: Fact.Unknown("Dynamic Canvas qualifier", site)
+    if (qualifier is Fact.Known && qualifier.value != null) {
+      limitations += "Qualifier literal at ${site.path}:${site.line} in $owner has no reliable external const origin in pre-inline IR"
     }
-    val type = call.typeArguments.firstOrNull() ?: return Fact.Unknown("Reified Canvas key type unavailable", site)
-    val classId = runtimeKeyClass(type) ?: return Fact.Unknown("Runtime Canvas key class unavailable", site)
-    val qualifier = call.argument("qualifier")
-    val literal =
-      when (qualifier) {
-        null -> null
-        is IrConst -> qualifier.value as? String
-        else -> return Fact.Unknown("Dynamic qualifier is unsupported", site)
-      }
-    if (literal != null) limitations += "Qualifier literal at ${site.path}:${site.line} in $owner has no reliable external const origin in pre-inline IR"
-    return Fact.Known(CanvasKeyIdentity(classId, literal), site)
+    return resolvedKey(classId, qualifier, site)
+  }
+
+  private fun resolvedKey(
+    classId: String?,
+    qualifier: Fact<String?>?,
+    site: SourceLocation,
+  ): Fact<CanvasKeyIdentity> {
+    if (classId == null) return Fact.Unknown("Dynamic KClass or unavailable runtime Canvas key class", site)
+    val literal = qualifier ?: Fact.Known(null, site)
+    return if (literal is Fact.Known) {
+      Fact.Known(CanvasKeyIdentity(classId, literal.value), site)
+    } else {
+      Fact.Unknown("Dynamic Canvas qualifier", site)
+    }
+  }
+
+  private fun propertyKey(
+    property: IrProperty,
+    file: IrFile,
+    element: IrElement,
+  ): Value? {
+    val site = location(file, element, propertyId(property))
+    val stable =
+      property.parent is IrPackageFragment && !property.isVar && !property.isDelegated &&
+        (property.parent !is IrFile || property.getter?.origin == IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR)
+    return if (stable && (property.parent !is IrFile || stableKeyProperty(property) != null)) {
+      Value(key = Fact.ExportedKey(propertyId(property), site))
+    } else {
+      null
+    }
+  }
+
+  private fun stableKeyProperty(property: IrProperty): CanvasKeyIdentity? {
+    if (property.parent !is IrFile || property.isVar || property.isDelegated) return null
+    if (property.getter?.origin != IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR) return null
+    val initializer = property.backingField?.initializer?.expression as? IrConstructorCall ?: return null
+    if (initializer.symbol.owner.fqNameWhenAvailable?.asString() != "org.buildmosaic.core.injection.CanvasKey.<init>") return null
+    val type = initializer.argument("type") as? IrClassReference ?: return null
+    val classId = runtimeKeyClass(type.classType) ?: return null
+    val qualifier = initializer.argument("qualifier")
+    if (qualifier != null && qualifier !is IrConst) return null
+    val literal = (qualifier as? IrConst)?.value
+    if (literal != null && literal !is String) return null
+    return CanvasKeyIdentity(classId, literal as? String)
   }
 
   private fun multiTileExecution(call: IrCall): MultiTileExecution {
@@ -950,6 +1042,7 @@ class MosaicIrExtractor(
         "org.buildmosaic.core.injection.Canvas", "org.buildmosaic.core.injection.MosaicCanvas",
         "org.buildmosaic.core.injection.CanvasBuilder", "org.buildmosaic.core.injection.CanvasFactory",
         "org.buildmosaic.core.Mosaic", "org.buildmosaic.core.Tile", "org.buildmosaic.core.MultiTile",
+        "org.buildmosaic.core.injection.CanvasKey",
       )
 
   private fun isSource(target: String): Boolean =
@@ -958,16 +1051,22 @@ class MosaicIrExtractor(
         "org.buildmosaic.core.source", "org.buildmosaic.core.sourceOr",
         "org.buildmosaic.core.injection.source", "org.buildmosaic.core.injection.sourceOr",
         "org.buildmosaic.core.injection.Canvas.source", "org.buildmosaic.core.injection.Canvas.sourceOr",
+        "org.buildmosaic.core.injection.MosaicCanvas.sourceOr",
       )
 
-  private fun isTileFactory(call: IrCall): Boolean =
-    resolvedName(call) in
+  private fun isTileFactory(call: IrFunctionAccessExpression): Boolean =
+    (if (call is IrCall) resolvedName(call) else call.symbol.owner.fqNameWhenAvailable?.asString().orEmpty()) in
       setOf(
         "org.buildmosaic.core.singleTile", "org.buildmosaic.core.multiTile",
         "org.buildmosaic.core.perKeyTile", "org.buildmosaic.core.chunkedMultiTile",
+        "org.buildmosaic.core.Tile.<init>", "org.buildmosaic.core.MultiTile.<init>",
       )
 
-  private fun resolvedName(call: IrCall): String = call.symbol.owner.fqNameWhenAvailable?.asString().orEmpty()
+  private fun resolvedName(call: IrCall): String {
+    val function = call.symbol.owner
+    val declaration = if (function.isFakeOverride) function.overriddenSymbols.firstOrNull()?.owner ?: function else function
+    return declaration.fqNameWhenAvailable?.asString().orEmpty()
+  }
 
   private fun propertyId(property: IrProperty): String =
     property.fqNameWhenAvailable?.asString() ?: property.name.asString()
@@ -1050,7 +1149,7 @@ class MosaicIrExtractor(
     )
   }
 
-  private fun IrCall.argument(name: String): IrExpression? =
+  private fun IrFunctionAccessExpression.argument(name: String): IrExpression? =
     symbol.owner.parameters.firstOrNull {
       it.kind == IrParameterKind.Regular && it.name.asString() == name
     }?.let { arguments[it] }

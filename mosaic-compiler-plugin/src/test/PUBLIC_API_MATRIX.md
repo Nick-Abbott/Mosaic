@@ -1,0 +1,29 @@
+# First-release public API matrix
+
+Frozen against `origin/main` b8c91f7257d72463e870dc423ac7575adeff4857 before production edits. This is the API inventory and the compact fixture plan. `S` means supported with exact Canvas identity and evaluation order; `U` means supported as a named conservative unknown when a runtime value cannot be established; `O` means outside analysis scope for the stated reason; `I` means not callable by a library user.
+
+| Public API operation | Decision and semantics |
+|---|---|
+| `Mosaic.canvas` | S: return the currently bound Canvas value, including through an immutable alias. Do not use a nested builder/factory receiver as its owner. |
+| `Mosaic.source(qualifier)` / `source(CanvasKey)` | S for known identity, required lookup on the receiver Mosaic's Canvas. U for dynamic qualifier/key. |
+| `Mosaic.sourceOr(qualifier)` / `sourceOr(CanvasKey)` | S for known identity, optional lookup on the receiver Mosaic's Canvas. U for dynamic qualifier/key. |
+| `Canvas.source(KClass, qualifier)` / `source(CanvasKey)` / reified `source<T>()` | S for known identity, required lookup on the receiver Canvas. U for dynamic type/qualifier/key. |
+| `Canvas.sourceOr(KClass, qualifier)` / `sourceOr(CanvasKey)` / reified `sourceOr<T>()` | S for known identity, optional lookup on the receiver Canvas. U for dynamic type/qualifier/key. |
+| `CanvasKey(KClass, qualifier)`, immutable local alias, immutable top-level declaration | S: a value with runtime `KClass` identity and exact nullable qualifier. Top-level cross-file references use the frozen declaration fact. Binary references use only a producer-exported fact; absent or incompatible facts are U. `copy`/destructuring/equality are O: arbitrary data-class value manipulation is beyond the stable-key subset. |
+| `CanvasBuilder.single(CanvasKey, ctor)` / reified `single<T>(qualifier, ctor)` | S for known identity: register before eager construction, defer `ctor` until construction. U for dynamic key/qualifier. A foreign builder receiver is U. |
+| `CanvasFactory.paint(CanvasKey)` / reified `paint<T>(qualifier)` | S for known identity: local registration first, then parent fallback at provider-construction time. U for dynamic key/qualifier or escaped factory. |
+| `canvas(build)` / `canvas(parent, build)` / named parent | S: evaluate supplied parent once, before builder registration and provider construction; no child binding can satisfy parent-expression work. Unknown parent is U unless local bindings prove the lookup. |
+| `Canvas.withLayer(build)` | S: receiver evaluated once as parent, child has local-first/parent-fallback resolution. |
+| `Canvas.create()` | S: produces Mosaic bound to exactly that Canvas. |
+| `Tile(block)` / `singleTile(block)` | S: evaluate creation arguments/captures once; defer block until composition. Top-level immutable default-getter declarations are stable exports. Other computed/member Tile properties are U for provenance. |
+| `MultiTile(block)` / `multiTile(block)` / `perKeyTile(fetch)` / `chunkedMultiTile(batchSize, fetch)` | S: evaluate creation arguments once; defer body/fetch. Execute body for known nonempty keys, skip for known empty keys, retain both possibilities for unknown keys. Invalid batch size/general exceptions are O because the analyzer checks Canvas availability. |
+| `Mosaic.compose(Tile)` / `composeAsync(Tile)` | S: execute Tile body when composed; preserve synchronous versus asynchronous failure propagation. Evaluate tile argument first. |
+| `Mosaic.compose(MultiTile, Collection)` / `composeAsync(MultiTile, Collection)` | S: evaluate both arguments; empty skips body, obvious nonempty executes body, unknown collection retains both paths. No arbitrary collection-content inference. |
+| `Mosaic.compose(MultiTile, singleKey)` / `composeAsync(MultiTile, singleKey)` | S: evaluate both arguments; always nonempty. |
+| `MosaicCanvas.close` | O: resource lifecycle, not Canvas availability. `MosaicCanvas` constructor and `CanvasBuilder`/`CanvasFactory` constructors/build method are I (`internal`). |
+| `Stub.create/toProvider`, `SingleStub` constructor, `Provider.get`, `Single` constructor/get, `MosaicDI` | O: public low-level DI types do not construct or query a Mosaic Canvas through their own contract; user code in callbacks is subject to ordinary callable analysis. |
+| `CanvasKey.toString` and generated value methods | O: formatting/value operations, with no Canvas lookup/register/paint contract. General user overrides and collection callbacks remain existing conservative boundaries. |
+
+## Fixture equivalence classes and interactions
+
+One source fixture family should select many roots. Test required and optional lookup through current Mosaic, `Mosaic.canvas`, explicit Canvas, immutable alias, and dynamic receiver. Cross reified/KClass/CanvasKey forms with null, empty, and nonempty qualifiers, known aliases, and dynamic type/key/qualifier. Verify one shared key identity across lookup, registration, and paint, including an exported top-level key from another source file and a separately compiled producer. Binary key facts must be explicit metadata, never inferred from a newer dependency initializer. Test parent expression evaluation before child registration, explicit/named parent, `withLayer`, nested provider ownership, and alias evaluation once. Test all four Tile creation functions; Tile sync/async; MultiTile single-key and collection sync/async with empty, nonempty, and unknown execution; argument work before deferred bodies. Preserve existing failure propagation distinction and Array versus collection KClass identity. Dynamic values must yield a named U, never false M/V. Use kernel tests only for new evaluator state, binary compilation only for exported key facts, and no new TestKit fixture.

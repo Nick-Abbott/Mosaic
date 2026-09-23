@@ -9,6 +9,7 @@ internal fun Fact<CanvasKeyIdentity>.toWire(): WireFact =
   when (this) {
     is Fact.Known -> WireFact.Known(value.toWire(), provenance?.toWire(), evidence.name, capturedOrigin?.toWire())
     is Fact.Unknown -> WireFact.Unknown(reason, site.toWire())
+    is Fact.ExportedKey -> WireFact.ExportedKey(declaration, site.toWire())
   }
 
 internal fun WireFact.toModel(): Fact<CanvasKeyIdentity> =
@@ -21,6 +22,7 @@ internal fun WireFact.toModel(): Fact<CanvasKeyIdentity> =
         capturedOrigin?.toModel(),
       )
     is WireFact.Unknown -> Fact.Unknown(reason, site.toModel())
+    is WireFact.ExportedKey -> Fact.ExportedKey(declaration, site.toModel())
   }
 
 internal fun CaptureOrigin.toWire(): WireOrigin =
