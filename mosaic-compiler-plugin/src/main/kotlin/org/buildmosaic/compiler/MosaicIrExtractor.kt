@@ -3,11 +3,9 @@
   "LongMethod",
   "TooManyFunctions",
   "NestedBlockDepth",
-  "LongParameterList",
   "LargeClass",
   "MaxLineLength",
   "ktlint:standard:max-line-length",
-  "DEPRECATION_ERROR",
 )
 
 package org.buildmosaic.compiler
@@ -46,6 +44,7 @@ import org.jetbrains.kotlin.ir.declarations.IrDeclaration
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
 import org.jetbrains.kotlin.ir.declarations.IrFile
 import org.jetbrains.kotlin.ir.declarations.IrFunction
+import org.jetbrains.kotlin.ir.declarations.IrPackageFragment
 import org.jetbrains.kotlin.ir.declarations.IrParameterKind
 import org.jetbrains.kotlin.ir.declarations.IrProperty
 import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
@@ -53,22 +52,31 @@ import org.jetbrains.kotlin.ir.declarations.IrValueParameter
 import org.jetbrains.kotlin.ir.declarations.IrVariable
 import org.jetbrains.kotlin.ir.expressions.IrBlock
 import org.jetbrains.kotlin.ir.expressions.IrBlockBody
+import org.jetbrains.kotlin.ir.expressions.IrBranch
 import org.jetbrains.kotlin.ir.expressions.IrCall
 import org.jetbrains.kotlin.ir.expressions.IrConst
 import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
+import org.jetbrains.kotlin.ir.expressions.IrDelegatingConstructorCall
 import org.jetbrains.kotlin.ir.expressions.IrErrorExpression
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.IrExpressionBody
 import org.jetbrains.kotlin.ir.expressions.IrFunctionAccessExpression
 import org.jetbrains.kotlin.ir.expressions.IrFunctionExpression
+import org.jetbrains.kotlin.ir.expressions.IrFunctionReference
 import org.jetbrains.kotlin.ir.expressions.IrGetField
+import org.jetbrains.kotlin.ir.expressions.IrGetObjectValue
 import org.jetbrains.kotlin.ir.expressions.IrGetValue
+import org.jetbrains.kotlin.ir.expressions.IrInstanceInitializerCall
+import org.jetbrains.kotlin.ir.expressions.IrLoop
 import org.jetbrains.kotlin.ir.expressions.IrReturn
+import org.jetbrains.kotlin.ir.expressions.IrSetField
+import org.jetbrains.kotlin.ir.expressions.IrSetValue
 import org.jetbrains.kotlin.ir.expressions.IrSpreadElement
+import org.jetbrains.kotlin.ir.expressions.IrThrow
+import org.jetbrains.kotlin.ir.expressions.IrTry
 import org.jetbrains.kotlin.ir.expressions.IrTypeOperatorCall
 import org.jetbrains.kotlin.ir.expressions.IrVararg
 import org.jetbrains.kotlin.ir.expressions.IrWhen
-import org.jetbrains.kotlin.ir.expressions.IrWhileLoop
 import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
 import org.jetbrains.kotlin.ir.types.IrSimpleType
 import org.jetbrains.kotlin.ir.types.IrType
@@ -78,7 +86,6 @@ import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
 import org.jetbrains.kotlin.ir.util.isFakeOverride
 import org.jetbrains.kotlin.ir.visitors.IrVisitorVoid
 import org.jetbrains.kotlin.ir.visitors.acceptChildrenVoid
-import org.jetbrains.kotlin.ir.visitors.acceptVoid
 import java.io.File
 
 /** Read-only K2 IR collector for the deliberately small prototype DSL subset. */
@@ -140,61 +147,81 @@ class MosaicIrExtractor(
           }
           is IrProperty -> {
             val initializer = declaration.backingField?.initializer?.expression
-            if (!declaration.isVar && initializer is IrCall && isTileFactory(initializer)) {
-              val site = location(file, declaration, propertyId(declaration))
-              val lambda =
-                initializer.argument(if (initializer.symbol.owner.name.asString() == "chunkedMultiTile") "fetch" else "block")
-                  ?: initializer.argument("fetch")
-              val effects =
-                lambdaBody(lambda)?.let { extractEffects(it, file, propertyId(declaration), mutableMapOf()) }
-                  ?: listOf(Effect.Unknown("${propertyId(declaration)}:body", "Tile block is unavailable", site))
-              tiles += TileContract(propertyId(declaration), effects, site, multi = initializer.symbol.owner.name.asString() != "singleTile")
+            val stableTile = declaration.parent is IrFile && !declaration.isVar && initializer is IrCall && isTileFactory(initializer)
+            if (stableTile) {
+              val call = initializer as IrCall
+              val lambda = call.argument("block") ?: call.argument("fetch")
+              val normalizer = Normalizer(file, propertyId(declaration))
+              val function = lambdaFunction(lambda)
+              function?.parameters?.filter { it.kind == IrParameterKind.ExtensionReceiver }?.forEach {
+                normalizer.values[it.symbol] = Value(mosaic = CanvasExpression.Current)
+              }
+              val body = function?.body
+              if (body != null) {
+                normalizer.body(body)
+              } else {
+                normalizer.effects += Effect.Unknown("${propertyId(declaration)}:body", "Tile block is unavailable", location(file, declaration, propertyId(declaration)))
+              }
+              tiles += TileContract(propertyId(declaration), normalizer.effects, location(file, declaration, propertyId(declaration)), multi = call.symbol.owner.name.asString() != "singleTile")
               declaration.getter?.let { locators[propertyId(declaration)] = binaryLocator(it, file) }
             }
-            declaration.getter?.let { getter ->
-              val stableTileGetter = initializer is IrCall && isTileFactory(initializer) && getter.origin == IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR
-              val id = symbolId(getter)
-              val site = location(file, getter, id)
-              if (isCanvasType(getter.returnType)) {
-                val result =
-                  if (getter.origin == IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR) {
-                    CanvasExpression.Unknown("Stored Canvas property provenance is unavailable", site)
-                  } else {
-                    returnedExpression(getter)?.let { canvasExpression(it, file, id, mutableMapOf()) }
-                      ?: CanvasExpression.Unknown("Canvas getter body is unavailable", site)
+            listOfNotNull(declaration.getter, declaration.setter).forEach { accessor ->
+              val id = symbolId(accessor)
+              val site = location(file, accessor, id)
+              val normalizer = Normalizer(file, id)
+              val value =
+                when {
+                  stableTile -> normalizer.body(initializer)
+                  declaration.isDelegated -> {
+                    normalizer.effects += Effect.Unknown("$id:delegated", "Unsupported delegated property initialization", site)
+                    Value()
                   }
-                canvases += CanvasContract(id, canvasParameters(getter, id), result, site)
+                  accessor.origin == IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR -> {
+                    if (isCanvasType(accessor.returnType)) {
+                      Value(canvas = CanvasExpression.Unknown("Stored Canvas property provenance is unavailable", site))
+                    } else if (initializer != null) {
+                      normalizer.body(initializer)
+                    } else {
+                      normalizer.effects += Effect.Unknown("$id:initialization", "Stored property initialization is unavailable", site)
+                      Value()
+                    }
+                  }
+                  accessor.body == null -> {
+                    normalizer.effects += Effect.Unknown("$id:body", "Accessor body is unavailable", site)
+                    Value()
+                  }
+                  else -> normalizer.body(accessor.body)
+                }
+              if (isCanvasType(accessor.returnType)) {
+                canvases += CanvasContract(id, canvasParameters(accessor, id), normalizer.result(value, accessor), site)
               } else {
-                val getterEffects =
-                  when {
-                    stableTileGetter -> emptyList()
-                    getter.origin == IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR ->
-                      initializer?.let { extractEffects(it, file, id, mutableMapOf()) }.orEmpty()
-                    getter.body != null -> extractEffects(getter.body!!, file, id, mutableMapOf())
-                    else -> listOf(Effect.Unknown("$id:body", "Getter body is unavailable", site))
-                  }
-                callables += CallableContract(id, canvasParameters(getter, id), getterEffects, location(file, getter, id))
+                callables += CallableContract(id, canvasParameters(accessor, id), normalizer.effects, site)
               }
-              locators[id] = binaryLocator(getter, file)
+              locators[id] = binaryLocator(accessor, file)
             }
           }
           is IrConstructor -> {
             val id = symbolId(declaration)
             val site = location(file, declaration, id)
+            val normalizer = Normalizer(file, id)
+            // Delegation is an invocation too. Class initialization is deliberately a conservative boundary.
+            (declaration.body as? IrBlockBody)?.statements?.filterIsInstance<IrDelegatingConstructorCall>()?.forEach {
+              normalizer.evaluate(it)
+            }
             val clazz = declaration.parent as? IrClass
-            val hasCapabilityInitialization =
-              declaration.body?.let(::containsCapability) == true ||
-                clazz?.declarations?.filterIsInstance<IrAnonymousInitializer>()?.any(::containsCapability) == true ||
-                clazz?.declarations?.filterIsInstance<IrProperty>()?.any {
-                  it.backingField?.initializer?.expression?.let(::containsCapability) == true
-                } == true
-            val effects =
-              if (hasCapabilityInitialization) {
-                listOf(Effect.Unknown("$id:initialization", "Constructor initialization may have Mosaic effects", site))
-              } else {
-                emptyList()
+            val initializers =
+              clazz?.declarations.orEmpty().mapNotNull {
+                when (it) {
+                  is IrAnonymousInitializer -> it.body
+                  is IrProperty -> it.backingField?.initializer
+                  else -> null
+                }
               }
-            callables += CallableContract(id, canvasParameters(declaration, id), effects, site)
+            val ownBody = (declaration.body as? IrBlockBody)?.statements.orEmpty().filterNot { it is IrDelegatingConstructorCall }
+            if (declaration.body == null || initializers.any { !provenHarmless(it) } || ownBody.any { !provenHarmless(it) }) {
+              normalizer.effects += Effect.Unknown("$id:initialization", "Constructor initialization may have Mosaic effects", site)
+            }
+            callables += CallableContract(id, canvasParameters(declaration, id), normalizer.effects, site)
             locators[id] = binaryLocator(declaration, file)
           }
           is IrSimpleFunction -> {
@@ -202,32 +229,13 @@ class MosaicIrExtractor(
             val id = symbolId(declaration)
             locators[id] = binaryLocator(declaration, file)
             val site = location(file, declaration, id)
-            val aliases = mutableMapOf<org.jetbrains.kotlin.ir.symbols.IrValueSymbol, IrExpression>()
-            val params = canvasParameters(declaration, id)
-            val returned = returnedExpression(declaration)
+            val normalizer = Normalizer(file, id)
+            if (declaration.body == null) normalizer.effects += Effect.Unknown("$id:body", "Callable body is unavailable", site)
+            val value = normalizer.body(declaration.body)
             if (isCanvasType(declaration.returnType)) {
-              val precedingEffects =
-                (declaration.body as? IrBlockBody)?.statements?.dropLast(1)?.flatMap {
-                  extractEffects(it, file, id, aliases)
-                }.orEmpty()
-              val returnedCanvas =
-                returned?.let { canvasExpression(it, file, id, aliases) }
-                  ?: CanvasExpression.Unknown("Canvas body is unavailable", site)
-              val result =
-                if (precedingEffects.isEmpty()) {
-                  returnedCanvas
-                } else {
-                  CanvasExpression.WithEffects(
-                    precedingEffects,
-                    returnedCanvas,
-                  )
-                }
-              canvases += CanvasContract(id, params, result, site)
-            } else if (declaration.body != null || params.isNotEmpty() || declaration.modality == Modality.ABSTRACT) {
-              val effects =
-                declaration.body?.let { extractEffects(it, file, id, aliases) }
-                  ?: listOf(Effect.Unknown("$id:body", "Callable body is unavailable", site))
-              callables += CallableContract(id, params, effects, site)
+              canvases += CanvasContract(id, canvasParameters(declaration, id), normalizer.result(value, declaration), site)
+            } else {
+              callables += CallableContract(id, canvasParameters(declaration, id), normalizer.effects, site)
             }
           }
         }
@@ -241,313 +249,453 @@ class MosaicIrExtractor(
     }
   }
 
-  private fun extractEffects(
-    body: IrElement,
-    file: IrFile,
-    owner: String,
-    aliases: MutableMap<org.jetbrains.kotlin.ir.symbols.IrValueSymbol, IrExpression>,
-  ): List<Effect> {
+  /** Values carry references only. Evaluation owns effects; aliases and parameter binding never rescan IR. */
+  private data class Value(
+    val canvas: CanvasExpression? = null,
+    val mosaic: CanvasExpression? = null,
+    val tile: TileReference? = null,
+    val dispatch: DispatchReceiver = DispatchReceiver.None,
+    val callable: Boolean = false,
+    val builder: Boolean = false,
+  )
+
+  private val identities = java.util.IdentityHashMap<IrElement, Int>()
+
+  private fun identity(element: IrElement): Int = identities.getOrPut(element) { identities.size }
+
+  private inner class Normalizer(
+    val file: IrFile,
+    val owner: String,
+    val values: MutableMap<org.jetbrains.kotlin.ir.symbols.IrValueSymbol, Value> = mutableMapOf(),
+  ) {
     val effects = mutableListOf<Effect>()
 
-    fun canvasValue(expression: IrExpression): CanvasExpression =
-      CanvasExpression.Alias(
-        "$owner:expression:${expression.startOffset}",
-        canvasExpression(expression, file, owner, aliases),
-      )
+    private fun site(element: IrElement) = location(file, element, owner)
 
-    fun scan(element: IrElement) {
-      when (element) {
-        is IrBlockBody -> element.statements.forEach(::scan)
-        is IrBlock -> element.statements.forEach(::scan)
-        is IrVariable -> {
-          if (!element.isVar) element.initializer?.let { aliases[element.symbol] = it }
-          // Construction is eager even when this value is never composed later.
-          if (isCanvasType(element.type)) {
-            element.initializer?.let { expression ->
-              effects +=
-                Effect.ConstructCanvas(
-                  "$owner:construct:${element.startOffset}",
-                  CanvasExpression.Alias("$owner:val:${element.startOffset}", canvasExpression(expression, file, owner, aliases)),
-                  location(file, element, owner),
-                )
-            }
-          } else {
-            element.initializer?.let(::scan)
-          }
-        }
-        is IrReturn -> scan(element.value)
-        is IrTypeOperatorCall -> scan(element.argument)
-        is IrVararg -> element.elements.forEach(::scan)
-        is IrSpreadElement -> scan(element.expression)
-        is IrGetField -> {
-          val property = element.symbol.owner.correspondingPropertySymbol?.owner
-          val getter = property?.getter
-          when {
-            getter != null && symbolId(getter) != owner ->
-              effects += Effect.Call("$owner:field:${element.startOffset}", symbolId(getter), site = location(file, element, owner))
-            property != null -> {
-              val initializer = property.backingField?.initializer?.expression
-              if (initializer == null) {
-                effects += Effect.Unknown("$owner:field:${element.startOffset}", "Stored field initialization is unavailable", location(file, element, owner))
-              } else {
-                effects += extractEffects(initializer, file, owner, aliases.toMutableMap())
-              }
-            }
-            isCapabilityType(element.type) ->
-              effects += Effect.Unknown("$owner:field:${element.startOffset}", "Capability field provenance is unavailable", location(file, element, owner))
-          }
-        }
-        is IrWhen, is IrWhileLoop -> {
-          if (containsCapability(
-              element,
-            )
-          ) {
-            effects += Effect.Unknown("$owner:control:${element.startOffset}", "Unsupported control flow with Mosaic capabilities", location(file, element, owner))
-          }
-        }
-        is IrCall -> {
-          val target = resolvedName(element)
-          val site = location(file, element, owner)
-          if (!isTileFactory(element)) effects += callActualEffects(element, file, owner, aliases)
-          when {
-            isSource(target) -> {
-              val kind = if (target.endsWith("sourceOr")) LookupKind.OPTIONAL else LookupKind.REQUIRED
-              effects += Effect.Lookup("$owner:lookup:${element.startOffset}", lookupCanvas(element, file, owner, aliases), key(element, file, owner), kind, site)
-            }
-            target == "org.buildmosaic.core.injection.CanvasFactory.paint" ->
-              effects += Effect.Lookup("$owner:paint:${element.startOffset}", CanvasExpression.Current, key(element, file, owner), LookupKind.PAINT, site)
-            target == "org.buildmosaic.core.Mosaic.compose" || target == "org.buildmosaic.core.Mosaic.composeAsync" -> {
-              val tile =
-                element.argument("tile")?.let { tileReference(it, file, owner, aliases) }
-                  ?: TileReference.Unknown("Missing Tile argument", site)
-              effects +=
-                Effect.Compose(
-                  "$owner:compose:${element.startOffset}",
-                  mosaicCanvas(element.receiver(), file, owner, aliases),
-                  tile,
-                  if (target.endsWith("composeAsync")) DiscoveryKind.COMPOSE_ASYNC else DiscoveryKind.COMPOSE,
-                  execution = multiTileExecution(element),
-                  site = site,
-                )
-            }
-            target == "org.buildmosaic.core.injection.canvas" || target == "org.buildmosaic.core.injection.Canvas.withLayer" ->
-              effects +=
-                Effect.ConstructCanvas(
-                  "$owner:construct:${element.startOffset}",
-                  canvasValue(element),
-                  site,
-                )
-            target == "org.buildmosaic.core.injection.create" ->
-              effects +=
-                Effect.ConstructCanvas(
-                  "$owner:create:${element.startOffset}",
-                  element.receiver()?.let { canvasValue(it) }
-                    ?: CanvasExpression.Unknown("Missing Mosaic.create Canvas", site),
-                  site,
-                )
-            isTileFactory(element) -> Unit
-            element.symbol.owner.correspondingPropertySymbol != null -> {
-              val getter = element.symbol.owner
-              if (isCanvasType(getter.returnType) || isUserPropertyGetter(getter) || isCapabilityCall(element)) {
-                val boundary = unavailableCallableReason(element)
-                when {
-                  boundary != null -> effects += Effect.Unknown("$owner:getter:${element.startOffset}", boundary, site)
-                  isCanvasType(getter.returnType) ->
-                    effects += Effect.ConstructCanvas("$owner:getter:${element.startOffset}", canvasValue(element), site)
-                  else ->
-                    effects += Effect.Call("$owner:getter:${element.startOffset}", symbolId(getter), callArguments(element, file, owner, aliases), site, dispatchReceiver(element, aliases), getter.modality != Modality.FINAL)
-                }
-              }
-            }
-            isCapabilityCall(element) || isUserCallable(target) -> {
-              val boundary = unavailableCallableReason(element)
-              if (boundary != null) {
-                effects += Effect.Unknown("$owner:call:${element.startOffset}", boundary, site)
-              } else {
-                effects += Effect.Call("$owner:call:${element.startOffset}", symbolId(element.symbol.owner), callArguments(element, file, owner, aliases), site, dispatchReceiver(element, aliases), element.symbol.owner.modality != Modality.FINAL)
-              }
-            }
-            else -> Unit
-          }
-        }
-        is IrConstructorCall -> {
-          element.arguments.filterNotNull().sortedBy { it.startOffset }.forEach(::scan)
-          effects += usedDefaultEffects(element, file, owner)
-          val constructor = element.symbol.owner
-          val clazz = constructor.parent as? IrClass
-          if (isUserConstructor(clazz)) {
-            val targetId = symbolId(constructor)
-            effects += Effect.Call("$owner:constructor:${element.startOffset}", targetId, site = location(file, element, owner))
-          } else if (constructor.parameters.any { isCapabilityType(it.type) }) {
-            effects += Effect.Unknown("$owner:constructor:${element.startOffset}", "Constructor capability effects are not summarized", location(file, element, owner))
-          }
-        }
-        else -> {
-          if (containsCapability(element)) {
-            effects +=
-              Effect.Unknown(
-                "$owner:unsupported:${element.startOffset}",
-                "Unsupported capability-bearing IR ${element::class.simpleName}",
-                location(file, element, owner),
-              )
-          }
-        }
-      }
+    private fun valueId(element: IrElement) = "$owner:value:${identity(element)}"
+
+    private fun unknown(
+      element: IrElement,
+      reason: String,
+    ) {
+      effects += Effect.Unknown(valueId(element), reason, site(element))
     }
-    scan(body)
-    return effects
-  }
 
-  private fun canvasExpression(
-    expression: IrExpression,
-    file: IrFile,
-    owner: String,
-    aliases: MutableMap<org.jetbrains.kotlin.ir.symbols.IrValueSymbol, IrExpression>,
-  ): CanvasExpression =
-    when (expression) {
-      is IrGetValue -> {
-        aliases[expression.symbol]?.let {
-          CanvasExpression.Alias("$owner:val:${expression.symbol.owner.startOffset}", canvasExpression(it, file, owner, aliases))
-        }
-          ?: (expression.symbol.owner as? IrValueParameter)?.let {
-            CanvasExpression.ParameterValue(ContractParameter(owner, it.name.asString(), ParameterKind.CANVAS))
-          }
-          ?: CanvasExpression.Unknown("Mutable or unresolved Canvas value", location(file, expression, owner))
+    private fun canvas(
+      value: Value,
+      element: IrElement,
+    ): CanvasExpression = value.canvas ?: CanvasExpression.Unknown("Unsupported Canvas provenance", site(element))
+
+    private fun materialize(
+      element: IrElement,
+      expression: CanvasExpression,
+    ): Value {
+      val slot = valueId(element)
+      effects += Effect.ConstructCanvas(slot, CanvasExpression.Alias(slot, expression), site(element))
+      return Value(canvas = CanvasExpression.ValueReference(slot, site(element)))
+    }
+
+    fun body(element: IrElement?): Value =
+      if (element == null) {
+        Value()
+      } else {
+        evaluate(element)
       }
-      is IrTypeOperatorCall -> canvasExpression(expression.argument, file, owner, aliases)
-      is IrCall -> {
-        val target = resolvedName(expression)
-        val site = location(file, expression, owner)
-        when (target) {
-          "org.buildmosaic.core.injection.canvas" -> {
-            val parent =
-              expression.argument("parent")?.let {
-                CanvasExpression.Alias("$owner:expression:${it.startOffset}", canvasExpression(it, file, owner, aliases))
-              } ?: CanvasExpression.Empty
-            layer(expression, expression.argument("build"), parent, file, owner, aliases)
+
+    fun result(
+      value: Value,
+      element: IrElement,
+    ): CanvasExpression = CanvasExpression.WithEffects(effects.toList(), canvas(value, element))
+
+    private fun sequence(statements: List<IrElement>): Value {
+      var result = Value()
+      for ((index, statement) in statements.withIndex()) {
+        if (statement is IrReturn && index != statements.lastIndex) {
+          unknown(statement, "Unsupported early return control flow")
+          return Value()
+        }
+        result = evaluate(statement)
+      }
+      return result
+    }
+
+    fun evaluate(element: IrElement): Value {
+      val result =
+        when (element) {
+          is IrBlockBody -> sequence(element.statements)
+          is IrBlock -> sequence(element.statements)
+          is IrExpressionBody -> evaluate(element.expression)
+          is IrReturn -> evaluate(element.value)
+          is IrVariable -> {
+            val value = element.initializer?.let(::evaluate) ?: Value()
+            if (!element.isVar) {
+              values[element.symbol] = value
+            } else if (isCapabilityType(element.type)) {
+              unknown(element, "Unsupported mutable capability provenance")
+            }
+            Value()
           }
-          "org.buildmosaic.core.injection.Canvas.withLayer" -> {
-            val parent =
-              expression.receiver()?.let {
-                CanvasExpression.Alias("$owner:expression:${it.startOffset}", canvasExpression(it, file, owner, aliases))
-              }
-                ?: CanvasExpression.Unknown("Missing layer parent", site)
-            layer(expression, expression.argument("build"), parent, file, owner, aliases)
+          is IrGetValue -> values[element.symbol] ?: parameterValue(element)
+          is IrTypeOperatorCall -> evaluate(element.argument)
+          is IrConst -> Value()
+          is IrVararg -> {
+            element.elements.forEach(::evaluate)
+            Value()
+          }
+          is IrSpreadElement -> evaluate(element.expression)
+          is IrFunctionExpression -> Value(callable = true)
+          is IrFunctionReference -> {
+            // Creating a reference evaluates bound receivers, not the referenced body.
+            element.arguments.filterNotNull().forEach(::evaluate)
+            Value(callable = true)
+          }
+          is IrFunctionAccessExpression -> operation(element)
+          is IrGetField -> field(element)
+          is IrGetObjectValue -> {
+            if (element.symbol.owner.fqNameWhenAvailable?.asString() != "kotlin.Unit") {
+              unknown(
+                element,
+                "Object initialization is unsupported",
+              )
+            }
+            Value(dispatch = DispatchReceiver.Unknown("Object initialization"))
+          }
+          is IrWhen, is IrLoop, is IrTry -> {
+            if (!provenHarmless(element)) unknown(element, "Unsupported control flow with Mosaic capabilities")
+            Value()
+          }
+          is IrSetField -> {
+            element.receiver?.let(::evaluate)
+            evaluate(element.value)
+            if (isCapabilityType(element.value.type) || isCallableType(element.value.type)) {
+              unknown(element, "Unsupported mutable or escaped field provenance")
+            }
+            Value()
+          }
+          is IrSetValue -> {
+            evaluate(element.value)
+            if (isCapabilityType(
+                element.symbol.owner.type,
+              )
+            ) {
+              unknown(element, "Unsupported mutable capability provenance")
+            }
+            Value()
           }
           else -> {
-            val boundary = unavailableCallableReason(expression)
-            if (boundary != null) {
-              CanvasExpression.WithEffects(
-                callActualEffects(expression, file, owner, aliases),
-                CanvasExpression.Unknown(boundary, site),
+            if (!provenHarmless(
+                element,
               )
-            } else if (expression.symbol.owner.parameters.any {
-                it.kind == IrParameterKind.Regular && !isCanvasType(it.type)
-              }
             ) {
-              CanvasExpression.WithEffects(
-                callActualEffects(expression, file, owner, aliases),
-                CanvasExpression.Unknown("Non-Canvas Canvas-helper arguments are unsupported", site),
-              )
-            } else {
-              CanvasExpression.RuntimeCall(
-                symbolId(expression.symbol.owner),
-                callArguments(expression, file, owner, aliases),
-                site,
-                callerEffects = callActualEffects(expression, file, owner, aliases),
-              )
+              unknown(element, "Unsupported capability-bearing IR ${element::class.simpleName}")
             }
+            Value()
+          }
+        }
+      return result.copy(callable = result.callable || element is IrExpression && isCallableType(element.type))
+    }
+
+    private fun parameterValue(expression: IrGetValue): Value {
+      val parameter = expression.symbol.owner as? IrValueParameter ?: return Value()
+      return when {
+        parameter.kind == IrParameterKind.DispatchReceiver -> Value(dispatch = DispatchReceiver.Forwarded)
+        parameter.kind == IrParameterKind.Regular && isCanvasType(parameter.type) ->
+          Value(
+            canvas =
+              CanvasExpression.ParameterValue(
+                ContractParameter(owner, parameter.name.asString(), ParameterKind.CANVAS),
+              ),
+          )
+        isCallableType(parameter.type) -> Value(callable = true)
+        else -> Value(dispatch = DispatchReceiver.Unknown("Dispatch receiver parameter or mutable value"))
+      }
+    }
+
+    private fun field(expression: IrGetField): Value {
+      expression.receiver?.let(::evaluate)
+      val property = expression.symbol.owner.correspondingPropertySymbol?.owner
+      if (property?.isDelegated == true) unknown(expression, "Unsupported delegated property initialization")
+      val initializer = expression.symbol.owner.initializer?.expression
+      if (property?.parent is IrFile && initializer != null) return evaluate(initializer)
+      if (isCapabilityType(expression.type) || initializer == null) {
+        unknown(expression, "Stored field initialization or receiver provenance is unavailable")
+      }
+      return Value()
+    }
+
+    /** Receiver and actuals are visited in compiler IR order, including its reordering temporaries. */
+    private fun prepare(call: IrFunctionAccessExpression): Map<IrValueParameter, Value> {
+      val actuals = linkedMapOf<IrValueParameter, Value>()
+      call.symbol.owner.parameters.forEach { parameter ->
+        call.arguments[parameter]?.let { actuals[parameter] = evaluate(it) }
+      }
+      return actuals
+    }
+
+    private fun operation(call: IrFunctionAccessExpression): Value {
+      val function = call.symbol.owner
+      val target = function.fqNameWhenAvailable?.asString().orEmpty()
+      val actuals = prepare(call)
+      val intrinsic = call is IrCall && isIntrinsic(target)
+      if (!intrinsic) effects += usedDefaultEffects(call, file, owner)
+      val receiver =
+        actuals.entries.firstOrNull { it.key.kind == IrParameterKind.ExtensionReceiver }
+          ?.value ?: actuals.entries.firstOrNull { it.key.kind == IrParameterKind.DispatchReceiver }?.value ?: Value()
+
+      fun argument(name: String) = actuals.entries.firstOrNull { it.key.name.asString() == name }?.value ?: Value()
+      if (intrinsic) {
+        when {
+          isSource(target) -> {
+            val lookup =
+              if (target.startsWith("org.buildmosaic.core.injection.")) {
+                canvas(receiver, call)
+              } else {
+                receiver.mosaic ?: CanvasExpression.Unknown("Unresolved Mosaic receiver transfer", site(call))
+              }
+            effects += Effect.Lookup(valueId(call), lookup, key(call, file, owner), if (target.endsWith("sourceOr")) LookupKind.OPTIONAL else LookupKind.REQUIRED, site(call))
+            return Value(callable = isCallableType(call.type))
+          }
+          target == "org.buildmosaic.core.injection.CanvasFactory.paint" -> {
+            effects += Effect.Lookup(valueId(call), receiver.canvas ?: CanvasExpression.Unknown("CanvasFactory receiver transfer is unsupported", site(call)), key(call, file, owner), LookupKind.PAINT, site(call))
+            return Value(callable = isCallableType(call.type))
+          }
+          target == "org.buildmosaic.core.Mosaic.compose" || target == "org.buildmosaic.core.Mosaic.composeAsync" -> {
+            effects += Effect.Compose(valueId(call), receiver.mosaic ?: CanvasExpression.Unknown("Unresolved Mosaic receiver transfer", site(call)), argument("tile").tile ?: TileReference.Unknown("Unsupported Tile value provenance", site(call)), if (target.endsWith("composeAsync")) DiscoveryKind.COMPOSE_ASYNC else DiscoveryKind.COMPOSE, multiTileExecution(call), site(call))
+            return Value(callable = isCallableType(call.type))
+          }
+          target == "org.buildmosaic.core.injection.create" -> return Value(mosaic = canvas(receiver, call))
+          isTileFactory(
+            call,
+          ) -> return Value(tile = TileReference.Unknown("Fresh or captured Tile values are unsupported", site(call)))
+          else -> {
+            val parent =
+              if (target.endsWith(
+                  "withLayer",
+                )
+              ) {
+                canvas(receiver, call)
+              } else {
+                argument("parent").canvas ?: CanvasExpression.Empty
+              }
+            return materialize(call, layer(call, parent))
           }
         }
       }
-      else ->
-        CanvasExpression.Unknown(
-          "Unsupported Canvas expression ${expression::class.simpleName}",
-          location(file, expression, owner),
-        )
-    }
-
-  private fun layer(
-    call: IrCall,
-    build: IrExpression?,
-    parent: CanvasExpression,
-    file: IrFile,
-    owner: String,
-    aliases: MutableMap<org.jetbrains.kotlin.ir.symbols.IrValueSymbol, IrExpression>,
-  ): CanvasExpression {
-    val site = location(file, call, owner)
-    val body = lambdaBody(build)
-    if (body == null) {
-      return CanvasExpression.Layer(
-        "$owner:${call.startOffset}",
-        parent,
-        unknownRegistrations = listOf(UnknownRegistration("Canvas builder body unavailable", site)),
-        site = site,
-      )
-    }
-    val bindings = mutableListOf<Binding>()
-    val unknown = mutableListOf<UnknownRegistration>()
-    if (body !is IrBlockBody) {
-      return CanvasExpression.Layer(
-        "$owner:${call.startOffset}",
-        parent,
-        unknownRegistrations = listOf(UnknownRegistration("Unsupported Canvas builder body", site)),
-        site = site,
-      )
-    }
-    val statements = body.statements
-    statements.forEach { statement ->
-      if (statement is IrCall && resolvedName(statement) == "org.buildmosaic.core.injection.CanvasBuilder.single") {
-        val bindingSite = location(file, statement, owner)
-        val ctorBody = lambdaBody(statement.argument("ctor"))
-        val effects =
-          ctorBody?.let { extractEffects(it, file, owner, aliases.toMutableMap()) }
-            ?: listOf(Effect.Unknown("$owner:constructor:${statement.startOffset}", "Binding constructor body unavailable", bindingSite))
-        bindings += Binding(key(statement, file, owner), effects, bindingSite)
-      } else if (containsCapability(statement)) {
-        unknown += UnknownRegistration("Unsupported Canvas registration", location(file, statement, owner))
+      val getter = (function as? IrSimpleFunction)?.correspondingPropertySymbol?.owner
+      val boundary =
+        when {
+          function is IrSimpleFunction && function.isInline && !effectFreeIntrinsic(target) -> "External inline capability helper ${symbolId(
+            function,
+          )} has no pre-inline body"
+          function.parameters.any {
+            it.kind == IrParameterKind.ExtensionReceiver && it.type.classFqName?.asString() == "org.buildmosaic.core.Mosaic"
+          } -> "Mosaic extension receiver transfer is unsupported for ${symbolId(function)}"
+          getter?.isDelegated == true -> "Unsupported delegated property accessor"
+          actuals.entries.any { it.key.kind != IrParameterKind.Regular && it.value.callable } -> "Unsupported callable invocation"
+          actuals.values.any { it.callable } -> "Unsupported capability-bearing callback escape"
+          else -> null
+        }
+      if (boundary != null) {
+        if (isCanvasType(call.type)) return materialize(call, CanvasExpression.Unknown(boundary, site(call)))
+        unknown(call, boundary)
+        return Value(callable = isCallableType(call.type))
       }
-    }
-    return CanvasExpression.Layer("$owner:${call.startOffset}", parent, bindings, unknown, site)
-  }
-
-  private fun callActualEffects(
-    call: IrCall,
-    file: IrFile,
-    owner: String,
-    aliases: MutableMap<org.jetbrains.kotlin.ir.symbols.IrValueSymbol, IrExpression>,
-  ): List<Effect> {
-    val actuals = call.arguments.filterNotNull().sortedBy { it.startOffset }
-    val effects =
-      actuals.filter { lambdaBody(it) == null }.flatMap { actual ->
-        if (isCanvasType(actual.type)) {
-          listOf(
-            Effect.ConstructCanvas(
-              "$owner:actual:${actual.startOffset}",
-              CanvasExpression.Alias(
-                "$owner:expression:${actual.startOffset}",
-                canvasExpression(actual, file, owner, aliases),
-              ),
-              location(file, actual, owner),
-            ),
-          )
+      if (effectFreeIntrinsic(target)) return Value(callable = isCallableType(call.type))
+      val arguments =
+        CallArguments(
+          actuals.mapNotNull { (parameter, value) ->
+            if (parameter.kind == IrParameterKind.Regular && isCanvasType(parameter.type)) {
+              ContractParameter(symbolId(function), parameter.name.asString(), ParameterKind.CANVAS) to ArgumentExpression.Canvas(canvas(value, call))
+            } else {
+              null
+            }
+          }.toMap(),
+        )
+      val dispatch =
+        actuals.entries.firstOrNull {
+          it.key.kind == IrParameterKind.DispatchReceiver
+        }?.value?.dispatch ?: DispatchReceiver.None
+      val virtual = function is IrSimpleFunction && function.modality != Modality.FINAL
+      if (isCanvasType(
+          call.type,
+        )
+      ) {
+        return materialize(
+          call,
+          CanvasExpression.RuntimeCall(
+            symbolId(function),
+            arguments,
+            site(call),
+            receiver = dispatch,
+            virtualDispatch = virtual,
+          ),
+        )
+      }
+      effects += Effect.Call(valueId(call), symbolId(function), arguments, site(call), dispatch, virtual)
+      if (call is IrConstructorCall) {
+        val clazz = function.parent as? IrClass
+        return Value(
+          dispatch =
+            if (clazz?.modality == Modality.FINAL) {
+              DispatchReceiver.Concrete(
+                clazz.fqNameWhenAvailable!!.asString(),
+              )
+            } else {
+              DispatchReceiver.Unknown("Receiver is not final")
+            },
+        )
+      }
+      val tile =
+        if (getter != null && isTileType(call.type)) {
+          val topLevel = getter.parent is IrPackageFragment && !getter.isVar
+          val stable =
+            topLevel && (
+              getter.parent !is IrFile ||
+                getter.backingField?.initializer?.expression?.let { it is IrCall && isTileFactory(it) } == true
+            )
+          if (stable) {
+            TileReference.Stable(propertyId(getter))
+          } else {
+            TileReference.Unknown("Unsupported member-dependent or computed Tile property", site(call))
+          }
         } else {
-          extractEffects(actual, file, owner, aliases.toMutableMap())
+          null
+        }
+      return Value(tile = tile, callable = isCallableType(call.type))
+    }
+
+    private fun layer(
+      call: IrCall,
+      parent: CanvasExpression,
+    ): CanvasExpression {
+      val bindings = mutableListOf<Binding>()
+      val unknown = mutableListOf<UnknownRegistration>()
+      val build = lambdaFunction(call.argument("build"))
+      val body = build?.body as? IrBlockBody
+      val builder = Normalizer(file, owner, values.toMutableMap())
+      build?.parameters?.filter { it.kind == IrParameterKind.ExtensionReceiver }?.forEach {
+        builder.values[it.symbol] = Value(builder = true)
+      }
+      if (body == null) unknown += UnknownRegistration("Canvas builder body unavailable", site(call))
+      body?.statements?.forEach { statement ->
+        if (statement is IrCall && resolvedName(statement) == "org.buildmosaic.core.injection.CanvasBuilder.single") {
+          val prepared = builder.prepare(statement)
+          if (prepared.entries.none { it.key.kind == IrParameterKind.DispatchReceiver && it.value.builder }) {
+            builder.unknown(statement, "Unsupported Canvas registration receiver")
+            unknown += UnknownRegistration("Unsupported registration receiver", site(statement))
+            return@forEach
+          }
+          val ctor = statement.argument("ctor")
+          val provider = Normalizer(file, owner, builder.values.toMutableMap())
+          val function = lambdaFunction(ctor)
+          function?.parameters?.filter { it.kind == IrParameterKind.ExtensionReceiver }?.forEach {
+            provider.values[it.symbol] = Value(canvas = CanvasExpression.Current)
+          }
+          val ctorBody = function?.body
+          if (ctorBody == null) {
+            provider.unknown(
+              statement,
+              "Binding constructor body unavailable",
+            )
+          } else {
+            provider.evaluate(ctorBody)
+          }
+          bindings += Binding(key(statement, file, owner), provider.effects, site(statement))
+        } else if (statement is IrVariable) {
+          builder.evaluate(statement)
+        } else if (!provenHarmless(statement)) {
+          builder.unknown(statement, "Unsupported Canvas registration effects")
+          unknown += UnknownRegistration("Unsupported Canvas registration", site(statement))
         }
       }
-    val target = resolvedName(call)
-    val knownCallback =
-      target in
-        setOf(
-          "org.buildmosaic.core.injection.canvas",
-          "org.buildmosaic.core.injection.Canvas.withLayer",
-          "org.buildmosaic.core.injection.CanvasBuilder.single",
-        ) || isTileFactory(call)
-    val withDefaults = effects + usedDefaultEffects(call, file, owner)
-    return if (!knownCallback && actuals.any { lambdaBody(it)?.let(::containsCapability) == true }) {
-      withDefaults + Effect.Unknown("$owner:callback:${call.startOffset}", "Unsupported capability-bearing callback", location(file, call, owner))
-    } else {
-      withDefaults
+      // Registration expressions execute before eager provider construction.
+      effects += builder.effects
+      return CanvasExpression.Layer(valueId(call), parent, bindings, unknown, site(call))
+    }
+  }
+
+  private fun isIntrinsic(target: String): Boolean =
+    isSource(target) || target in
+      setOf(
+        "org.buildmosaic.core.injection.CanvasFactory.paint", "org.buildmosaic.core.Mosaic.compose",
+        "org.buildmosaic.core.Mosaic.composeAsync", "org.buildmosaic.core.injection.create",
+        "org.buildmosaic.core.injection.canvas", "org.buildmosaic.core.injection.Canvas.withLayer",
+        "org.buildmosaic.core.singleTile", "org.buildmosaic.core.multiTile", "org.buildmosaic.core.perKeyTile",
+        "org.buildmosaic.core.chunkedMultiTile",
+      )
+
+  /** Explicit Mosaic-effect-free primitives. No package or result-type exemptions. */
+  private fun effectFreeIntrinsic(target: String): Boolean =
+    target in
+      setOf(
+        "kotlin.Any.<init>", "kotlin.String.toString",
+        "kotlin.error", "kotlin.collections.emptyList", "kotlin.collections.emptySet",
+        "kotlin.collections.listOf", "kotlin.collections.setOf", "kotlin.collections.mutableListOf",
+        "kotlin.collections.mutableSetOf", "kotlin.collections.arrayListOf", "kotlin.arrayOf",
+        "kotlin.collections.emptyMap", "kotlin.collections.mapOf", "kotlin.collections.mutableMapOf",
+        "kotlin.intArrayOf", "kotlin.emptyArray", "kotlin.internal.ir.less", "kotlin.internal.ir.EQEQ",
+        "kotlin.internal.ir.greater", "kotlin.internal.ir.lessOrEqual", "kotlin.internal.ir.greaterOrEqual",
+        "java.lang.System.nanoTime",
+      ) || target in primitiveOperations
+
+  private val primitiveOperations =
+    setOf("Int", "Long", "Float", "Double", "Short", "Byte", "Char", "Boolean").flatMap { type ->
+      setOf("plus", "minus", "times", "div", "rem", "inc", "dec", "compareTo", "equals", "not", "toString").map {
+        "kotlin.$type.$it"
+      }
+    }.toSet()
+
+  /** A bounded structural proof used only to omit demonstrably irrelevant computation. */
+  private fun provenHarmless(
+    element: IrElement,
+    active: Set<IrFunction> = emptySet(),
+  ): Boolean {
+    fun children(): Boolean {
+      var harmless = true
+      element.acceptChildrenVoid(
+        object : IrVisitorVoid() {
+          override fun visitElement(element: IrElement) {
+            if (!provenHarmless(element, active)) harmless = false
+          }
+        },
+      )
+      return harmless
+    }
+    return when (element) {
+      is IrConst, is IrGetValue -> true
+      is IrFunctionExpression, is IrFunctionReference -> true // creation is not execution
+      is IrFunctionAccessExpression -> {
+        val function = element.symbol.owner
+        val name = function.fqNameWhenAvailable?.asString().orEmpty()
+        val actualsHarmless = children() && element.arguments.filterNotNull().none { isCallableType(it.type) }
+        val defaultsHarmless =
+          function.parameters.filter {
+            it.kind == IrParameterKind.Regular && element.arguments[it] == null && it.varargElementType == null
+          }.all { it.defaultValue?.let { default -> provenHarmless(default, active) } == true }
+        if (!actualsHarmless || !defaultsHarmless) {
+          false
+        } else if (effectFreeIntrinsic(name)) {
+          true
+        } else if (function is IrSimpleFunction && function.modality == Modality.FINAL && !function.isInline) {
+          function.body?.takeIf { function !in active && !isIntrinsic(name) }?.let {
+            provenHarmless(it, active + function)
+          } == true
+        } else {
+          false
+        }
+      }
+      is IrGetField ->
+        !isCapabilityType(element.type) && element.symbol.owner.initializer?.let {
+          provenHarmless(it, active)
+        } == true
+      is IrGetObjectValue -> element.symbol.owner.fqNameWhenAvailable?.asString() == "kotlin.Unit"
+      is IrSetField -> !isCapabilityType(element.value.type) && children()
+      is IrSetValue -> !isCapabilityType(element.value.type) && children()
+      is IrInstanceInitializerCall -> true // constructor adapter handles stored initializers explicitly
+      is IrBlockBody, is IrBlock, is IrExpressionBody, is IrReturn, is IrVariable,
+      is IrTypeOperatorCall, is IrWhen, is IrBranch, is IrLoop, is IrVararg, is IrSpreadElement, is IrThrow,
+      -> children()
+      else -> false
     }
   }
 
@@ -555,35 +703,31 @@ class MosaicIrExtractor(
     call: IrFunctionAccessExpression,
     file: IrFile,
     owner: String,
-  ): List<Effect> {
-    val target = call.symbol.owner.fqNameWhenAvailable?.asString().orEmpty()
-    val eligible =
-      when (call) {
-        is IrCall -> isUserCallable(target) || isCapabilityCall(call)
-        is IrConstructorCall -> isUserConstructor(call.symbol.owner.parent as? IrClass)
-        else -> false
-      }
-    if (!eligible) return emptyList()
-    if (target.startsWith("org.buildmosaic.core.")) return emptyList()
-    return call.symbol.owner.parameters.filter {
-      it.kind == IrParameterKind.Regular && call.arguments[it] == null
+  ): List<Effect> =
+    call.symbol.owner.parameters.filter {
+      it.kind == IrParameterKind.Regular && call.arguments[it] == null && it.varargElementType == null
     }.mapNotNull { parameter ->
       val default = parameter.defaultValue
-      val unavailable = default == null || (default as? IrExpressionBody)?.expression is IrErrorExpression
-      if (!unavailable && default?.let(::containsCapability) != true) return@mapNotNull null
+      if (default != null && provenHarmless(default)) return@mapNotNull null
+      val unavailable = default == null || default.expression is IrErrorExpression
       Effect.Unknown(
-        "$owner:default:${call.startOffset}:${parameter.name.asString()}",
+        "$owner:default:${identity(call)}:${parameter.indexInParameters}",
         if (unavailable) {
-          "Default expression is unavailable for ${symbolId(call.symbol.owner)}.${parameter.name.asString()}"
+          "Default expression is unavailable for ${symbolId(call.symbol.owner)}.${parameter.name}"
         } else {
-          "Capability-bearing default expression is unsupported for ${symbolId(
-            call.symbol.owner,
-          )}.${parameter.name.asString()}"
+          "Capability-bearing default expression is unsupported for ${symbolId(call.symbol.owner)}.${parameter.name}"
         },
         location(file, call, owner),
       )
     }
-  }
+
+  private fun isCallableType(type: IrType): Boolean =
+    type.classFqName?.asString()?.let {
+      it.startsWith("kotlin.Function") || it.startsWith("kotlin.coroutines.SuspendFunction")
+    } == true
+
+  private fun isTileType(type: IrType): Boolean =
+    type.classFqName?.asString() in setOf("org.buildmosaic.core.Tile", "org.buildmosaic.core.MultiTile")
 
   private fun key(
     call: IrCall,
@@ -608,125 +752,6 @@ class MosaicIrExtractor(
       }
     if (literal != null) limitations += "Qualifier literal at ${site.path}:${site.line} in $owner has no reliable external const origin in pre-inline IR"
     return Fact.Known(CanvasKeyIdentity(classId, literal), site)
-  }
-
-  private fun tileReference(
-    expression: IrExpression,
-    file: IrFile,
-    owner: String,
-    aliases: Map<org.jetbrains.kotlin.ir.symbols.IrValueSymbol, IrExpression>,
-  ): TileReference =
-    when (expression) {
-      is IrGetValue ->
-        aliases[expression.symbol]?.let { tileReference(it, file, owner, aliases) }
-          ?: TileReference.Unknown("Tile value is not a stable alias", location(file, expression, owner))
-      is IrCall ->
-        expression.symbol.owner.correspondingPropertySymbol?.owner?.let { TileReference.Stable(propertyId(it)) }
-          ?: TileReference.Unknown("Tile getter is not a stable property", location(file, expression, owner))
-      is IrGetField ->
-        expression.symbol.owner.correspondingPropertySymbol?.owner?.let { TileReference.Stable(propertyId(it)) }
-          ?: TileReference.Unknown("Tile field is not a stable property", location(file, expression, owner))
-      else -> TileReference.Unknown("Unsupported Tile expression", location(file, expression, owner))
-    }
-
-  private fun mosaicCanvas(
-    expression: IrExpression?,
-    file: IrFile,
-    owner: String,
-    aliases: MutableMap<org.jetbrains.kotlin.ir.symbols.IrValueSymbol, IrExpression>,
-  ): CanvasExpression =
-    when (expression) {
-      is IrCall ->
-        if (resolvedName(expression) == "org.buildmosaic.core.injection.create") {
-          expression.receiver()?.let {
-            CanvasExpression.Alias("$owner:expression:${it.startOffset}", canvasExpression(it, file, owner, aliases))
-          }
-            ?: CanvasExpression.Unknown("Missing Mosaic.create Canvas", location(file, expression, owner))
-        } else {
-          CanvasExpression.Unknown("Unsupported Mosaic receiver", location(file, expression, owner))
-        }
-      is IrGetValue ->
-        aliases[expression.symbol]?.let { mosaicCanvas(it, file, owner, aliases) }
-          ?: (expression.symbol.owner as? IrValueParameter)?.takeIf {
-            it.kind == IrParameterKind.ExtensionReceiver || it.kind == IrParameterKind.DispatchReceiver
-          }?.let { CanvasExpression.Current }
-          ?: CanvasExpression.Unknown("Unresolved Mosaic alias", location(file, expression, owner))
-      null ->
-        CanvasExpression.Unknown(
-          "Mosaic receiver is unavailable",
-          SourceLocation(owner, file.fileEntry.name, 1, 1),
-        )
-      else -> CanvasExpression.Unknown("Unsupported Mosaic provenance", location(file, expression, owner))
-    }
-
-  private fun lookupCanvas(
-    call: IrCall,
-    file: IrFile,
-    owner: String,
-    aliases: MutableMap<org.jetbrains.kotlin.ir.symbols.IrValueSymbol, IrExpression>,
-  ): CanvasExpression =
-    if (resolvedName(call).startsWith("org.buildmosaic.core.injection.Canvas.") ||
-      resolvedName(call) in setOf("org.buildmosaic.core.injection.source", "org.buildmosaic.core.injection.sourceOr")
-    ) {
-      call.receiver()?.let {
-        CanvasExpression.Alias("$owner:expression:${it.startOffset}", canvasExpression(it, file, owner, aliases))
-      }
-        ?: CanvasExpression.Unknown("Canvas lookup receiver is unavailable", location(file, call, owner))
-    } else {
-      mosaicCanvas(call.receiver(), file, owner, aliases)
-    }
-
-  private fun callArguments(
-    call: IrCall,
-    file: IrFile,
-    owner: String,
-    aliases: MutableMap<org.jetbrains.kotlin.ir.symbols.IrValueSymbol, IrExpression>,
-  ): CallArguments {
-    val targetId = symbolId(call.symbol.owner)
-    val values = linkedMapOf<ContractParameter, ArgumentExpression>()
-    call.symbol.owner.parameters.filter {
-      it.kind == IrParameterKind.Regular && call.arguments[it] != null
-    }.sortedBy { call.arguments[it]!!.startOffset }.forEach {
-        parameter ->
-      if (isCanvasType(parameter.type)) {
-        call.arguments[parameter]?.let { actual ->
-          values[ContractParameter(targetId, parameter.name.asString(), ParameterKind.CANVAS)] =
-            ArgumentExpression.Canvas(CanvasExpression.Alias("$owner:expression:${actual.startOffset}", canvasExpression(actual, file, owner, aliases)))
-        }
-      }
-    }
-    return CallArguments(values)
-  }
-
-  private fun dispatchReceiver(
-    call: IrCall,
-    aliases: Map<org.jetbrains.kotlin.ir.symbols.IrValueSymbol, IrExpression>,
-  ): DispatchReceiver {
-    val parameter =
-      call.symbol.owner.parameters.firstOrNull { it.kind == IrParameterKind.DispatchReceiver }
-        ?: return DispatchReceiver.None
-
-    fun resolve(expression: IrExpression?): DispatchReceiver =
-      when (expression) {
-        is IrConstructorCall -> {
-          val type = expression.symbol.owner.parent as? IrClass
-          if (type?.modality == Modality.FINAL) {
-            type.fqNameWhenAvailable?.asString()?.let(DispatchReceiver::Concrete)
-              ?: DispatchReceiver.Unknown("Concrete receiver type is unavailable")
-          } else {
-            DispatchReceiver.Unknown("Receiver is not final")
-          }
-        }
-        is IrGetValue ->
-          aliases[expression.symbol]?.let(::resolve)
-            ?: if ((expression.symbol.owner as? IrValueParameter)?.kind == IrParameterKind.DispatchReceiver) {
-              DispatchReceiver.Forwarded
-            } else {
-              DispatchReceiver.Unknown("Dispatch receiver parameter or mutable value")
-            }
-        else -> DispatchReceiver.Unknown("Unsupported dispatch receiver provenance")
-      }
-    return resolve(call.arguments[parameter])
   }
 
   private fun multiTileExecution(call: IrCall): MultiTileExecution {
@@ -795,17 +820,10 @@ class MosaicIrExtractor(
     return "L$owner;"
   }
 
-  private fun returnedExpression(function: IrFunction): IrExpression? =
-    when (val body = function.body) {
-      is IrBlockBody -> body.statements.filterIsInstance<IrReturn>().lastOrNull()?.value
-      is org.jetbrains.kotlin.ir.expressions.IrExpressionBody -> body.expression
-      else -> null
-    }
-
-  private fun lambdaBody(expression: IrExpression?): IrElement? =
+  private fun lambdaFunction(expression: IrExpression?): IrFunction? =
     when (expression) {
-      is IrFunctionExpression -> expression.function.body
-      is IrBlock -> expression.statements.filterIsInstance<IrFunctionExpression>().lastOrNull()?.function?.body
+      is IrFunctionExpression -> expression.function
+      is IrBlock -> expression.statements.filterIsInstance<IrFunctionExpression>().lastOrNull()?.function
       else -> null
     }
 
@@ -827,82 +845,6 @@ class MosaicIrExtractor(
         "org.buildmosaic.core.injection.CanvasBuilder", "org.buildmosaic.core.injection.CanvasFactory",
         "org.buildmosaic.core.Mosaic", "org.buildmosaic.core.Tile", "org.buildmosaic.core.MultiTile",
       )
-
-  private fun isCapabilityCall(call: IrCall): Boolean =
-    isCapabilityType(call.symbol.owner.returnType) ||
-      call.symbol.owner.parameters.any { isCapabilityType(it.type) }
-
-  private fun isUserCallable(target: String): Boolean =
-    target.isNotBlank() &&
-      !target.substringAfterLast('.').startsWith("<get-") &&
-      !target.startsWith("kotlin.") &&
-      !target.startsWith("kotlinx.") &&
-      !target.startsWith("java.") &&
-      !target.startsWith("org.buildmosaic.core.")
-
-  private fun isUserConstructor(clazz: IrClass?): Boolean {
-    val name = clazz?.fqNameWhenAvailable?.asString().orEmpty()
-    return name.isNotBlank() &&
-      !name.startsWith("kotlin.") && !name.startsWith("kotlinx.") &&
-      !name.startsWith("java.") && !name.startsWith("org.buildmosaic.core.")
-  }
-
-  private fun isUnsupportedMosaicExtension(call: IrCall): Boolean =
-    call.symbol.owner.parameters.any {
-      it.kind == IrParameterKind.ExtensionReceiver && it.type.classFqName?.asString() == "org.buildmosaic.core.Mosaic"
-    }
-
-  private fun unavailableCallableReason(call: IrCall): String? =
-    when {
-      isUnsupportedMosaicExtension(call) ->
-        "Mosaic extension receiver transfer is unsupported for ${symbolId(call.symbol.owner)}"
-      call.symbol.owner.isInline ->
-        "External inline capability helper ${symbolId(call.symbol.owner)} has no pre-inline body"
-      else -> null
-    }
-
-  private fun isUserPropertyGetter(getter: IrSimpleFunction): Boolean {
-    val target = getter.fqNameWhenAvailable?.asString().orEmpty()
-    return target.isNotBlank() &&
-      !target.startsWith("kotlin.") &&
-      !target.startsWith("kotlinx.") &&
-      !target.startsWith("java.") &&
-      !target.startsWith("org.buildmosaic.core.")
-  }
-
-  private fun containsCapability(element: IrElement): Boolean {
-    var found = false
-    element.acceptVoid(
-      object : IrVisitorVoid() {
-        override fun visitElement(element: IrElement) {
-          element.acceptChildrenVoid(this)
-        }
-
-        override fun visitCall(expression: IrCall) {
-          val userGetter =
-            expression.symbol.owner.correspondingPropertySymbol != null &&
-              isUserPropertyGetter(expression.symbol.owner)
-          if (isCapabilityCall(expression) || isUserCallable(resolvedName(expression)) || userGetter) found = true
-          super.visitCall(expression)
-        }
-
-        override fun visitGetField(expression: IrGetField) {
-          if (isCapabilityType(expression.type)) found = true
-          super.visitGetField(expression)
-        }
-
-        override fun visitConstructorCall(expression: IrConstructorCall) {
-          if (expression.symbol.owner.parameters.any { isCapabilityType(it.type) } ||
-            isUserConstructor(expression.symbol.owner.parent as? IrClass)
-          ) {
-            found = true
-          }
-          super.visitConstructorCall(expression)
-        }
-      },
-    )
-    return found
-  }
 
   private fun isSource(target: String): Boolean =
     target in
@@ -1005,10 +947,5 @@ class MosaicIrExtractor(
   private fun IrCall.argument(name: String): IrExpression? =
     symbol.owner.parameters.firstOrNull {
       it.kind == IrParameterKind.Regular && it.name.asString() == name
-    }?.let { arguments[it] }
-
-  private fun IrCall.receiver(): IrExpression? =
-    symbol.owner.parameters.firstOrNull {
-      it.kind == IrParameterKind.DispatchReceiver || it.kind == IrParameterKind.ExtensionReceiver
     }?.let { arguments[it] }
 }

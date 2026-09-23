@@ -45,9 +45,10 @@ the newest helper body into an already compiled caller.
 
 The output is deterministic UTF-8 JSON at
 `META-INF/mosaic-analysis/v1/summary.json` when packaged by the Gradle plugin.
-The provisional schema remains v1.1. The extractor version is `prototype-4`;
-older extractor output is rejected because an older complete snapshot could
-omit accessor/default effects or conflate array keys. No new schema fields were needed. The
+The provisional schema remains v1.1. The extractor version is `prototype-5`;
+older extractor output is rejected because it can omit evaluation work or
+apply different dispatch and continuation rules to Canvas results. The model
+adds evaluated-value references and dispatch ownership on Canvas calls. The
 compiler option names and symbol-locator strategy are internal and provisional.
 This module is not published or included in the BOM.
 
@@ -59,3 +60,20 @@ and invalidation. Put a regression's decisive assertion at the cheapest layer
 that exposes it, and extend a relevant compiled fixture before adding another
 compiler or build invocation. Retain distinct failure guarantees rather than
 each historical test wrapper.
+
+The [executable scenario index](src/test/SCENARIOS.md) fixes the supported
+boundary and operation/context coverage. A single normalizer evaluates each IR
+expression once, appends its effects, and returns an abstract value. Immutable
+aliases read that value; Canvas computations initialize invocation-local slots.
+Compiler temporaries preserve named-argument order, without source-offset sorting.
+Functions, accessors, constructors and intrinsics all prepare receiver and actual
+values before defaults and eligibility. Registration arguments run before eager
+providers. Lambda/reference creation does not execute the body; unsupported
+invocation or escape is explicitly unknown.
+
+The kernel shares call activation, dispatch resolution, parameter binding and
+continuation for ordinary and Canvas results. Only a continuing path delivers a
+result; incomplete expansion and unknown behavior preserve continuation. The
+small effect-free whitelist and structural proof do not exempt whole packages,
+ordinary return types or unavailable bodies. Constructor delegation remains a
+symbolic call; unsupported stored initialization stays a named boundary.

@@ -15,14 +15,8 @@ import org.buildmosaic.analysis.MultiTileExecution
 import org.buildmosaic.analysis.SelectedRoot
 import org.buildmosaic.analysis.SummaryCodec
 import org.buildmosaic.analysis.TileReference
-import org.jetbrains.kotlin.cli.common.ExitCode
-import org.jetbrains.kotlin.cli.jvm.K2JVMCompiler
-import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.PrintStream
 import java.nio.file.Files
-import java.util.jar.JarEntry
-import java.util.jar.JarOutputStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -135,7 +129,7 @@ class IrShapeTest {
   }
 
   @Test
-  fun `unsupported Canvas helper still evaluates its non Canvas actual`() {
+  fun `Canvas helper evaluates ordinary actual before delivering result`() {
     val report =
       analyzeSource(
         """
@@ -154,12 +148,7 @@ class IrShapeTest {
       },
       report.toString(),
     )
-    assertTrue(
-      report.findings.any {
-        it.certainty == Certainty.UNVERIFIED && it.reason.contains("Non-Canvas Canvas-helper")
-      },
-      report.toString(),
-    )
+    assertTrue(report.findings.none { it.certainty == Certainty.UNVERIFIED }, report.toString())
   }
 
   @Test
@@ -570,7 +559,7 @@ class IrShapeTest {
     compile(producer, File(directory, "second-classes"), output = secondFacts, moduleId = "consts")
     val secondSummary = SummaryCodec.decode(File(secondFacts.parentFile, "summary.json").readBytes())
     assertTrue(
-      (secondSummary.module.canvases.single().result as CanvasExpression.Layer).bindings.single().key.toString().contains(
+      (secondSummary.module.canvases.single().result.evaluatedResult() as CanvasExpression.Layer).bindings.single().key.toString().contains(
         "new",
       ),
     )
@@ -716,22 +705,7 @@ class IrShapeTest {
       """.trimIndent(),
     )
     val output = File(directory, "facts.txt")
-    val error = ByteArrayOutputStream()
-    val exit =
-      K2JVMCompiler().exec(
-        PrintStream(error),
-        "-no-stdlib",
-        "-no-reflect",
-        "-jvm-target", "17",
-        "-classpath", System.getProperty("mosaic.fixture.classpath"),
-        "-Xplugin=${System.getProperty("mosaic.plugin.jar")}",
-        "-P", "plugin:org.buildmosaic.analysis:output=${File(directory, "summary.json").absolutePath}",
-        "-P", "plugin:org.buildmosaic.analysis:module=fixture",
-        "-P", "plugin:org.buildmosaic.analysis:probe=${output.absolutePath}",
-        "-d", File(directory, "classes").absolutePath,
-        source.absolutePath,
-      )
-    assertEquals(ExitCode.OK, exit, error.toString())
+    compile(source, File(directory, "classes"), output = output)
     val facts = output.readLines()
     assertTrue(facts.any { it.startsWith("CALL|org.buildmosaic.core.singleTile|") }, facts.joinToString("\n"))
     assertTrue(facts.any { it.startsWith("CALL|org.buildmosaic.core.injection.canvas|") })
@@ -754,14 +728,20 @@ class IrShapeTest {
         it is Effect.Lookup && it.key is org.buildmosaic.analysis.Fact.Unknown
       },
     )
-    val platform = summary.module.canvases.single { it.id == "fixture.platformCanvas()" }.result as CanvasExpression.Layer
+    val platform =
+      summary.module.canvases.single {
+        it.id == "fixture.platformCanvas()"
+      }.result.evaluatedResult() as CanvasExpression.Layer
     assertTrue(platform.bindings.any { it.key.toString().contains("qualifier=qualified") })
-    val layer = summary.module.canvases.single { it.id.startsWith("fixture.layer(") }.result as CanvasExpression.Layer
+    val layer =
+      summary.module.canvases.single {
+        it.id.startsWith("fixture.layer(")
+      }.result.evaluatedResult() as CanvasExpression.Layer
     assertTrue(layer.bindings.single().constructorEffects.any { it is Effect.Lookup && it.kind == LookupKind.PAINT })
     val entryEffects = summary.module.callables.single { it.id == "fixture.entry()" }.effects
     assertTrue(
       entryEffects.any {
-        it is Effect.Compose && it.discovery == DiscoveryKind.COMPOSE && it.tile == TileReference.Stable("fixture.MetricsTile") && it.canvas is CanvasExpression.Alias
+        it is Effect.Compose && it.discovery == DiscoveryKind.COMPOSE && it.tile == TileReference.Stable("fixture.MetricsTile") && it.canvas is CanvasExpression.ValueReference
       },
     )
     assertEquals(
@@ -793,54 +773,5 @@ class IrShapeTest {
         "fixture.PlatformComponent.handle(kotlin.String)",
       ).contains("#handle(Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;"),
     )
-  }
-
-  private fun compile(
-    source: File,
-    destination: File,
-    dependency: File? = null,
-    output: File? = null,
-    moduleId: String = "fixture",
-  ) {
-    val error = ByteArrayOutputStream()
-    val classpath =
-      System.getProperty("mosaic.fixture.classpath") + (
-        dependency?.let {
-          File.pathSeparator + it.absolutePath
-        } ?: ""
-      )
-    val args =
-      mutableListOf(
-        "-no-stdlib",
-        "-no-reflect",
-        "-jvm-target",
-        "17",
-        "-classpath",
-        classpath,
-        "-d",
-        destination.absolutePath,
-      )
-    if (output != null) {
-      args += "-Xplugin=${System.getProperty("mosaic.plugin.jar")}"
-      args += listOf("-P", "plugin:org.buildmosaic.analysis:output=${File(output.parentFile, "summary.json").absolutePath}")
-      args += listOf("-P", "plugin:org.buildmosaic.analysis:module=$moduleId")
-      args += listOf("-P", "plugin:org.buildmosaic.analysis:probe=${output.absolutePath}")
-    }
-    args += source.absolutePath
-    val exit = K2JVMCompiler().exec(PrintStream(error), *args.toTypedArray())
-    assertEquals(ExitCode.OK, exit, error.toString())
-  }
-
-  private fun jarClasses(
-    classes: File,
-    output: File,
-  ) {
-    JarOutputStream(output.outputStream()).use { jar ->
-      classes.walkTopDown().filter { it.isFile }.forEach { file ->
-        jar.putNextEntry(JarEntry(file.relativeTo(classes).invariantSeparatorsPath))
-        file.inputStream().use { it.copyTo(jar) }
-        jar.closeEntry()
-      }
-    }
   }
 }

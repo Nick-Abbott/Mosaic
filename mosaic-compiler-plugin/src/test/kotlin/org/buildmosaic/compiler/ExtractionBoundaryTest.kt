@@ -11,15 +11,9 @@ import org.buildmosaic.analysis.RootStatus
 import org.buildmosaic.analysis.SUMMARY_PATH
 import org.buildmosaic.analysis.SelectedRoot
 import org.buildmosaic.analysis.SummaryCodec
-import org.jetbrains.kotlin.cli.common.ExitCode
-import org.jetbrains.kotlin.cli.jvm.K2JVMCompiler
-import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.PrintStream
 import java.nio.file.Files
-import java.util.jar.JarEntry
 import java.util.jar.JarFile
-import java.util.jar.JarOutputStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -122,8 +116,8 @@ class MosaicReceiverBoundaryTest {
       }
     val module = compileAndExtract(listOf(source), directory, "regression")
     val result = module.canvases.single { it.id == "regression.entry()" }.result as CanvasExpression.WithEffects
-    assertTrue(result.result is CanvasExpression.Unknown)
-    assertTrue((result.result as CanvasExpression.Unknown).reason.contains("Mosaic extension receiver"))
+    val unknown = result.evaluatedResult() as CanvasExpression.Unknown
+    assertTrue(unknown.reason.contains("Mosaic extension receiver"))
     assertEquals(RootStatus.UNVERIFIED, analyze(module).roots.single().status)
   }
 }
@@ -338,9 +332,9 @@ class InitializationBoundaryTest {
     val withMetadata = analyze(consumerModule, listOf(producerModule))
     val noMetadataJar = File(directory, "producer-without-summary.jar")
     jarClasses(File(directory, "producer/classes"), noMetadataJar)
-    val withoutMetadataModule =
-      compileAndExtract(listOf(consumer), File(directory, "consumer-without-summary"), "regression", noMetadataJar)
-    val withoutMetadata = analyze(withoutMetadataModule)
+    JarFile(noMetadataJar).use { assertTrue(it.getJarEntry(SUMMARY_PATH) == null) }
+    // The unchanged consumer keeps its symbolic reference when selected metadata disappears.
+    val withoutMetadata = analyze(consumerModule)
     assertTrue(
       producerModule.callables.single {
         it.id == "producer.Boot.<init>()"
@@ -458,56 +452,15 @@ private fun analyze(
   AnalysisRequest(module, dependencies, listOf(SelectedRoot("entry", target)), policy = AnalysisPolicy.STRICT),
 )
 
-private fun compileAndExtract(
-  sources: List<File>,
-  directory: File,
-  moduleId: String,
-  dependency: File? = null,
-): ModuleContract {
-  directory.mkdirs()
-  val classes = File(directory, "classes")
-  val summary = File(directory, "summary.json")
-  val classpath =
-    System.getProperty("mosaic.fixture.classpath") + (
-      dependency?.let {
-        File.pathSeparator + it.absolutePath
-      } ?: ""
-    )
-  val arguments =
-    mutableListOf(
-      "-no-stdlib", "-no-reflect", "-jvm-target", "17", "-classpath", classpath,
-      "-Xplugin=${System.getProperty("mosaic.plugin.jar")}",
-      "-P", "plugin:org.buildmosaic.analysis:output=${summary.absolutePath}",
-      "-P", "plugin:org.buildmosaic.analysis:module=$moduleId",
-      "-d", classes.absolutePath,
-    )
-  arguments += sources.map { it.absolutePath }
-  val error = ByteArrayOutputStream()
-  val exit = K2JVMCompiler().exec(PrintStream(error), *arguments.toTypedArray())
-  assertEquals(ExitCode.OK, exit, error.toString())
-  return SummaryCodec.decode(summary.readBytes()).module
-}
-
 private fun readJarSummary(jar: File): ModuleContract =
   JarFile(jar).use { archive ->
     SummaryCodec.decode(archive.getInputStream(archive.getJarEntry(SUMMARY_PATH)).readBytes()).module
   }
 
-private fun jarClasses(
-  classes: File,
-  output: File,
-  summary: File? = null,
-) {
-  JarOutputStream(output.outputStream()).use { jar ->
-    classes.walkTopDown().filter { it.isFile }.forEach { file ->
-      jar.putNextEntry(JarEntry(file.relativeTo(classes).invariantSeparatorsPath))
-      file.inputStream().use { it.copyTo(jar) }
-      jar.closeEntry()
-    }
-    summary?.let {
-      jar.putNextEntry(JarEntry(SUMMARY_PATH))
-      it.inputStream().use { input -> input.copyTo(jar) }
-      jar.closeEntry()
-    }
-  }
+/** Inspect the computation that initialized the returned value, without executing it twice. */
+internal fun CanvasExpression.evaluatedResult(): CanvasExpression {
+  if (this !is CanvasExpression.WithEffects || result !is CanvasExpression.ValueReference) return this
+  val reference = result as CanvasExpression.ValueReference
+  val initialization = effects.filterIsInstance<Effect.ConstructCanvas>().single { it.id == reference.id }
+  return (initialization.canvas as CanvasExpression.Alias).expression
 }

@@ -116,7 +116,12 @@ sealed interface CanvasExpression {
     val arguments: CallArguments = CallArguments(),
     val site: SourceLocation,
     val callerEffects: List<Effect> = emptyList(),
+    val receiver: DispatchReceiver = DispatchReceiver.None,
+    val virtualDispatch: Boolean = false,
   ) : CanvasExpression
+
+  /** Read a previously evaluated value in the current invocation; never initializes it. */
+  data class ValueReference(val id: String, val site: SourceLocation) : CanvasExpression
 
   data class WithEffects(
     val effects: List<Effect>,

@@ -87,13 +87,12 @@ internal class RootEvaluator(
   private fun evaluateEffects(
     initial: List<EvaluationContext>,
     effects: List<Effect>,
-    evaluateBlocked: Boolean = false,
   ): List<EvaluationContext> {
     var contexts = initial
     effects.forEach { effect ->
       contexts =
         contexts.flatMap { context ->
-          if (context.blocked && !evaluateBlocked) {
+          if (context.blocked) {
             listOf(context)
           } else {
             joinEffectContinuations(evaluateEffect(effect, context))
@@ -276,13 +275,20 @@ internal class RootEvaluator(
   private fun evaluateCall(
     effect: Effect.Call,
     context: EvaluationContext,
-  ): List<EvaluationContext> =
+  ): List<EvaluationContext> = invoke(effect, context, canvasResult = false).map { it.context }
+
+  /** Shared target resolution, activation, ownership and continuation for every contract call. */
+  private fun invoke(
+    effect: Effect.Call,
+    context: EvaluationContext,
+    canvasResult: Boolean,
+  ): List<CanvasOutcome> =
     evaluateArguments(context, effect.arguments).flatMap { evaluated ->
       val caller = evaluated.context
-      if (caller.blocked) return@flatMap listOf(caller)
+      if (caller.blocked) return@flatMap listOf(CanvasOutcome(caller, null))
       if (caller.depth >= limits.expansionDepth) {
         addIncomplete(caller, effect.id, effect.site, "Callable expansion depth limit reached")
-        return@flatMap listOf(caller)
+        return@flatMap listOf(CanvasOutcome(caller, CanvasState.Unknown("Unresolved call result", effect.site)))
       }
       val receiverType =
         when (val receiver = effect.receiver) {
@@ -293,7 +299,7 @@ internal class RootEvaluator(
         }
       if (effect.virtualDispatch && receiverType == null) {
         addUnknown(caller, effect.id, effect.site, "Virtual receiver is unresolved: ${effect.receiver}")
-        return@flatMap listOf(caller)
+        return@flatMap listOf(CanvasOutcome(caller, CanvasState.Unknown("Unresolved call result", effect.site)))
       }
       val override =
         if (effect.virtualDispatch && receiverType != null) {
@@ -301,18 +307,24 @@ internal class RootEvaluator(
             is Resolution.Found -> resolved.value
             is Resolution.Conflict -> {
               addConflict(caller, effect.id, resolved.owners, effect.site)
-              return@flatMap listOf(caller)
+              return@flatMap listOf(CanvasOutcome(caller, CanvasState.Unknown("Unresolved call result", effect.site)))
             }
             Resolution.Missing -> {
               addUnknown(caller, effect.id, effect.site, "No direct override for $receiverType at ${effect.target}")
-              return@flatMap listOf(caller)
+              return@flatMap listOf(CanvasOutcome(caller, CanvasState.Unknown("Unresolved call result", effect.site)))
             }
           }
         } else {
           null
         }
       val resolvedTarget = override?.implementationId ?: effect.target
-      when (val target = registry.callable(resolvedTarget)) {
+      val contract =
+        if (canvasResult) {
+          registry.canvas(resolvedTarget).map { InvocationContract(it.id, it.parameters, emptyList(), it.result) }
+        } else {
+          registry.callable(resolvedTarget).map { InvocationContract(it.id, it.parameters, it.effects, null) }
+        }
+      when (val target = contract) {
         is Resolution.Found -> {
           specializedContracts += target.value.id
           val transferred =
@@ -322,7 +334,7 @@ internal class RootEvaluator(
               val mapping = override.slots.associate { it.base to it.implementation }
               if (evaluated.values.keys.any { it !in mapping }) {
                 addUnknown(caller, effect.id, effect.site, "Override argument slots are incomplete")
-                return@flatMap listOf(caller)
+                return@flatMap listOf(CanvasOutcome(caller, CanvasState.Unknown("Unresolved call result", effect.site)))
               }
               evaluated.copy(
                 values = evaluated.values.mapKeys { (parameter, _) -> mapping.getValue(parameter) },
@@ -335,18 +347,49 @@ internal class RootEvaluator(
               scope = resolvedTarget,
               depth = caller.depth + 1,
               knownReceiverType = receiverType,
+              currentCanvas = null,
             )
-          evaluateEffects(listOf(nested), target.value.effects).map { restoreCaller(it, caller) }
+          evaluateEffects(listOf(nested), target.value.effects).flatMap { continuing ->
+            val result = target.value.result
+            if (result == null) {
+              listOf(CanvasOutcome(continuing, if (continuing.blocked) null else CanvasState.Empty))
+            } else {
+              evaluateCanvas(result, continuing)
+            }
+          }.map { outcome -> CanvasOutcome(restoreCaller(outcome.context, caller), outcome.state) }
         }
         is Resolution.Conflict -> {
           addConflict(caller, effect.id, target.owners, effect.site)
-          listOf(caller)
+          listOf(CanvasOutcome(caller, CanvasState.Unknown("Unresolved call result", effect.site)))
         }
         Resolution.Missing -> {
-          addUnknown(caller, effect.id, effect.site, "Runtime callable target ${effect.target} is missing")
-          listOf(caller)
+          addUnknown(
+            caller,
+            effect.id,
+            effect.site,
+            if (canvasResult) {
+              "Runtime Canvas target is missing: ${effect.target}"
+            } else {
+              "Runtime callable target ${effect.target} is missing"
+            },
+          )
+          listOf(CanvasOutcome(caller, CanvasState.Unknown("Unresolved call result", effect.site)))
         }
       }
+    }
+
+  private data class InvocationContract(
+    val id: String,
+    val parameters: List<ContractParameter>,
+    val effects: List<Effect>,
+    val result: CanvasExpression?,
+  )
+
+  private fun <T, R> Resolution<T>.map(transform: (T) -> R): Resolution<R> =
+    when (this) {
+      is Resolution.Found -> Resolution.Found(transform(value))
+      is Resolution.Conflict -> this
+      Resolution.Missing -> Resolution.Missing
     }
 
   private fun evaluateBranch(
@@ -387,21 +430,33 @@ internal class RootEvaluator(
     expression: CanvasExpression,
     context: EvaluationContext,
   ): List<CanvasOutcome> =
-    when (expression) {
-      CanvasExpression.Empty -> listOf(CanvasOutcome(context, CanvasState.Empty))
-      CanvasExpression.Current -> listOf(CanvasOutcome(context, context.currentCanvas ?: unknownCurrent(context)))
-      is CanvasExpression.ParameterValue -> evaluateCanvasParameter(expression, context)
-      is CanvasExpression.Layer -> evaluateLayer(expression, context)
-      is CanvasExpression.Choice -> evaluateCanvasChoice(expression, context)
-      is CanvasExpression.RuntimeCall -> evaluateCanvasCall(expression, context)
-      is CanvasExpression.WithEffects ->
-        evaluateEffects(listOf(context), expression.effects).flatMap { evaluateCanvas(expression.result, it) }
-      is CanvasExpression.Captured -> evaluateCapturedCanvas(expression, context)
-      is CanvasExpression.Assumption -> evaluateAssumption(expression, context)
-      is CanvasExpression.Alias -> evaluateCanvasAlias(expression, context)
-      is CanvasExpression.Unknown -> {
-        addUnknown(context, "canvas:${expression.site.owner}", expression.site, expression.reason)
-        listOf(CanvasOutcome(context, CanvasState.Unknown(expression.reason, expression.site)))
+    if (context.blocked) {
+      listOf(CanvasOutcome(context, null))
+    } else {
+      when (expression) {
+        CanvasExpression.Empty -> listOf(CanvasOutcome(context, CanvasState.Empty))
+        CanvasExpression.Current -> listOf(CanvasOutcome(context, context.currentCanvas ?: unknownCurrent(context)))
+        is CanvasExpression.ParameterValue -> evaluateCanvasParameter(expression, context)
+        is CanvasExpression.Layer -> evaluateLayer(expression, context)
+        is CanvasExpression.Choice -> evaluateCanvasChoice(expression, context)
+        is CanvasExpression.RuntimeCall -> evaluateCanvasCall(expression, context)
+        is CanvasExpression.WithEffects ->
+          evaluateEffects(listOf(context), expression.effects).flatMap { evaluateCanvas(expression.result, it) }
+        is CanvasExpression.Captured -> evaluateCapturedCanvas(expression, context)
+        is CanvasExpression.Assumption -> evaluateAssumption(expression, context)
+        is CanvasExpression.Alias -> evaluateCanvasAlias(expression, context)
+        is CanvasExpression.ValueReference -> {
+          if (expression.id !in context.aliases) {
+            addUnknown(context, expression.id, expression.site, "Evaluated Canvas value is unavailable")
+            listOf(CanvasOutcome(context, CanvasState.Unknown("Uninitialized value", expression.site)))
+          } else {
+            readCanvasValue(expression.id, context)
+          }
+        }
+        is CanvasExpression.Unknown -> {
+          addUnknown(context, "canvas:${expression.site.owner}", expression.site, expression.reason)
+          listOf(CanvasOutcome(context, CanvasState.Unknown(expression.reason, expression.site)))
+        }
       }
     }
 
@@ -409,8 +464,29 @@ internal class RootEvaluator(
     expression: CanvasExpression.Alias,
     context: EvaluationContext,
   ): List<CanvasOutcome> {
-    context.aliases[expression.id]?.let { alternatives ->
-      return alternatives.filter { alternative ->
+    if (expression.id in context.aliases) return readCanvasValue(expression.id, context)
+    val outcomes = evaluateCanvas(expression.expression, context)
+    val alternatives =
+      outcomes.map { outcome ->
+        CanvasAlternative(
+          outcome.state,
+          outcome.context.assignments,
+          outcome.context.conditions,
+          outcome.context.feasibility,
+          outcome.context.blocked,
+        )
+      }
+    return outcomes.map { outcome ->
+      outcome.copy(context = outcome.context.copy(aliases = outcome.context.aliases + (expression.id to alternatives)))
+    }
+  }
+
+  private fun readCanvasValue(
+    id: String,
+    context: EvaluationContext,
+  ): List<CanvasOutcome> {
+    return context.aliases.getValue(id).let { alternatives ->
+      alternatives.filter { alternative ->
         alternative.assignments.all { (symbol, value) ->
           context.assignments[symbol]?.let { it == value } ?: true
         }
@@ -425,20 +501,6 @@ internal class RootEvaluator(
           alternative.state,
         )
       }
-    }
-    val outcomes = evaluateCanvas(expression.expression, context)
-    val alternatives =
-      outcomes.map { outcome ->
-        CanvasAlternative(
-          outcome.state,
-          outcome.context.assignments,
-          outcome.context.conditions,
-          outcome.context.feasibility,
-          outcome.context.blocked,
-        )
-      }
-    return outcomes.map { outcome ->
-      outcome.copy(context = outcome.context.copy(aliases = outcome.context.aliases + (expression.id to alternatives)))
     }
   }
 
@@ -504,7 +566,11 @@ internal class RootEvaluator(
     var constructorContexts = listOf(context.copy(currentCanvas = layer))
     expression.bindings.forEach { binding ->
       constructorContexts =
-        evaluateEffects(constructorContexts, binding.constructorEffects, evaluateBlocked = true)
+        constructorContexts.flatMap { previous ->
+          evaluateEffects(listOf(previous.copy(blocked = false)), binding.constructorEffects).map { evaluated ->
+            evaluated.copy(blocked = previous.blocked || evaluated.blocked)
+          }
+        }
     }
     return constructorContexts.map { constructorContext ->
       val restored = constructorContext.copy(currentCanvas = context.currentCanvas)
@@ -530,38 +596,18 @@ internal class RootEvaluator(
     context: EvaluationContext,
   ): List<CanvasOutcome> =
     evaluateEffects(listOf(context), expression.callerEffects).flatMap { prepared ->
-      evaluateArguments(prepared, expression.arguments)
-    }.flatMap { evaluated ->
-      val caller = evaluated.context
-      if (caller.blocked) return@flatMap listOf(CanvasOutcome(caller, null))
-      if (caller.depth >= limits.expansionDepth) {
-        addIncomplete(caller, expression.target, expression.site, "Canvas call expansion depth limit reached")
-        return@flatMap listOf(CanvasOutcome(caller, CanvasState.Unknown("Expansion limit", expression.site)))
-      }
-      when (val target = registry.canvas(expression.target)) {
-        is Resolution.Found -> {
-          specializedContracts += target.value.id
-          val callee = bindArguments(evaluated, target.value.parameters, expression.site)
-          val nested =
-            callee.copy(
-              dependencyPath =
-                caller.dependencyPath + DependencyPathNode("runtime:${expression.target}", expression.site),
-              scope = expression.target,
-              depth = caller.depth + 1,
-            )
-          evaluateCanvas(target.value.result, nested).map { outcome ->
-            CanvasOutcome(restoreCaller(outcome.context, caller), outcome.state)
-          }
-        }
-        is Resolution.Conflict -> {
-          addConflict(caller, expression.target, target.owners, expression.site)
-          listOf(CanvasOutcome(caller, CanvasState.Unknown("Conflicting Canvas target", expression.site)))
-        }
-        Resolution.Missing -> {
-          addUnknown(caller, expression.target, expression.site, "Runtime Canvas target is missing")
-          listOf(CanvasOutcome(caller, CanvasState.Unknown("Missing Canvas target", expression.site)))
-        }
-      }
+      invoke(
+        Effect.Call(
+          expression.target,
+          expression.target,
+          expression.arguments,
+          expression.site,
+          expression.receiver,
+          expression.virtualDispatch,
+        ),
+        prepared,
+        canvasResult = true,
+      )
     }
 
   private fun evaluateCapturedCanvas(

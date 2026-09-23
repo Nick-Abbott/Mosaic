@@ -4,6 +4,7 @@ import org.buildmosaic.analysis.AnalysisFixtures.binding
 import org.buildmosaic.analysis.AnalysisFixtures.entry
 import org.buildmosaic.analysis.AnalysisFixtures.lookup
 import org.buildmosaic.analysis.AnalysisFixtures.metrics
+import org.buildmosaic.analysis.AnalysisFixtures.platform
 import org.buildmosaic.analysis.AnalysisFixtures.report
 import org.buildmosaic.analysis.AnalysisFixtures.service
 import org.buildmosaic.analysis.AnalysisFixtures.site
@@ -14,6 +15,29 @@ import kotlin.test.assertTrue
 
 @Suppress("FunctionMaxLength", "LargeClass")
 class ActivationInvariantTest {
+  @Test
+  fun `A6 result wrappers respect blocked empty successful and unknown prefixes`() {
+    val aborted =
+      layer("abort", listOf(binding(service, effects = listOf(lookup("abort-paint", metrics, LookupKind.PAINT)))))
+    val result =
+      layer("result", listOf(binding(service, effects = listOf(lookup("result-paint", platform, LookupKind.PAINT)))))
+    val prefixes =
+      listOf(
+        emptyList(),
+        listOf(Effect.Unknown("opaque", "Opaque prefix", site("opaque"))),
+        listOf(Effect.ConstructCanvas("good", CanvasExpression.Empty, site("good"))),
+        listOf(Effect.ConstructCanvas("abort", aborted, site("abort"))),
+      )
+    prefixes.forEachIndexed { index, prefix ->
+      val expression = CanvasExpression.WithEffects(prefix, result)
+      val module =
+        ModuleContract("app", canvases = listOf(CanvasContract("entry", result = expression, site = site("entry"))))
+      val findings = report(module).findings
+      assertEquals(index != 3, findings.any { it.key == platform }, findings.toString())
+      assertEquals(index == 3, findings.any { it.key == metrics }, findings.toString())
+    }
+  }
+
   @Test
   fun `missing conflicting and limited callees preserve eager argument failures`() {
     for (factory in listOf(false, true)) {

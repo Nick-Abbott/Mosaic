@@ -9,7 +9,6 @@ import com.fasterxml.jackson.databind.MapperFeature
 import com.fasterxml.jackson.databind.SerializerProvider
 import com.fasterxml.jackson.databind.module.SimpleModule
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.fasterxml.jackson.module.kotlin.readValue
 import java.security.MessageDigest
 
 /** Internal provisional JAR resource. A missing or invalid resource is never a complete contract. */
@@ -18,7 +17,7 @@ const val SUMMARY_PATH = "META-INF/mosaic-analysis/v1/summary.json"
 data class SummaryMetadata(
   val schemaMajor: Int = 1,
   val schemaMinor: Int = 1,
-  val toolVersion: String = "prototype-4",
+  val toolVersion: String = "prototype-5",
   val kotlinCompilerVersion: String = "2.2.10",
   val moduleId: String,
   val sourceSet: String = "main",
@@ -92,16 +91,27 @@ object SummaryCodec {
   fun decode(bytes: ByteArray): SummaryMetadata {
     val summary =
       try {
-        mapper.readValue<SummaryMetadata>(bytes)
+        val document = mapper.readTree(bytes)
+        require(document != null && document.isObject) { "Missing Mosaic summary object" }
+        val required =
+          listOf(
+            "schemaMajor", "schemaMinor", "toolVersion", "kotlinCompilerVersion", "moduleId", "sourceSet",
+            "complete", "payloadHash", "module",
+          )
+        require(required.all { document.hasNonNull(it) }) { "Incomplete Mosaic summary header" }
+        mapper.treeToValue(document, SummaryMetadata::class.java)
       } catch (error: JsonProcessingException) {
         throw IllegalArgumentException("Malformed Mosaic summary", error)
       }
     require(summary.schemaMajor == 1) { "Unsupported Mosaic summary schema major ${summary.schemaMajor}" }
     require(summary.schemaMinor == 1) { "Unsupported Mosaic summary schema minor ${summary.schemaMinor}" }
-    require(summary.toolVersion == "prototype-4") { "Unsupported Mosaic extractor version ${summary.toolVersion}" }
+    require(summary.toolVersion == "prototype-5") { "Unsupported Mosaic extractor version ${summary.toolVersion}" }
     require(summary.complete) { "Partial Mosaic summary cannot be used as complete" }
     require(summary.moduleId == summary.module.id) { "Module identity mismatch" }
-    require(summary.sourceSet.isNotBlank()) { "Missing source set identity" }
+    require(summary.sourceSet == "main") { "Unsupported source set identity ${summary.sourceSet}" }
+    require(
+      summary.kotlinCompilerVersion == "2.2.10",
+    ) { "Unsupported Kotlin compiler ${summary.kotlinCompilerVersion}" }
     require(summary.payloadHash == sha256(mapper.writeValueAsBytes(summary.module))) {
       "Mosaic summary payload hash mismatch"
     }

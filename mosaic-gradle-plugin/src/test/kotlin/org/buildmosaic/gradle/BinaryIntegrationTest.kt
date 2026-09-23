@@ -104,16 +104,30 @@ class BinaryIntegrationTest {
       val TemporaryTile = singleTile { source<String>() }
       """.trimIndent(),
     )
-    run(project, "extractMosaicMain")
+    val stable = File(project, "src/main/kotlin/Stable.kt").apply { writeText("package deletion\nfun retained() = 1") }
+    File(project, "src/test/kotlin/TestOnly.kt").apply {
+      parentFile.mkdirs()
+      writeText("package deletion\nimport org.buildmosaic.core.*\nval TestOnlyTile = singleTile { source<Int>() }")
+    }
+    run(project, "extractMosaicMain", configurationCache = true)
     val summaryFile = File(project, "build/mosaic-analysis/main/summary.json")
     assertTrue(SummaryCodec.decode(summaryFile.readBytes()).module.tiles.any { it.id == "deletion.TemporaryTile" })
+    val renamed = File(source.parentFile, "Renamed.kt")
+    renamed.writeText(source.readText().replace("TemporaryTile", "RenamedTile"))
     source.delete()
-    val second = run(project, "extractMosaicMain")
+    val second = run(project, "extractMosaicMain", configurationCache = true)
     assertEquals(TaskOutcome.SUCCESS, second.task(":extractMosaicMain")?.outcome)
+    assertTrue(second.output.contains("Configuration cache entry reused"), second.output)
+    val refreshed = SummaryCodec.decode(summaryFile.readBytes()).module
+    assertEquals(listOf("deletion.RenamedTile"), refreshed.tiles.map { it.id })
+    assertTrue(refreshed.callables.any { it.id == "deletion.retained()" })
+    renamed.delete()
+    stable.delete()
+    val unconfigured = run(project, "verifyMosaicMain", expectFailure = true)
     val empty = SummaryCodec.decode(summaryFile.readBytes())
     assertTrue(empty.complete)
     assertTrue(empty.module.tiles.isEmpty())
-    val unconfigured = run(project, "verifyMosaicMain", expectFailure = true)
+    assertTrue(empty.module.callables.isEmpty())
     assertEquals(TaskOutcome.FAILED, unconfigured.task(":verifyMosaicMain")?.outcome)
     assertTrue(File(project, "build/reports/mosaic-analysis/main.txt").readText().contains("UNCONFIGURED"))
     val javaSource = File(project, "src/main/java/Extra.java")
@@ -188,8 +202,11 @@ class BinaryIntegrationTest {
     JarFile(adapterJar).use { archive ->
       val summary = SummaryCodec.decode(archive.getInputStream(archive.getJarEntry(SUMMARY_PATH)).readBytes())
       val result = summary.module.canvases.single { it.id.startsWith("adapter.applicationBase") }.result
-      assertTrue(result is CanvasExpression.RuntimeCall)
-      assertTrue(result.target.startsWith("platform.platformCanvas"))
+      assertTrue(result is CanvasExpression.WithEffects)
+      val initialization = result.effects.filterIsInstance<org.buildmosaic.analysis.Effect.ConstructCanvas>().single()
+      val reference = (initialization.canvas as CanvasExpression.Alias).expression
+      assertTrue(reference is CanvasExpression.RuntimeCall)
+      assertTrue(reference.target.startsWith("platform.platformCanvas"))
     }
 
     val tiles = project(root, "tiles", pluginJar, listOf(coreJar, platformJar))
@@ -313,12 +330,12 @@ class BinaryIntegrationTest {
     assertNotEquals(firstPlatformSummaryHash, summaryHash(platformJar))
     JarFile(platformJar).use { archive ->
       val summary = SummaryCodec.decode(archive.getInputStream(archive.getJarEntry(SUMMARY_PATH)).readBytes())
-      val bindings =
-        (
-          summary.module.canvases.single {
-            it.id.startsWith("platform.platformCanvas")
-          }.result as CanvasExpression.Layer
-        ).bindings
+      val result =
+        summary.module.canvases.single {
+          it.id.startsWith("platform.platformCanvas")
+        }.result as CanvasExpression.WithEffects
+      val initialization = result.effects.filterIsInstance<org.buildmosaic.analysis.Effect.ConstructCanvas>().single()
+      val bindings = ((initialization.canvas as CanvasExpression.Alias).expression as CanvasExpression.Layer).bindings
       assertFalse(bindings.any { it.key.toString().contains("PlatformConfig") })
     }
     assertEquals(adapterHash, sha256(adapterJar))
@@ -450,14 +467,17 @@ class BinaryIntegrationTest {
     project: File,
     task: String,
     expectFailure: Boolean = false,
+    configurationCache: Boolean = false,
   ): org.gradle.testkit.runner.BuildResult {
+    // Count actual builds, including expected failures, in the captured JUnit output.
+    System.err.println("MOSAIC_TESTKIT_INVOCATION")
     val runner =
       GradleRunner.create()
         .withProjectDir(project)
         .withArguments(
           task,
           "--offline",
-          "--no-configuration-cache",
+          if (configurationCache) "--configuration-cache" else "--no-configuration-cache",
           "--stacktrace",
           "--gradle-user-home",
           File(System.getProperty("user.home"), ".gradle").absolutePath,
