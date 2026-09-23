@@ -60,27 +60,28 @@ abstract class VerifyMosaicTask : DefaultTask() {
     output: java.io.File,
     selectedRoots: List<String>,
   ) {
-    try {
-      when (role.get()) {
-        MosaicAnalysisRole.APPLICATION ->
-          if (selectedRoots.isEmpty()) {
-            throw GradleException(
-              "Mosaic APPLICATION verification requires at least one root. " +
-                "Configure mosaicAnalysis.roots or select role = MosaicAnalysisRole.LIBRARY.",
-            )
-          }
-        MosaicAnalysisRole.LIBRARY ->
-          if (selectedRoots.isNotEmpty()) {
-            throw GradleException(
-              "Mosaic LIBRARY cannot select application roots. Remove mosaicAnalysis.roots or select " +
-                "role = MosaicAnalysisRole.APPLICATION; applications also export contracts.",
-            )
-          }
-      }
-    } catch (failure: GradleException) {
-      failWithDiagnostic(output, "Configuration error", failure)
-    }
+    val message = configurationError(selectedRoots) ?: return
+    failWithDiagnostic(output, "Configuration error", GradleException(message))
   }
+
+  private fun configurationError(selectedRoots: List<String>): String? =
+    when (role.get()) {
+      MosaicAnalysisRole.APPLICATION ->
+        when {
+          selectedRoots.any { it.isBlank() } -> "Mosaic APPLICATION roots must not be blank"
+          selectedRoots.isEmpty() ->
+            "Mosaic APPLICATION verification requires at least one root. " +
+              "Configure mosaicAnalysis.roots or select role = MosaicAnalysisRole.LIBRARY."
+          else -> null
+        }
+      MosaicAnalysisRole.LIBRARY ->
+        if (selectedRoots.isNotEmpty()) {
+          "Mosaic LIBRARY cannot select application roots. Remove mosaicAnalysis.roots or select " +
+            "role = MosaicAnalysisRole.APPLICATION; applications also export contracts."
+        } else {
+          null
+        }
+    }
 
   private fun readAndReportLocalSummary(output: java.io.File): ModuleContract =
     try {
@@ -120,11 +121,27 @@ abstract class VerifyMosaicTask : DefaultTask() {
       }
     val rootsList = selectedRoots.map { SelectedRoot(it, it) }
     val report = MosaicAnalyzer().analyze(AnalysisRequest(program, dependencies, rootsList, policy = policy))
+    validateResolvedRoots(output, report)
     writeReport(output, MosaicVerificationReport.application(report, role.get(), enforcement.get(), selectedRoots))
     if (!report.policyDecision.passed) throw GradleException("Mosaic verification failed; see ${output.absolutePath}")
     if (report.policyDecision.warnings.isNotEmpty()) {
       logger.warn("Mosaic verification passed with warnings; see ${output.absolutePath}")
     }
+  }
+
+  private fun validateResolvedRoots(
+    output: java.io.File,
+    report: org.buildmosaic.analysis.AnalysisReport,
+  ) {
+    val unresolved = report.roots.firstOrNull { it.root.target !in it.specializedContracts } ?: return
+    failWithDiagnostic(
+      output,
+      "Root selection error",
+      GradleException(
+        "Selected root '${unresolved.root.target}' does not resolve to a callable or Canvas contract " +
+          "in the selected Mosaic contracts",
+      ),
+    )
   }
 
   private fun validateOwners(

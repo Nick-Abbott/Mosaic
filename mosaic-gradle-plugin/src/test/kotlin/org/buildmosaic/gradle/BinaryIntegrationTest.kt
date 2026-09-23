@@ -95,6 +95,7 @@ class BinaryIntegrationTest {
     val pluginJar = File(repository, "mosaic-compiler-plugin/build/libs/mosaic-compiler-plugin-0.2.0.jar")
     val coreJar = File(repository, "mosaic-core/build/libs/mosaic-core-0.2.0.jar")
     val project = project(root, "deletion", pluginJar, listOf(coreJar))
+    val originalBuild = File(project, "build.gradle.kts").readText()
     val source = File(project, "src/main/kotlin/Temporary.kt")
     source.parentFile.mkdirs()
     source.writeText(
@@ -139,8 +140,33 @@ class BinaryIntegrationTest {
     javaSource.delete()
     run(project, "extractMosaicMain")
     assertTrue(SummaryCodec.decode(summaryFile.readBytes()).complete)
+
+    val buildFile = File(project, "build.gradle.kts")
+    val standardUnknownRootBuild =
+      originalBuild + "\nmosaicAnalysis { roots.add(\"deletion.missingRoot()\") }\n"
+    buildFile.writeText(standardUnknownRootBuild)
+    val standardUnknownRoot = run(project, "verifyMosaicMain", expectFailure = true)
+    assertTrue(standardUnknownRoot.output.contains("Root selection error"), standardUnknownRoot.output)
+    assertTrue(standardUnknownRoot.output.contains("deletion.missingRoot()"), standardUnknownRoot.output)
+    assertFalse(standardUnknownRoot.output.contains("passed with warnings"), standardUnknownRoot.output)
+
+    val strictUnknownRootBuild =
+      standardUnknownRootBuild.replace(
+        "MosaicAnalysisEnforcement.STANDARD",
+        "MosaicAnalysisEnforcement.STRICT",
+      )
+    buildFile.writeText(strictUnknownRootBuild)
+    val strictUnknownRoot = run(project, "verifyMosaicMain", expectFailure = true)
+    assertTrue(strictUnknownRoot.output.contains("Root selection error"), strictUnknownRoot.output)
+    assertTrue(strictUnknownRoot.output.contains("deletion.missingRoot()"), strictUnknownRoot.output)
+
+    buildFile.writeText(standardUnknownRootBuild.replace("deletion.missingRoot()", ""))
+    val blankRoot = run(project, "verifyMosaicMain", expectFailure = true)
+    assertTrue(blankRoot.output.contains("APPLICATION roots must not be blank"), blankRoot.output)
+
     val roleChangedBuild =
-      File(project, "build.gradle.kts").apply {
+      buildFile.apply {
+        writeText(originalBuild)
         appendText("\nmosaicAnalysis { role = org.buildmosaic.gradle.MosaicAnalysisRole.LIBRARY }\n")
       }
     val exportFirst = run(project, "verifyMosaicMain", configurationCache = true)
