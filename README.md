@@ -213,7 +213,7 @@ suspend fun loadOrderExtras(mosaic: Mosaic) {
 
 ## 🏗️ **Dependency Injection with Canvas**
 
-Canvas provides hierarchical dependency injection that separates application-level dependencies from request-specific data. The caller or framework owns each Canvas's lifetime.
+Canvas provides hierarchical dependency injection that separates application-level dependencies from request-specific data.
 
 ### **Creating the Application Canvas**
 
@@ -258,10 +258,7 @@ suspend fun handleOrderRequest(applicationCanvas: Canvas, orderId: String, userI
 
     // You can also override application dependencies for testing
     // single<PaymentClient> { MockPaymentClient() }
-  }.use { requestCanvas ->
-    // Use both application and request dependencies, then close this child layer
-    requestCanvas.create().compose(OrderPageTile)
-  }
+  }.create().compose(OrderPageTile)
 ```
 
 ### **Accessing Dependencies in Tiles**
@@ -315,7 +312,7 @@ suspend fun loadTypedOrder(applicationCanvas: Canvas, orderId: String, userId: S
   applicationCanvas.withLayer {
     single(OrderIdKey) { orderId }
     single(UserIdKey) { userId }
-  }.use { requestCanvas -> requestCanvas.create().compose(OrderTile) }
+  }.create().compose(OrderTile)
 
 // Use in tiles
 val OrderTile = singleTile {
@@ -331,7 +328,11 @@ val OrderTile = singleTile {
 - **Resource Efficiency**: Application bindings can be created once and reused across requests
 - **Testing Flexibility**: Override any dependency at any layer for testing
 - **Type Safety**: Kotlin checks the type of each lookup; the optional analysis plugin can verify supported roots have required bindings. Without analysis, a missing binding fails at runtime.
-- **Resource Cleanup**: `MosaicCanvas` closes locally owned `AutoCloseable` bindings when *you close the Canvas*. Close request child canvases at the end of their scope and the application Canvas at shutdown.
+
+`MosaicCanvas.close()` closes only bindings that Canvas created locally and that
+implement `AutoCloseable`; closing a child does not close its parent resources.
+Close a resource-owning application Canvas at shutdown, and explicitly scope a
+child Canvas when that child owns resources needing cleanup.
 
 ## 🔍 **Optional Static Canvas Analysis**
 
@@ -460,8 +461,8 @@ fun `handles slow external services`() = runTest {
 
 ## 🌐 **Framework Integration**
 
-These examples use `OrderKey = CanvasKey(String::class, "orderId")` and close
-each request child Canvas while keeping the shared application Canvas open.
+These examples use `OrderKey = CanvasKey(String::class, "orderId")` for the
+request ID.
 
 ### **Spring Boot**
 
@@ -484,14 +485,14 @@ class OrderController(private val canvas: Canvas) {
   fun getOrder(@PathVariable id: String): OrderPage = runBlocking {
     canvas.withLayer {
       single(OrderKey) { id }
-    }.use { requestCanvas -> requestCanvas.create().compose(OrderPageTile) }
+    }.create().compose(OrderPageTile)
   }
 
   @GetMapping("/orders/{id}/total")
   fun getOrderTotal(@PathVariable id: String): Double = runBlocking {
     canvas.withLayer {
       single(OrderKey) { id }
-    }.use { requestCanvas -> requestCanvas.create().compose(OrderTotalTile) }
+    }.create().compose(OrderTotalTile)
   }
 }
 ```
@@ -515,7 +516,7 @@ fun Application.module() {
       val orderId = call.parameters["id"] ?: error("Missing order ID")
       val orderPage = canvas.withLayer {
         single(OrderKey) { orderId }
-      }.use { requestCanvas -> requestCanvas.create().compose(OrderPageTile) }
+      }.create().compose(OrderPageTile)
       call.respond(orderPage)
     }
 
@@ -523,7 +524,7 @@ fun Application.module() {
       val orderId = call.parameters["id"] ?: error("Missing order ID")
       val total = canvas.withLayer {
         single(OrderKey) { orderId }
-      }.use { requestCanvas -> requestCanvas.create().compose(OrderTotalTile) }
+      }.create().compose(OrderTotalTile)
       call.respond(mapOf("total" to total))
     }
   }
@@ -553,14 +554,14 @@ class OrderController(private val canvas: Canvas) {
   fun getOrder(@PathVariable id: String): OrderPage = runBlocking {
     canvas.withLayer {
       single(OrderKey) { id }
-    }.use { requestCanvas -> requestCanvas.create().compose(OrderPageTile) }
+    }.create().compose(OrderPageTile)
   }
 
   @Get("/{id}/total")
   fun getOrderTotal(@PathVariable id: String): Map<String, Double> = runBlocking {
     val total = canvas.withLayer {
       single(OrderKey) { id }
-    }.use { requestCanvas -> requestCanvas.create().compose(OrderTotalTile) }
+    }.create().compose(OrderTotalTile)
     mapOf("total" to total)
   }
 }

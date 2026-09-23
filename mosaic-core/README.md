@@ -210,16 +210,18 @@ suspend fun createApplicationCanvas(): MosaicCanvas = canvas {
   single<PreferencesService> { PreferencesServiceImpl() }
 }
 
-// Add request values, compose the response, then close the request layer.
+// Add request values and compose the response.
 suspend fun loadPreferences(applicationCanvas: Canvas): Preferences =
   applicationCanvas.withLayer {
     single(UserIdKey) { "user-123" }
     single(LocaleKey) { "en-US" }
-  }.use { requestCanvas -> requestCanvas.create().compose(userPreferencesTile) }
+  }.create().compose(userPreferencesTile)
 ```
 
-Close the application Canvas at shutdown. A child Canvas closes only its own
-locally created `AutoCloseable` bindings; it does not close the parent.
+A Canvas closes only its locally created `AutoCloseable` bindings when closed;
+closing a child does not close parent resources. Close a resource-owning
+application Canvas at shutdown, and explicitly scope a child if it owns
+resources needing cleanup.
 
 ## 🎯 **Key Advantages**
 
@@ -260,7 +262,7 @@ suspend fun createApplicationCanvas(): MosaicCanvas = canvas {
 suspend fun dashboard(applicationCanvas: Canvas): Dashboard =
   applicationCanvas.withLayer {
     single(UserIdKey) { "123" }
-  }.use { requestCanvas -> requestCanvas.create().compose(userDashboardTile) }
+  }.create().compose(userDashboardTile)
 ```
 
 ### **Spring Integration**
@@ -285,7 +287,7 @@ class UserController(private val canvas: Canvas) {
     runBlocking {
       canvas.withLayer {
         single(UserIdKey) { userId }
-      }.use { requestCanvas -> requestCanvas.create().compose(userDashboardTile) }
+      }.create().compose(userDashboardTile)
     }
 }
 ```
@@ -306,7 +308,7 @@ fun Application.module() {
       val userId = call.parameters["userId"]!!
       val dashboard = canvas.withLayer {
         single(UserIdKey) { userId }
-      }.use { requestCanvas -> requestCanvas.create().compose(userDashboardTile) }
+      }.create().compose(userDashboardTile)
       call.respond(dashboard)
     }
   }

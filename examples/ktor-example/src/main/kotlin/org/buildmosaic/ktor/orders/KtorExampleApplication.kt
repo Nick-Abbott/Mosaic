@@ -43,7 +43,7 @@ fun Application.module() {
       val orderPage =
         canvas.withLayer {
           single(OrderKey) { orderId }
-        }.use { requestCanvas -> requestCanvas.create().compose(OrderPageTile) }
+        }.create().compose(OrderPageTile)
       call.respond(orderPage)
     }
 
@@ -52,7 +52,7 @@ fun Application.module() {
       val total =
         canvas.withLayer {
           single(OrderKey) { orderId }
-        }.use { requestCanvas -> requestCanvas.create().compose(OrderTotalTile) }
+        }.create().compose(OrderTotalTile)
       call.respond(mapOf("total" to total))
     }
   }

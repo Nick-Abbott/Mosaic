@@ -22,7 +22,7 @@ class OrderController(private val canvas: Canvas) {
     runBlocking {
       canvas.withLayer {
         single(OrderKey) { id }
-      }.use { requestCanvas -> requestCanvas.create().compose(OrderPageTile) }
+      }.create().compose(OrderPageTile)
     }
 
   @GetMapping("/{id}/total")
@@ -32,6 +32,6 @@ class OrderController(private val canvas: Canvas) {
     runBlocking {
       canvas.withLayer {
         single(OrderKey) { id }
-      }.use { requestCanvas -> requestCanvas.create().compose(OrderTotalTile) }
+      }.create().compose(OrderTotalTile)
     }
 }
