@@ -30,7 +30,8 @@ import org.buildmosaic.analysis.OverrideSlot
 import org.buildmosaic.analysis.ParameterKind
 import org.buildmosaic.analysis.ResolvedOverride
 import org.buildmosaic.analysis.SourceLocation
-import org.buildmosaic.analysis.SummaryCodec
+import org.buildmosaic.analysis.SourceShard
+import org.buildmosaic.analysis.SourceShardCodec
 import org.buildmosaic.analysis.TileContract
 import org.buildmosaic.analysis.TileReference
 import org.buildmosaic.analysis.UnknownRegistration
@@ -95,6 +96,8 @@ import java.io.File
 class MosaicIrExtractor(
   private val output: String,
   private val moduleId: String,
+  private val sourceRoot: String? = null,
+  private val shardMode: Boolean = false,
 ) : IrGenerationExtension {
   private val limitations = mutableListOf<String>()
   private val freshTemplates = linkedMapOf<String, TileContract>()
@@ -103,14 +106,18 @@ class MosaicIrExtractor(
     moduleFragment: org.jetbrains.kotlin.ir.declarations.IrModuleFragment,
     pluginContext: IrPluginContext,
   ) {
-    freshTemplates.clear()
-    val canvases = mutableListOf<CanvasContract>()
-    val tiles = mutableListOf<TileContract>()
-    val callables = mutableListOf<CallableContract>()
-    val overrides = mutableListOf<ResolvedOverride>()
-    val keys = mutableListOf<KeyContract>()
-    val locators = linkedMapOf<String, String>()
+    val shards = mutableListOf<SourceShard>()
     moduleFragment.files.sortedBy { it.fileEntry.name }.forEach { file ->
+      freshTemplates.clear()
+      identities.clear()
+      limitations.clear()
+      val canvases = mutableListOf<CanvasContract>()
+      val tiles = mutableListOf<TileContract>()
+      val callables = mutableListOf<CallableContract>()
+      val overrides = mutableListOf<ResolvedOverride>()
+      val keys = mutableListOf<KeyContract>()
+      val locators = linkedMapOf<String, String>()
+
       fun visit(declaration: IrDeclaration) {
         when (declaration) {
           is IrClass -> {
@@ -257,13 +264,37 @@ class MosaicIrExtractor(
         }
       }
       file.declarations.forEach(::visit)
+      tiles += freshTemplates.values
+      val sourceId = sourceIdentity(file)
+      val shard =
+        SourceShard(
+          sourceId,
+          ModuleContract(moduleId, canvases, tiles, callables, overrides, keys),
+          limitations.toList(),
+          locators,
+        )
+      if (shardMode) {
+        File(output, "$sourceId.shard.json").apply {
+          parentFile.mkdirs()
+          writeBytes(SourceShardCodec.encode(shard))
+        }
+      }
+      shards += shard
     }
-    tiles += freshTemplates.values
-    val module = ModuleContract(moduleId, canvases, tiles, callables, overrides, keys)
-    File(output).apply {
-      parentFile.mkdirs()
-      writeBytes(SummaryCodec.encode(module, limitations = limitations, binaryLocators = locators))
+    if (!shardMode) {
+      File(output).apply {
+        parentFile.mkdirs()
+        writeBytes(SourceShardCodec.assemble(moduleId, shards))
+      }
     }
+  }
+
+  private fun sourceIdentity(file: IrFile): String {
+    val path = File(file.fileEntry.name).canonicalFile.toPath()
+    val root = sourceRoot?.let { File(it).canonicalFile.toPath() }
+    if (root == null) return path.fileName.toString()
+    require(path.startsWith(root)) { "Mosaic source is outside supported root: $path" }
+    return root.relativize(path).toString().replace(File.separatorChar, '/')
   }
 
   /** Values carry references only. Evaluation owns effects; aliases and parameter binding never rescan IR. */

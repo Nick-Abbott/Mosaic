@@ -33,8 +33,11 @@ mosaicAnalysis {
 }
 ```
 
-The Gradle plugin resolves the same-version `mosaic-compiler-plugin` artifact
-automatically. No compiler JAR path or application dependency is needed.
+The Gradle plugin uses Kotlin 2.2.10’s `KotlinCompilerPluginSupportPlugin` API to
+resolve the same-version `mosaic-compiler-plugin` artifact for the `main` Kotlin/JVM
+compilation. No compiler JAR path or application dependency is needed. The
+compiler artifact is self-contained; its publication does not add a second
+analysis-core or serialization runtime to the compiler plugin classpath.
 
 ## Publication
 
@@ -42,7 +45,7 @@ The release publishes `org.buildmosaic:mosaic-analysis-core`,
 `org.buildmosaic:mosaic-compiler-plugin`, and
 `org.buildmosaic:mosaic-gradle-plugin` to Maven Central at the same Mosaic
 version. Gradle generates the `org.buildmosaic.analysis` plugin marker. The
-compiler plugin is a self-contained artifact for the separate compiler process;
+compiler plugin is a self-contained artifact loaded by the normal Kotlin compiler;
 analysis-core and the compiler plugin are implementation support artifacts,
 not ordinary application dependencies or BOM entries. For a release, publish
 the three support/implementation artifacts with `releaseToMavenCentral`, wait
@@ -54,45 +57,38 @@ remote publication task.
 Applications also export contracts. A library with roots is contradictory and
 fails with a configuration error.
 
-`extractMosaicMain` runs the pinned embeddable JVM compiler in a fresh process
-over the complete supported source set. It writes a complete summary, including
-an empty summary after the final source is removed. It deletes prior output
-before each invocation and on failure. Normal `compileKotlin` remains separate.
-An unchanged extraction is skipped, and Gradle's build cache can restore a
-complete summary in an equivalent checkout at another path. Source edits still
-rerun extraction over the full main source set; per-file extraction is not yet
-implemented.
-`jar` embeds the summary at `META-INF/mosaic-analysis/v1/summary.json`.
-`verifyMosaicMain` writes `build/reports/mosaic-analysis/main.txt`;
-`verifyMosaic` aggregates it and is wired into `check` (and therefore ordinary
-`build`). In APPLICATION mode it reads summaries from selected dependency JARs
-and checks the configured roots. In LIBRARY mode it validates only the local
-complete summary and reports `EXPORT_ONLY`; it does not claim application roots
-or cross-application dependencies were verified. `jar` embeds the local summary
-in either role. Verification reads the raw summary resource copied by a
-cacheable per-JAR artifact transform. A JAR without the resource produces no
-summary; a present malformed resource reaches verification and fails as an
-artifact error. Unrelated dependency implementation changes leave extraction
-and verification up to date. A dependency Mosaic contract change reruns
-verification without rerunning unchanged application extraction.
+`compileKotlin` runs Mosaic’s IR extractor inside the normal Kotlin/JVM `main`
+compilation. There is no second Kotlin compiler process in supported production
+builds. Kotlin decides which sources to recompile. The extractor writes one
+internal shard for each file Kotlin presents, including a shard when a file no
+longer contributes Mosaic declarations. `compileKotlin` declares the complete
+shard directory as an output, so a build-cache restore supplies all shards
+required by a clean workspace. Shard storage is versioned internally and is
+not dependency metadata or a public compatibility format.
 
-Extraction runs K2 with the full compile classpath, but fingerprints a
-source-resolution ABI view of each JAR. The view retains named classes and
-public constant values. It excludes compiler-generated anonymous classes and
-source debug annotations that change with implementation details. A
-`platformCanvas()` body-only binding change demonstrated that the raw JAR under
-Gradle's compile classpath normalization includes generated lambda references
-and source debug annotations, unnecessarily rerunning application extraction.
-The narrow projection preserves the verified `UP_TO_DATE` boundary for that
-case. Gradle applies compile classpath ABI normalization to its projected JAR.
+`extractMosaicMain` assembles and validates a complete summary without running a
+compiler. It uses the current `src/main/kotlin` source manifest, so stale shards
+from deleted or renamed files cannot enter the result. If all Kotlin sources are
+removed, it emits an explicit empty complete summary without invoking Mosaic’s
+compiler plugin. A missing current shard or malformed shard fails assembly.
+`jar` embeds the complete summary at
+`META-INF/mosaic-analysis/v1/summary.json`. `verifyMosaicMain` reads that local
+summary and selected dependency summaries, writes
+`build/reports/mosaic-analysis/main.txt`, and is aggregated by `verifyMosaic`
+and `check`.
 
-Kotlin `.kotlin_module` resources are aggregated separately per JAR with their
-names and raw bytes, and tracked as a path-independent file input. They are not
-passed through compile classpath normalization, which ignores resources.
-External public constant changes, Kotlin-visible declaration metadata changes,
-and source-visible ABI changes invalidate extraction; ordinary body and
-unrelated resource changes do not. Additional compiler plugins and nonstandard
-source layouts remain unsupported.
+Dependency contract invalidation remains separate from source compilation.
+Verification reads the raw summary resource copied by a cacheable per-JAR
+artifact transform. A dependency Mosaic contract change reruns verification
+without forcing unchanged application source extraction. A JAR without the
+resource produces no summary; a present malformed resource fails verification.
+Kotlin’s own incremental compilation handles public constants, typealiases,
+inline bodies, and other source-resolution changes. Mosaic does no additional
+source-resolution fingerprinting or separate K2 compilation.
+
+In APPLICATION mode verification checks configured roots. In LIBRARY mode it
+validates and exports the complete local summary as `EXPORT_ONLY`. Both roles
+package the same summary resource.
 
 Roots are explicit callable IDs. APPLICATION with no roots fails both
 `verifyMosaicMain` and `check`/`build`, with guidance to configure roots or select
@@ -127,9 +123,8 @@ format 3 with `analysis-contract-2`; summaries from older extractor versions
 are rejected because they may have omitted accessor or constructor-default
 effects or conflated array keys.
 
-Only the tested default Kotlin/JVM main layout is supported. Extraction uses the
-configured Java toolchain and fails on a Kotlin/toolchain version mismatch. The
-task rejects nonstandard or generated Kotlin source paths, Kotlin scripts,
+Only the tested default Kotlin/JVM main layout is supported. The assembly
+task validates the configured Java toolchain against Kotlin’s toolchain. It rejects nonstandard or generated Kotlin source paths, Kotlin scripts,
 mixed Java/Kotlin sources, friend paths, additional compiler plugins, plugin
 options, opt-ins, free compiler arguments, progressive mode, nondefault JVM
 interface mode, no-JDK compilation, and KSP. Applying

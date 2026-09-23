@@ -25,6 +25,7 @@ class MosaicIrProbe(private val output: String) : IrGenerationExtension {
     pluginContext: IrPluginContext,
   ) {
     val lines = mutableListOf<String>()
+    lines += moduleFragment.files.map { "FILE|${it.fileEntry.name}" }
     moduleFragment.acceptChildrenVoid(
       object : IrVisitorVoid() {
         override fun visitElement(element: IrElement) {
