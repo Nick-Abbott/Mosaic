@@ -36,12 +36,12 @@ class KeyAndOptionalSemanticsTest {
   }
 
   @Test
-  fun `optional absence and unknown optional qualifier have no provider obligation`() {
+  fun `optional absence has no obligation and unknown key stays unverified`() {
     val knownAbsent = analyze(emptyList(), Fact.Known(CanvasKeyIdentity("example.Metrics")), LookupKind.OPTIONAL)
     val unknown = analyze(emptyList(), Fact.Unknown("computed", site("computed")), LookupKind.OPTIONAL)
 
     assertEquals(Certainty.VERIFIED, knownAbsent.findings.single().certainty)
-    assertEquals(Certainty.VERIFIED, unknown.findings.single().certainty)
+    assertEquals(Certainty.UNVERIFIED, unknown.findings.single().certainty)
     assertNull(unknown.findings.single().key)
   }
 

@@ -104,16 +104,16 @@ class SummaryMetadataTest {
       SummaryCodec.decode(bytes.replace("\"complete\":true", "\"complete\":false").toByteArray())
     }
     assertFailsWith<IllegalArgumentException> {
-      SummaryCodec.decode(bytes.replace("\"formatVersion\":2", "\"formatVersion\":3").toByteArray())
+      SummaryCodec.decode(bytes.replace("\"formatVersion\":3", "\"formatVersion\":2").toByteArray())
     }
     assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(
-        bytes.replace("\"semanticsVersion\":\"analysis-contract-1\"", "\"semanticsVersion\":\"other\"").toByteArray(),
+        bytes.replace("\"semanticsVersion\":\"analysis-contract-2\"", "\"semanticsVersion\":\"other\"").toByteArray(),
       )
     }
     assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(
-        bytes.replace("\"toolVersion\":\"prototype-8\"", "\"toolVersion\":\"\"").toByteArray(),
+        bytes.replace("\"toolVersion\":\"prototype-9\"", "\"toolVersion\":\"\"").toByteArray(),
       )
     }
     assertFailsWith<IllegalArgumentException> {

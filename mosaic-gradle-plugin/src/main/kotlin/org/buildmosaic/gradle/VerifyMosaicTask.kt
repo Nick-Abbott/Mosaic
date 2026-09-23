@@ -148,17 +148,11 @@ abstract class VerifyMosaicTask : DefaultTask() {
     output: java.io.File,
     modules: List<ModuleContract>,
   ) {
-    val owners =
-      modules.flatMap { module ->
-        val declarations = module.canvases.map { it.id } + module.tiles.map { it.id } + module.callables.map { it.id }
-        declarations.map { it to module.id }
-      }.groupBy({ it.first }, { it.second })
-    val conflict = owners.entries.firstOrNull { it.value.size > 1 } ?: return
-    failWithDiagnostic(
-      output,
-      "Artifact/configuration error",
-      GradleException("Conflicting selected Mosaic owners for ${conflict.key}: ${conflict.value.joinToString()}"),
-    )
+    try {
+      requireUniqueSelectedOwners(modules)
+    } catch (failure: GradleException) {
+      failWithDiagnostic(output, "Artifact/configuration error", failure)
+    }
   }
 
   private fun writeReport(

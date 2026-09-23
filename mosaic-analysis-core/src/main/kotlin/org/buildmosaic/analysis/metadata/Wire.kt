@@ -46,6 +46,10 @@ import kotlinx.serialization.Serializable
   @Serializable
   @SerialName("unknown")
   data class Unknown(val reason: String, val site: WireSite) : WireFact
+
+  @Serializable
+  @SerialName("exportedKey")
+  data class ExportedKey(val declaration: String, val site: WireSite) : WireFact
 }
 
 @Serializable internal sealed interface WireOrigin {
@@ -323,4 +327,7 @@ import kotlinx.serialization.Serializable
   val tiles: List<WireTileContract>,
   val callables: List<WireCallableContract>,
   val overrides: List<WireOverride>,
+  val keys: List<WireKeyContract>,
 )
+
+@Serializable internal data class WireKeyContract(val id: String, val key: WireKey, val site: WireSite)

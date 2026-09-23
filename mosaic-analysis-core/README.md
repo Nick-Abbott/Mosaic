@@ -79,15 +79,16 @@ roots produces an `UNCONFIGURED` report.
 `kotlinx.serialization` serializers and internal, closed wire variants. Each
 variant has a stable `kind` tag; metadata contains no JVM class names. The
 evaluator model has no serialization annotations. The wire payload preserves
-effects, arguments, receivers, captures, provenance, overrides, and binary
+effects, arguments, receivers, captures, provenance, stable CanvasKey exports, overrides, and binary
 locators. Unordered declarations, limitations, and locator entries are sorted;
 effect and argument order is retained. Arguments are ordered parameter/value
 entries, and duplicate parameters are rejected.
 
-Format 2 has separate `formatVersion`, `semanticsVersion`, `toolVersion`,
+Format 3 has separate `formatVersion`, `semanticsVersion`, `toolVersion`,
 `kotlinCompilerVersion`, `moduleId`, `sourceSet`, and `complete` header fields.
-The current reader accepts format 2, `analysis-contract-1`, Kotlin 2.2.10,
-and complete `main` source-set snapshots. The producer version is recorded
+The current reader accepts format 3, `analysis-contract-2`, Kotlin 2.2.10,
+and complete `main` source-set snapshots. Older format-2 summaries are rejected
+because they have no stable CanvasKey export contract. The producer version is recorded
 separately from semantic compatibility. `payloadHash` is lowercase SHA-256 of
 the canonical compact UTF-8 JSON serialization of the entire `payload` object
 (module, limitations, and binary locators), without the envelope or hash field.

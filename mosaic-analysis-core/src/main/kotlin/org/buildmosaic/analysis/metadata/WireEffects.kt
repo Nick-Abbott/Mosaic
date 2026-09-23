@@ -4,6 +4,7 @@ import org.buildmosaic.analysis.CallableContract
 import org.buildmosaic.analysis.CanvasContract
 import org.buildmosaic.analysis.DiscoveryKind
 import org.buildmosaic.analysis.Effect
+import org.buildmosaic.analysis.KeyContract
 import org.buildmosaic.analysis.LookupKind
 import org.buildmosaic.analysis.ModuleContract
 import org.buildmosaic.analysis.MultiTileExecution
@@ -152,6 +153,7 @@ internal fun ModuleContract.toWire() =
         },
       )
     },
+    keys.sortedBy { it.id }.map { WireKeyContract(it.id, it.key.toWire(), it.site.toWire()) },
   )
 
 internal fun WireModule.toModel() =
@@ -193,4 +195,5 @@ internal fun WireModule.toModel() =
         },
       )
     },
+    keys.map { KeyContract(it.id, it.key.toModel(), it.site.toModel()) },
   )

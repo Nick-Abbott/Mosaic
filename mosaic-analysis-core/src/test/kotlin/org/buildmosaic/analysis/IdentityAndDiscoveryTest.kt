@@ -60,6 +60,28 @@ class IdentityAndDiscoveryTest {
   }
 
   @Test
+  fun `same fresh factory callsite in separate callable activations has separate runtime identity`() {
+    val template = tile("LocalTemplate", lookup("metrics", metrics))
+    val helper =
+      entry(
+        "helper",
+        composeWith("fresh", CanvasExpression.Empty, TileReference.Fresh(template.id, "factory", "helper")),
+      )
+    val root =
+      entry(
+        "entry",
+        Effect.Call("first", helper.id, site = site("first")),
+        Effect.Call("second", helper.id, site = site("second")),
+      )
+    val result = report(ModuleContract("app", tiles = listOf(template), callables = listOf(root, helper)))
+    val identities = result.findings.map { it.dependencyPath.last().label }
+
+    assertEquals(2, identities.size, result.toString())
+    assertEquals(2, identities.toSet().size, result.toString())
+    assertTrue(result.findings.all { it.certainty == Certainty.MISSING })
+  }
+
+  @Test
   fun `known-empty MultiTile imports no body while unknown execution stays conditional`() {
     val multi = tile("MetricsMultiTile", lookup("metrics", metrics))
     val empty = compose("empty", CanvasExpression.Empty, multi.id, MultiTileExecution.KNOWN_EMPTY)
