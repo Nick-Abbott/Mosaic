@@ -5,10 +5,12 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.buildmosaic.core.injection.Canvas
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.coroutines.CoroutineContext
 
 /**
  * Default implementation of [Mosaic] that provides tile caching and concurrency management.
@@ -22,10 +24,10 @@ import java.util.concurrent.ConcurrentHashMap
 open class MosaicImpl(
   override val canvas: Canvas,
   dispatcher: CoroutineDispatcher = Dispatchers.Default,
-) : Mosaic {
+) : Mosaic, CoroutineScope {
   // Coroutine management
   private val job = SupervisorJob()
-  private val scope = CoroutineScope(job + dispatcher)
+  override val coroutineContext: CoroutineContext = job + dispatcher
 
   // Tile management
   private val singleCache = ConcurrentHashMap<Tile<*>, Deferred<*>>()
@@ -34,10 +36,10 @@ open class MosaicImpl(
   @Suppress("UNCHECKED_CAST")
   override fun <V> composeAsync(tile: Tile<V>): Deferred<V> {
     return singleCache[tile] as Deferred<V>? ?: run {
-      val placeholder = CompletableDeferred<V>(job)
+      val placeholder = CompletableDeferred<V>(coroutineContext[Job])
       val prev = singleCache.putIfAbsent(tile, placeholder) as Deferred<V>?
       if (prev != null) return prev
-      scope.launch {
+      launch {
         runCatching {
           val result = tile.block(this@MosaicImpl)
           placeholder.complete(result)
@@ -68,7 +70,7 @@ open class MosaicImpl(
       if (existing != null) {
         result[key] = existing
       } else {
-        val placeholder = CompletableDeferred<V>(job)
+        val placeholder = CompletableDeferred<V>(coroutineContext[Job])
         val prev = inner.putIfAbsent(key, placeholder)
         if (prev == null) {
           result[key] = placeholder
@@ -83,7 +85,7 @@ open class MosaicImpl(
     if (winners.isNotEmpty()) {
       val immutableWinners = winners.toSet()
 
-      scope.launch {
+      launch {
         runCatching {
           val values = tile.block(this@MosaicImpl, immutableWinners)
           immutableWinners.forEach { key ->

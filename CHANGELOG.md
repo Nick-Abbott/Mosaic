@@ -27,8 +27,7 @@ predate this maintained changelog; their release history is not reconstructed he
   KSP processors. The runtime BOM continues to align `mosaic-core` and
   `mosaic-test`.
 - Low-level dependency-provider and analysis-extractor implementation types are
-  no longer part of the Kotlin source API. `MosaicImpl` no longer exposes a
-  coroutine scope.
+  no longer part of the Kotlin source API.
 
 ### Fixed
 

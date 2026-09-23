@@ -44,17 +44,9 @@ class OrderController(private val canvas: Canvas) {
     @PathVariable id: String,
   ): OrderPage =
     runBlocking {
-      System.out.println(id)
-      try {
-        val mosaic =
-          canvas.withLayer {
-            single(OrderKey.qualifier) { id }
-          }.create()
-        mosaic.compose(OrderPageTile)
-      } catch (err: Exception) {
-        System.out.println(err.toString())
-        throw err
-      }
+      canvas.withLayer {
+        single(OrderKey) { id }
+      }.use { requestCanvas -> requestCanvas.create().compose(OrderPageTile) }
     }
 
   @Get("/{id}/total")
@@ -62,17 +54,15 @@ class OrderController(private val canvas: Canvas) {
     @PathVariable id: String,
   ): Map<String, Double> =
     runBlocking {
-      val mosaic =
+      val total =
         canvas.withLayer {
-          single(OrderKey.qualifier) { id }
-        }.create()
-      val total = mosaic.compose(OrderTotalTile)
+          single(OrderKey) { id }
+        }.use { requestCanvas -> requestCanvas.create().compose(OrderTotalTile) }
       mapOf("total" to total)
     }
 
   @Error(exception = OrderNotFoundException::class)
   fun handleOrderNotFound(exception: OrderNotFoundException): HttpResponse<Map<String, String>> {
-    System.out.println(exception.message)
     return HttpResponse.status<Map<String, String>>(HttpStatus.NOT_FOUND)
       .body(mapOf("error" to (exception.message ?: "Order not found")))
   }

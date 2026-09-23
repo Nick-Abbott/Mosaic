@@ -20,11 +20,9 @@ class OrderController(private val canvas: Canvas) {
     @PathVariable("id") id: String,
   ): OrderPage =
     runBlocking {
-      val mosaic =
-        canvas.withLayer {
-          single(OrderKey.qualifier) { id }
-        }.create()
-      mosaic.compose(OrderPageTile)
+      canvas.withLayer {
+        single(OrderKey) { id }
+      }.use { requestCanvas -> requestCanvas.create().compose(OrderPageTile) }
     }
 
   @GetMapping("/{id}/total")
@@ -32,10 +30,8 @@ class OrderController(private val canvas: Canvas) {
     @PathVariable("id") id: String,
   ): Double =
     runBlocking {
-      val mosaic =
-        canvas.withLayer {
-          single(OrderKey.qualifier) { id }
-        }.create()
-      mosaic.compose(OrderTotalTile)
+      canvas.withLayer {
+        single(OrderKey) { id }
+      }.use { requestCanvas -> requestCanvas.create().compose(OrderTotalTile) }
     }
 }
