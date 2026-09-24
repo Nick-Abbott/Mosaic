@@ -17,15 +17,14 @@ Provide these environment secrets there: `MAVEN_CENTRAL_USERNAME`,
 `GRADLE_PUBLISH_KEY`, and `GRADLE_PUBLISH_SECRET`. Do not put credentials in
 repository files.
 
-The single release job validates the exact tag, runs the repository and example
-checks, then signs and automatically releases all six Maven Central modules with
-Vanniktech Maven Publish. It then submits `org.buildmosaic.analysis` through
-`publishPlugins` from the same workspace, without waiting for Central public
-visibility. If a later step fails after Maven publication succeeds, do not
-rerun the whole workflow against already published coordinates.
+The single release job validates the exact tag, runs `./gradlew check` and
+`./gradlew check -p examples`, then runs `./gradlew release`. That Gradle task
+signs and automatically releases five Mosaic modules through Vanniktech Maven
+Publish, then submits `org.buildmosaic.analysis` through the Plugin Portal.
+The generated plugin marker is the sixth Maven coordinate. The workflow does
+not wait for Maven Central public visibility. If a later step fails after Maven
+publication succeeds, do not rerun the workflow against published coordinates.
 
-After Plugin Portal submission, the workflow creates a **draft** GitHub Release
-from the checked-in release-notes companion and dated changelog entry. The first
-Plugin Portal publication may need manual review. Confirm the plugin version and
-marker are publicly available, then publish the draft GitHub Release manually.
+After Gradle publication succeeds, the workflow creates a published GitHub
+Release from the checked-in release-notes companion and dated changelog entry.
 The workflow never creates or moves a tag.
