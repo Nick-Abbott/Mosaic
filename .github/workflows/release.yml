@@ -34,7 +34,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-          persist-credentials: false
 
       - name: Fetch and validate the immutable tag
         id: tag
@@ -90,7 +89,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.validate.outputs.sha }}
-          persist-credentials: false
 
       - &verify-tag
         name: Verify remote tag still points to validated source
@@ -133,7 +131,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.validate.outputs.sha }}
-          persist-credentials: false
 
       - *verify-tag
 
@@ -178,7 +175,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.validate.outputs.sha }}
-          persist-credentials: false
 
       - *verify-tag
 
