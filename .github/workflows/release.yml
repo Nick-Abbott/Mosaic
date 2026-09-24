@@ -1,0 +1,241 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing immutable version tag, for example 0.3.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mosaic-release
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate tagged source
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    outputs:
+      sha: ${{ steps.tag.outputs.sha }}
+    steps:
+      - name: Require dispatch from main
+        env:
+          WORKFLOW_REF: ${{ github.ref }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          test "$WORKFLOW_REF" = refs/heads/main
+          test "$REPOSITORY" = Nick-Abbott/Mosaic
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Fetch and validate the immutable tag
+        id: tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+          git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null
+          git fetch --no-tags origin "refs/tags/$RELEASE_TAG"
+          git checkout --detach 'FETCH_HEAD^{commit}'
+          sha="$(git rev-parse HEAD)"
+          test "$(sed -n 's/^mosaic.version=//p' gradle.properties)" = "$RELEASE_TAG"
+          entry="$(grep -F "## [$RELEASE_TAG] - " CHANGELOG.md)"
+          [[ "$entry" =~ ^##\ \[$RELEASE_TAG\]\ -\ [0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]
+          entry_date="${entry##* - }"
+          test "$(date -d "$entry_date" +%F)" = "$entry_date"
+          test -z "$(git status --porcelain)"
+          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
+          echo "Validated $RELEASE_TAG at $sha"
+
+      - &java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '21'
+          cache: gradle
+
+      - name: Build repository
+        run: ./gradlew clean build
+
+      - name: Build examples
+        run: ./gradlew clean build -p examples
+
+      - name: Check published installation
+        run: ./gradlew :mosaic-gradle-plugin:test --tests org.buildmosaic.gradle.PublishedInstallationTest
+
+      - name: Check publication task graph without uploading
+        run: ./gradlew :mosaic-core:publishAndReleaseToMavenCentral :mosaic-test:publishAndReleaseToMavenCentral :mosaic-bom:publishAndReleaseToMavenCentral :mosaic-analysis-core:publishAndReleaseToMavenCentral :mosaic-compiler-plugin:publishAndReleaseToMavenCentral :mosaic-gradle-plugin:publishAndReleaseToMavenCentral :mosaic-gradle-plugin:publishPlugins --dry-run --no-configuration-cache
+
+      - name: Check patch whitespace
+        run: git diff --check
+
+  maven:
+    name: Publish Maven Central
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          persist-credentials: false
+
+      - &verify-tag
+        name: Verify remote tag still points to validated source
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_SHA: ${{ needs.validate.outputs.sha }}
+        run: |
+          git fetch --no-tags origin "refs/tags/$RELEASE_TAG"
+          test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$RELEASE_SHA"
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test -z "$(git status --porcelain)"
+
+      - *java
+
+      - &signing
+        name: Import signing key and configure temporary Gradle home
+        env:
+          SIGNING_PRIVATE_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+        run: |
+          umask 077
+          command -v gpg >/dev/null
+          GNUPGHOME="$(mktemp -d "${RUNNER_TEMP}/mosaic-gpg.XXXXXXXX")"
+          GRADLE_USER_HOME="$(mktemp -d "${RUNNER_TEMP}/mosaic-gradle.XXXXXXXX")"
+          export GNUPGHOME GRADLE_USER_HOME
+          chmod 700 "$GNUPGHOME" "$GRADLE_USER_HOME"
+          printf 'GNUPGHOME=%s\nGRADLE_USER_HOME=%s\n' "$GNUPGHOME" "$GRADLE_USER_HOME" >> "$GITHUB_ENV"
+          printf 'pinentry-mode loopback\n' > "$GNUPGHOME/gpg.conf"
+          printf 'allow-loopback-pinentry\n' > "$GNUPGHOME/gpg-agent.conf"
+          printf '%s' "$SIGNING_PRIVATE_KEY" | gpg --batch --quiet --import
+          mapfile -t keys < <(gpg --batch --list-secret-keys --with-colons | awk -F: '$1=="sec" {want=1} $1=="fpr" && want {print $10; want=0}')
+          test "${#keys[@]}" -eq 1
+          export SIGNING_KEY_ID="${keys[0]}"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          def escape(value):
+              return value.replace('\\', '\\\\').replace('\n', '\\n').replace('\r', '\\r').replace('=', '\\=').replace(':', '\\:').replace(' ', '\\ ')
+          values = {
+              'signing.gnupg.executable': 'gpg',
+              'signing.gnupg.keyName': os.environ['SIGNING_KEY_ID'],
+              'signing.gnupg.passphrase': os.environ['SIGNING_PASSWORD'],
+          }
+          path = Path(os.environ['GRADLE_USER_HOME']) / 'gradle.properties'
+          with path.open('x') as stream:
+              for key, value in values.items():
+                  stream.write(f'{key}={escape(value)}\n')
+          path.chmod(0o600)
+          PY
+
+      - name: Publish and automatically release all six Maven modules
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+        run: |
+          # Vanniktech 0.34.0's explicit publishToMavenCentral() configuration
+          # needs these built-in tasks to enable automatic Central release.
+          ./gradlew \
+            :mosaic-core:publishAndReleaseToMavenCentral \
+            :mosaic-test:publishAndReleaseToMavenCentral \
+            :mosaic-bom:publishAndReleaseToMavenCentral \
+            :mosaic-analysis-core:publishAndReleaseToMavenCentral \
+            :mosaic-compiler-plugin:publishAndReleaseToMavenCentral \
+            :mosaic-gradle-plugin:publishAndReleaseToMavenCentral \
+            --no-configuration-cache
+
+      - &cleanup
+        name: Remove temporary signing material
+        if: always()
+        env:
+          GPG_HOME: ${{ env.GNUPGHOME }}
+          GRADLE_HOME: ${{ env.GRADLE_USER_HOME }}
+        run: |
+          if [[ -n "$GPG_HOME" && -d "$GPG_HOME" ]]; then rm -rf -- "$GPG_HOME"; fi
+          if [[ -n "$GRADLE_HOME" && -d "$GRADLE_HOME" ]]; then rm -rf -- "$GRADLE_HOME"; fi
+
+  plugin:
+    name: Submit Gradle Plugin Portal publication
+    needs: [validate, maven]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          persist-credentials: false
+
+      - *verify-tag
+
+      - name: Require public Maven implementation artifacts
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          for module in mosaic-analysis-core mosaic-compiler-plugin mosaic-gradle-plugin; do
+            url="https://repo.maven.apache.org/maven2/org/buildmosaic/$module/$RELEASE_TAG/$module-$RELEASE_TAG.pom"
+            curl --fail --silent --show-error --head "$url" >/dev/null || {
+              echo "::error::$module $RELEASE_TAG is not public yet; rerun this failed job after Central propagation."
+              exit 1
+            }
+          done
+
+      - *java
+      - *signing
+
+      - name: Submit Gradle plugin
+        env:
+          GRADLE_PUBLISH_KEY: ${{ secrets.GRADLE_PUBLISH_KEY }}
+          GRADLE_PUBLISH_SECRET: ${{ secrets.GRADLE_PUBLISH_SECRET }}
+        run: ./gradlew :mosaic-gradle-plugin:publishPlugins --no-configuration-cache
+
+      - *cleanup
+
+  draft:
+    name: Create draft GitHub Release
+    needs: [validate, plugin]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          persist-credentials: false
+
+      - *verify-tag
+
+      - name: Create draft from checked-in release notes and changelog
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_SHA: ${{ needs.validate.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          entry="$(grep -F "## [$RELEASE_TAG] - " CHANGELOG.md)"
+          notes="$(mktemp "${RUNNER_TEMP}/mosaic-release-notes.XXXXXXXX")"
+          trap 'rm -f -- "$notes"' EXIT
+          sed "s#](../../#](https://github.com/Nick-Abbott/Mosaic/blob/$RELEASE_TAG/#g" "docs/releases/$RELEASE_TAG.md" > "$notes"
+          printf '\n' >> "$notes"
+          awk -v heading="$entry" -v tag="$RELEASE_TAG" '
+            $0 == heading {copy=1}
+            copy && $0 != heading && /^## / {exit}
+            copy {gsub(/\]\(mosaic-gradle-plugin\/README.md/, "](https://github.com/Nick-Abbott/Mosaic/blob/" tag "/mosaic-gradle-plugin/README.md"); print}
+          ' CHANGELOG.md >> "$notes"
+          if gh release view "$RELEASE_TAG" --json isDraft,targetCommitish --jq '[.isDraft, .targetCommitish]' > "${RUNNER_TEMP}/mosaic-existing-release.json" 2>/dev/null; then
+            jq -e --arg sha "$RELEASE_SHA" '.[0] == true and .[1] == $sha' "${RUNNER_TEMP}/mosaic-existing-release.json" >/dev/null
+            echo "Existing draft targets $RELEASE_SHA"
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --target "$RELEASE_SHA" --draft --title "Mosaic $RELEASE_TAG" --notes-file "$notes"
+          fi
+          echo 'GitHub Release is a draft. Publish it after Plugin Portal approval and public visibility are confirmed.'
