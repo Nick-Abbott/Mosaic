@@ -35,6 +35,36 @@ class MosaicGraphTest {
     assertFalse(graph.contains("No verification roots"))
   }
 
+  @Test fun `overview includes selected dependency callable and Canvas roots only`() {
+    val dependency =
+      ModuleContract(
+        "dependency",
+        callables = listOf(entry("dependency.selected()"), entry("dependency.unrelated()")),
+        canvases =
+          listOf(
+            CanvasContract("dependency.selectedCanvas()", result = CanvasExpression.Empty, site = site("selected")),
+            CanvasContract("dependency.unrelatedCanvas()", result = CanvasExpression.Empty, site = site("unrelated")),
+          ),
+      )
+    val graph =
+      MosaicGraph.render(
+        AnalysisRequest(
+          ModuleContract("local"),
+          selectedDependencies = listOf(dependency),
+          roots =
+            listOf(
+              SelectedRoot("callable", "dependency.selected()"),
+              SelectedRoot("canvas", "dependency.selectedCanvas()"),
+            ),
+        ),
+      )
+    val overview = graph.substringBefore("## Root:")
+    assertTrue(overview.contains("Callable: dependency.selected() [dependency: dependency]"))
+    assertTrue(overview.contains("Canvas: dependency.selectedCanvas() [dependency: dependency]"))
+    assertFalse(overview.contains("dependency.unrelated()"))
+    assertFalse(overview.contains("dependency.unrelatedCanvas()"))
+  }
+
   @Test fun `root findings stay in focused section and show conditional and qualified Canvas details`() {
     val key = CanvasKeyIdentity("example.Metrics", "primary")
     val layer =
@@ -93,7 +123,7 @@ class MosaicGraphTest {
             ),
           ),
       )
-    val graph = MosaicGraph.render(AnalysisRequest(local))
+    val graph = MosaicGraph.render(AnalysisRequest(local, roots = listOf(SelectedRoot("entry", "entry"))))
     assertTrue(graph.contains("Unknown callable: missing.call()"))
     assertTrue(graph.contains("Unknown Canvas: missing.canvas()"))
   }
@@ -112,9 +142,122 @@ class MosaicGraphTest {
             entry("helper"),
           ),
       )
-    val graph = MosaicGraph.render(AnalysisRequest(module))
+    val graph = MosaicGraph.render(AnalysisRequest(module, roots = listOf(SelectedRoot("entry", "entry"))))
     assertFalse(graph.contains("Callable: helper"))
     assertTrue(graph.contains("Unknown callable: missing"))
+  }
+
+  @Test fun `overview seeds Mosaic helper chains but omits unrelated opaque callables`() {
+    val local =
+      ModuleContract(
+        "local",
+        tiles =
+          listOf(
+            tile("disconnected"),
+            tile("tile-with-unknown", Effect.Call("tile-call", "missing.from.tile", site = site("tile-call"))),
+          ),
+        canvases =
+          listOf(
+            CanvasContract("disconnected-canvas", result = CanvasExpression.Empty, site = site("canvas")),
+          ),
+        callables =
+          listOf(
+            entry("opaque", Effect.Unknown("opaque", "ordinary initialization", site("opaque"))),
+            entry("unrelated", Effect.Call("missing", "missing.unrelated", site = site("unrelated"))),
+            entry("helper", lookup("lookup", metrics)),
+            entry("caller", Effect.Call("helper-call", "helper", site = site("helper-call"))),
+            entry("dep-caller", Effect.Call("dep-call", "dependency.helper", site = site("dep-call"))),
+            entry(
+              "relevant-entry",
+              compose("compose", CanvasExpression.Empty, "disconnected"),
+              Effect.Call("unknown-call", "missing.from.entry", site = site("unknown-call")),
+            ),
+          ),
+      )
+    val dependency =
+      ModuleContract("dependency", callables = listOf(entry("dependency.helper", lookup("dep-lookup", metrics))))
+    val graph = MosaicGraph.render(AnalysisRequest(local, selectedDependencies = listOf(dependency)))
+    assertTrue(graph.contains("Tile: disconnected"))
+    assertTrue(graph.contains("Canvas: disconnected-canvas"))
+    assertTrue(graph.contains("Callable: helper"))
+    assertTrue(graph.contains("Callable: caller"))
+    assertTrue(graph.contains("Callable: dep-caller"))
+    assertTrue(graph.contains("Callable: dependency.helper [dependency: dependency]"))
+    assertTrue(graph.contains("Unknown callable: missing.from.tile"))
+    assertTrue(graph.contains("Unknown callable: missing.from.entry"))
+    assertFalse(graph.contains("Callable: opaque"))
+    assertFalse(graph.contains("ordinary initialization"))
+    assertFalse(graph.contains("Callable: unrelated"))
+    assertFalse(graph.contains("Unknown callable: missing.unrelated"))
+  }
+
+  @Test fun `Canvas arguments select structural callers through nested expressions`() {
+    val canvasParameter = ContractParameter("external.helper", "canvas", ParameterKind.CANVAS)
+    val supplied = ContractParameter("caller", "supplied", ParameterKind.CANVAS)
+
+    fun caller(
+      id: String,
+      canvas: CanvasExpression,
+    ): CallableContract =
+      entry(
+        id,
+        Effect.Call(
+          "invoke-$id",
+          "external.helper",
+          CallArguments(mapOf(canvasParameter to ArgumentExpression.Canvas(canvas))),
+          site = site(id),
+        ),
+      )
+
+    val local =
+      ModuleContract(
+        "local",
+        callables =
+          listOf(
+            caller("selected.layer", CanvasExpression.Layer("layer", CanvasExpression.Empty, site = site("layer"))),
+            caller("selected.runtime", CanvasExpression.RuntimeCall("external.canvas", site = site("runtime"))),
+            caller("selected.reference", CanvasExpression.ValueReference("stored", site("reference"))),
+            caller("selected.assumption", CanvasExpression.Assumption("provided", site("assumption"))),
+            caller("selected.unknown", CanvasExpression.Unknown("dynamic Canvas", site("unknown"))),
+            caller(
+              "selected.nested",
+              CanvasExpression.Captured(
+                "capture",
+                CaptureOrigin.Constant("capture", "local", "literal"),
+                CanvasExpression.Alias(
+                  "alias",
+                  CanvasExpression.Choice(
+                    Guard.Opaque("branch", site("branch")),
+                    CanvasExpression.Empty,
+                    CanvasExpression.WithEffects(
+                      listOf(lookup("paint", metrics)),
+                      CanvasExpression.Empty,
+                    ),
+                  ),
+                ),
+                faithfullyCaptured = true,
+                site = site("capture"),
+              ),
+            ),
+            caller("omitted.empty", CanvasExpression.Empty),
+            caller("omitted.current", CanvasExpression.Current),
+            caller("omitted.parameter", CanvasExpression.ParameterValue(supplied)),
+            caller(
+              "omitted.choice",
+              CanvasExpression.Choice(Guard.Constant(true), CanvasExpression.Empty, CanvasExpression.Current),
+            ),
+            caller("omitted.alias", CanvasExpression.Alias("alias", CanvasExpression.Empty)),
+            caller("omitted.withEffects", CanvasExpression.WithEffects(emptyList(), CanvasExpression.Empty)),
+          ),
+      )
+    val overview = MosaicGraph.render(AnalysisRequest(local)).substringBefore("## Root:")
+    listOf("layer", "runtime", "reference", "assumption", "unknown", "nested").forEach { name ->
+      assertTrue(overview.contains("Callable: selected.$name"), name)
+    }
+    listOf("empty", "current", "parameter", "choice", "alias", "withEffects").forEach { name ->
+      assertFalse(overview.contains("Callable: omitted.$name"), name)
+    }
+    assertTrue(overview.contains("REQUIRED lookup: example.Metrics"))
   }
 
   @Test fun `multitile conditions unknown and special labels remain visible and escaped`() {
@@ -215,8 +358,8 @@ class MosaicGraphTest {
     assertEdge(graph, second, worker, "Tile")
     assertEdge(graph, first, firstLayer, "Canvas")
     assertEdge(graph, second, secondLayer, "Canvas")
-    assertFalse(graph.contains("  $first -->|Canvas| $secondLayer"))
-    assertFalse(graph.contains("  $second -->|Canvas| $firstLayer"))
+    assertFalse(graph.contains("  $first -->|\"Canvas\"| $secondLayer"))
+    assertFalse(graph.contains("  $second -->|\"Canvas\"| $firstLayer"))
   }
 
   @Test fun `branch arm nodes label both outcomes`() {
@@ -239,6 +382,7 @@ class MosaicGraphTest {
                 ),
               ),
           ),
+          roots = listOf(SelectedRoot("entry", "entry")),
         ),
       )
     val condition = nodeId(graph, "Condition: unknown (runtime)")
@@ -301,6 +445,7 @@ class MosaicGraphTest {
       assertTrue(section.contains("Canvas: Impl.canvas"))
       assertTrue(section.contains("Canvas layer: implementation-layer"))
       assertTrue(section.contains("possible override (Impl)"))
+      assertTrue(section.contains("-->|\"possible override (Impl)\"|"))
     }
     assertFalse(focused.contains("Unknown callable: Base.run"))
     assertFalse(focused.contains("Unknown Canvas: Base.canvas"))
@@ -368,6 +513,30 @@ class MosaicGraphTest {
       nodeId(graph, "Unknown dispatch: Unknown receiver at Base.canvas: parameter"),
       "unresolved",
     )
+  }
+
+  @Test fun `virtual override edge labels quote and escape punctuation`() {
+    val module =
+      ModuleContract(
+        "local",
+        callables =
+          listOf(
+            entry(
+              "caller",
+              Effect.Call(
+                "dispatch",
+                "Base.run",
+                site = site("dispatch"),
+                receiver = DispatchReceiver.Unknown("runtime"),
+                virtualDispatch = true,
+              ),
+            ),
+            entry("Impl.run", lookup("required", metrics)),
+          ),
+        overrides = listOf(ResolvedOverride("Impl\"|`", "Base.run", "Impl.run")),
+      )
+    val graph = MosaicGraph.render(AnalysisRequest(module))
+    assertTrue(graph.contains("-->|\"possible override (Impl&quot;&#124;&#96;)\"|"))
   }
 
   @Test fun `forwarded receiver remains context dependent in a verified root`() {
@@ -443,6 +612,6 @@ class MosaicGraphTest {
     to: String,
     label: String,
   ) {
-    assertTrue(graph.contains("  $from -->|$label| $to"))
+    assertTrue(graph.contains("  $from -->|\"$label\"| $to"))
   }
 }

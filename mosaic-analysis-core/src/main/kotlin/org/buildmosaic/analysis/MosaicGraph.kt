@@ -11,13 +11,11 @@ object MosaicGraph {
     val overview = Graph(request.program, request.selectedDependencies)
     request.program.tiles.sortedBy { it.id }.forEach { overview.tile(it.id) }
     request.program.canvases.sortedBy { it.id }.forEach { overview.canvas(it.id) }
+    val relevantCallables = overview.relevantCallableIds()
     request.program.callables.sortedBy { it.id }.forEach { callable ->
-      if (callable.effects.isNotEmpty() || callable.id in request.roots.map { it.target }) {
-        overview.callable(
-          callable.id,
-        )
-      }
+      if (callable.id in relevantCallables) overview.callable(callable.id)
     }
+    request.roots.map { it.target }.distinct().sorted().forEach(overview::root)
     return buildString {
       appendLine("# Mosaic dependency graph")
       appendLine()
@@ -101,6 +99,68 @@ object MosaicGraph {
     private val edges =
       sortedSetOf<Triple<String, String, String>>(compareBy({ it.first }, { it.second }, { it.third }))
     private val visited = mutableSetOf<String>()
+
+    /** A fixed point includes callers of relevant helpers without seeding opaque-only contracts. */
+    fun relevantCallableIds(): Set<String> {
+      val relevant = mutableSetOf<String>()
+      var changed: Boolean
+      do {
+        changed = false
+        callables.keys.sorted().forEach { id ->
+          if (id !in relevant && callables.getValue(id).second.effects.any { relevant(it, relevant) }) {
+            relevant.add(id)
+            changed = true
+          }
+        }
+      } while (changed)
+      return relevant
+    }
+
+    private fun relevant(
+      effect: Effect,
+      known: Set<String>,
+    ): Boolean =
+      when (effect) {
+        is Effect.Lookup, is Effect.Compose, is Effect.ConstructCanvas -> true
+        is Effect.Call ->
+          callTargets(effect.target, effect.receiver, effect.virtualDispatch).any { it in canvases || it in known } ||
+            effect.arguments.values.values.any { argument ->
+              argument is ArgumentExpression.Canvas && relevant(argument.expression, known)
+            }
+        is Effect.Branch -> (effect.whenTrue + effect.whenFalse).any { relevant(it, known) }
+        is Effect.Captured -> effect.effects.any { relevant(it, known) }
+        is Effect.Unknown -> false
+      }
+
+    private fun callTargets(
+      target: String,
+      receiver: DispatchReceiver,
+      virtualDispatch: Boolean,
+    ): List<String> =
+      if (!virtualDispatch) {
+        listOf(target)
+      } else {
+        overrides.filter { override ->
+          override.baseId == target &&
+            (receiver !is DispatchReceiver.Concrete || override.receiverType == receiver.type)
+        }.map { it.implementationId }
+      }
+
+    private fun relevant(
+      expression: CanvasExpression,
+      known: Set<String>,
+    ): Boolean =
+      when (expression) {
+        CanvasExpression.Empty, CanvasExpression.Current, is CanvasExpression.ParameterValue -> false
+        is CanvasExpression.Layer, is CanvasExpression.RuntimeCall, is CanvasExpression.ValueReference,
+        is CanvasExpression.Assumption, is CanvasExpression.Unknown,
+        -> true
+        is CanvasExpression.Choice -> relevant(expression.whenTrue, known) || relevant(expression.whenFalse, known)
+        is CanvasExpression.WithEffects ->
+          expression.effects.any { relevant(it, known) } || relevant(expression.result, known)
+        is CanvasExpression.Captured -> relevant(expression.expression, known)
+        is CanvasExpression.Alias -> relevant(expression.expression, known)
+      }
 
     fun root(id: String) {
       when {
@@ -401,7 +461,7 @@ object MosaicGraph {
         val ids = nodes.keys.withIndex().associate { (i, id) -> id to "n$i" }
         nodes.forEach { (id, label) -> appendLine("  ${ids.getValue(id)}[\"${mermaid(label)}\"]") }
         edges.forEach { (from, to, label) ->
-          appendLine("  ${ids.getValue(from)} -->|${mermaid(label)}| ${ids.getValue(to)}")
+          appendLine("  ${ids.getValue(from)} -->|\"${mermaid(label)}\"| ${ids.getValue(to)}")
         }
         appendLine("```")
       }
