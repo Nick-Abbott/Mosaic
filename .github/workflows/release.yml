@@ -185,7 +185,6 @@ jobs:
       - name: Create draft from checked-in release notes and changelog
         env:
           RELEASE_TAG: ${{ inputs.tag }}
-          RELEASE_SHA: ${{ needs.validate.outputs.sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
           entry="$(grep -F "## [$RELEASE_TAG] - " CHANGELOG.md)"
@@ -198,10 +197,16 @@ jobs:
             copy && $0 != heading && /^## / {exit}
             copy {gsub(/\]\(mosaic-gradle-plugin\/README.md/, "](https://github.com/Nick-Abbott/Mosaic/blob/" tag "/mosaic-gradle-plugin/README.md"); print}
           ' CHANGELOG.md >> "$notes"
-          if gh release view "$RELEASE_TAG" --json isDraft,targetCommitish --jq '[.isDraft, .targetCommitish]' > "${RUNNER_TEMP}/mosaic-existing-release.json" 2>/dev/null; then
-            jq -e --arg sha "$RELEASE_SHA" '.[0] == true and .[1] == $sha' "${RUNNER_TEMP}/mosaic-existing-release.json" >/dev/null
-            echo "Existing draft targets $RELEASE_SHA"
+          if existing_draft="$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' 2>&1)"; then
+            if [[ "$existing_draft" != true ]]; then
+              echo "::error::A published GitHub Release already exists for $RELEASE_TAG"
+              exit 1
+            fi
+            echo "Existing draft found for $RELEASE_TAG"
+          elif [[ "$existing_draft" == 'release not found' ]]; then
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "Mosaic $RELEASE_TAG" --notes-file "$notes"
           else
-            gh release create "$RELEASE_TAG" --verify-tag --target "$RELEASE_SHA" --draft --title "Mosaic $RELEASE_TAG" --notes-file "$notes"
+            echo "::error::Could not inspect GitHub Release for $RELEASE_TAG: $existing_draft"
+            exit 1
           fi
           echo 'GitHub Release is a draft. Publish it after Plugin Portal approval and public visibility are confirmed.'
