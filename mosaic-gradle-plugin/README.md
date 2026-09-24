@@ -72,6 +72,27 @@ summary and selected dependency summaries, writes
 `build/reports/mosaic-analysis/main.txt`, and is aggregated by `verifyMosaic`
 and `check`.
 
+## Dependency documentation
+
+Run `./gradlew mosaicGraph` to write `build/reports/mosaic-analysis/graph.md`.
+The Markdown contains Mermaid diagrams for every local Tile and Canvas, their
+Mosaic relationships, and only referenced dependency contracts. For example,
+if `ResponseTile` composes `ProfileTile`, which requests `UserRepository`, the
+diagram links both Tiles and shows the Canvas requirement on `ProfileTile`.
+
+The module overview works without configured roots and makes no verification
+claim. When `mosaicAnalysis.roots` is configured, the report also includes a
+focused diagram and analyzer findings for each root. Missing or unverified
+requirements appear in the report without failing graph generation; invalid
+roots, summaries, and conflicting selected owners still fail. The diagrams
+describe possible static relationships, not runtime execution order, call
+counts, or MultiTile batch sizes.
+
+To retain a snapshot for team documentation, copy the generated Markdown into
+your documentation directory and commit that copy. Mermaid-capable Markdown
+viewers can display its diagrams. The task reuses the assembled summary and
+selected dependency summaries, so it launches no separate compiler process.
+
 ## Incremental and cache behavior
 
 Dependency contract invalidation remains separate from source compilation.

@@ -123,12 +123,15 @@ class PublishedInstallationTest {
         """.trimIndent(),
       )
     }
-    val result = run(consumer, "build", "dependencies", "--configuration", "kotlinCompilerPluginClasspathMain")
+    val result =
+      run(consumer, "build", "mosaicGraph", "dependencies", "--configuration", "kotlinCompilerPluginClasspathMain")
     assertEquals(TaskOutcome.SUCCESS, result.task(":verifyMosaicMain")?.outcome)
+    assertEquals(TaskOutcome.SUCCESS, result.task(":mosaicGraph")?.outcome)
     assertTrue(result.output.contains("org.buildmosaic:mosaic-compiler-plugin:$version"), result.output)
     val report = consumer.resolve("build/reports/mosaic-analysis/main.txt").readText()
     assertTrue(report.contains("Result: FULLY VERIFIED"), report)
     assertTrue(report.contains("VERIFIED REQUIRED_LOOKUP"), report)
+    assertTrue(consumer.resolve("build/reports/mosaic-analysis/graph.md").readText().contains("## Root: app.entry()"))
     val summary = SummaryCodec.decode(consumer.resolve("build/mosaic-analysis/main/summary.json").readBytes())
     assertEquals(3, summary.formatVersion)
     assertEquals("analysis-contract-2", summary.semanticsVersion)

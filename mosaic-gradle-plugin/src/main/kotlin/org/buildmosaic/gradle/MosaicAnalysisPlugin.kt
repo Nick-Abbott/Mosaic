@@ -1,3 +1,5 @@
+@file:Suppress("LargeClass")
+
 package org.buildmosaic.gradle
 
 import org.buildmosaic.analysis.SourceShardPaths
@@ -128,6 +130,22 @@ class MosaicAnalysisPlugin : KotlinCompilerPluginSupportPlugin {
         task.reportFile.set(project.layout.buildDirectory.file("reports/mosaic-analysis/main.txt"))
         task.dependsOn(extract)
       }
+    project.tasks.register("mosaicGraph", MosaicGraphTask::class.java) { task ->
+      task.group = "documentation"
+      task.description = "Render local Mosaic contracts and selected root findings as a Mermaid graph"
+      task.summaryFile.set(extract.flatMap { it.summaryFile })
+      task.dependencyArtifacts.from(project.configurations.getByName("compileClasspath"))
+      task.dependencySummaries.from(
+        project.configurations.getByName("compileClasspath").incoming.artifactView { view ->
+          view.attributes.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, MOSAIC_SUMMARY_ARTIFACT_TYPE)
+        }.files,
+      )
+      task.roots.set(extension.roots)
+      task.role.set(extension.role)
+      task.enforcement.set(extension.enforcement)
+      task.graphFile.set(project.layout.buildDirectory.file("reports/mosaic-analysis/graph.md"))
+      task.dependsOn(extract)
+    }
     val aggregate =
       project.tasks.register("verifyMosaic") { task ->
         task.group = "verification"
