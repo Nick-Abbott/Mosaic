@@ -6,6 +6,8 @@ plugins {
 }
 
 val installTestRepository = providers.gradleProperty("mosaic.installTestRepository").orNull
+val signingInMemoryKey = providers.gradleProperty("signingInMemoryKey").orNull
+val signingInMemoryKeyPassword = providers.gradleProperty("signingInMemoryKeyPassword").orNull
 
 mavenPublishing {
   if (installTestRepository == null) {
@@ -47,10 +49,13 @@ mavenPublishing {
   }
 }
 
-// Use the GPG command line tool for signing
 signing {
   isRequired = installTestRepository == null
-  useGpgCmd()
+  if (signingInMemoryKey != null) {
+    useInMemoryPgpKeys(signingInMemoryKey, signingInMemoryKeyPassword)
+  } else {
+    useGpgCmd()
+  }
   if (installTestRepository == null) sign(publishing.publications)
 }
 
