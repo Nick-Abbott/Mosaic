@@ -8,7 +8,7 @@ are immutable and must already point to the validated source commit.
 Run the manual **Release** workflow from `main` with the existing version tag:
 
 ```bash
-gh workflow run release.yml --ref main -f tag=0.3.0
+gh workflow run release.yml --ref main -f tag=0.4.0
 ```
 
 Configure a protected GitHub Environment named `release` before running it.
@@ -17,12 +17,12 @@ Provide these environment secrets there: `MAVEN_CENTRAL_USERNAME`,
 `GRADLE_PUBLISH_KEY`, and `GRADLE_PUBLISH_SECRET`. Do not put credentials in
 repository files.
 
-The workflow validates the exact tag without release secrets, then uses that
-commit to sign and automatically release all six Maven Central modules with
-Vanniktech Maven Publish. Once the required implementation artifacts are public,
-it submits `org.buildmosaic.analysis` through `publishPlugins`. If Central has
-not propagated yet, the Plugin Portal job fails before uploading; rerun only
-failed jobs later, without rerunning the successful Maven job.
+The single release job validates the exact tag, runs the repository and example
+checks, then signs and automatically releases all six Maven Central modules with
+Vanniktech Maven Publish. It then submits `org.buildmosaic.analysis` through
+`publishPlugins` from the same workspace, without waiting for Central public
+visibility. If a later step fails after Maven publication succeeds, do not
+rerun the whole workflow against already published coordinates.
 
 After Plugin Portal submission, the workflow creates a **draft** GitHub Release
 from the checked-in release-notes companion and dated changelog entry. The first
