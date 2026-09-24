@@ -263,9 +263,16 @@ object MosaicGraph {
             expression(value, effect.canvas, "value")
           }
           is Effect.Call -> {
-            val harmless = !effect.virtualDispatch && callables[effect.target]?.second?.effects?.isEmpty() == true
-            if (!harmless) call(parent, n, effect.target, effect.receiver, effect.virtualDispatch, false, "call")
-            arguments(if (effect.virtualDispatch) n else parent, effect.arguments)
+            val contextual = effect.arguments.hasCanvas()
+            if (!effect.virtualDispatch && contextual) {
+              detail(parent, n, "Call: ${effect.id} (${effect.target})", "call")
+              contractEdge(n, effect.target, false, "target")
+              arguments(n, effect.arguments)
+            } else {
+              val harmless = !effect.virtualDispatch && callables[effect.target]?.second?.effects?.isEmpty() == true
+              if (!harmless) call(parent, n, effect.target, effect.receiver, effect.virtualDispatch, false, "call")
+              arguments(if (effect.virtualDispatch) n else parent, effect.arguments)
+            }
           }
           is Effect.Branch -> {
             detail(parent, n, "Condition: ${guardLabel(effect.guard)}", "branch")
@@ -374,7 +381,7 @@ object MosaicGraph {
         detail(parent, "$parent/depth", "Unknown: Canvas expression depth limit", relation)
         return
       }
-      val n = "$parent/canvas:$relation:$depth:${nodes.size}"
+      val n = "$parent/canvas:$relation:$depth"
       when (expression) {
         CanvasExpression.Empty -> Unit
         CanvasExpression.Current -> Unit
@@ -403,9 +410,19 @@ object MosaicGraph {
           expression(n, expression.whenFalse, "false", depth + 1)
         }
         is CanvasExpression.RuntimeCall -> {
-          call(parent, n, expression.target, expression.receiver, expression.virtualDispatch, true, relation)
-          arguments(if (expression.virtualDispatch) n else parent, expression.arguments)
-          effects(if (expression.virtualDispatch) n else parent, expression.callerEffects)
+          val contextual = expression.arguments.hasCanvas() || expression.callerEffects.isNotEmpty()
+          if (!expression.virtualDispatch && contextual) {
+            val site = expression.site
+            val invocation = "$n/runtime:${expression.target}:${site.path}:${site.line}:${site.column}"
+            detail(parent, invocation, "Canvas call: ${expression.target}", relation)
+            contractEdge(invocation, expression.target, true, "returns Canvas")
+            arguments(invocation, expression.arguments)
+            effects(invocation, expression.callerEffects)
+          } else {
+            call(parent, n, expression.target, expression.receiver, expression.virtualDispatch, true, relation)
+            arguments(if (expression.virtualDispatch) n else parent, expression.arguments)
+            effects(if (expression.virtualDispatch) n else parent, expression.callerEffects)
+          }
         }
         is CanvasExpression.ValueReference -> {
           val value = "value:${expression.id}"
@@ -434,6 +451,8 @@ object MosaicGraph {
         if (value is ArgumentExpression.Canvas) expression(parent, value.expression, "argument ${parameter.name}")
       }
     }
+
+    private fun CallArguments.hasCanvas(): Boolean = values.values.any { it is ArgumentExpression.Canvas }
 
     private fun factLabel(fact: Fact<CanvasKeyIdentity>): String =
       when (fact) {

@@ -333,6 +333,94 @@ class MosaicGraphTest {
     assertTrue(graph.contains("Canvas value: shared"))
   }
 
+  @Test fun `ordinary calls retain their own Canvas argument and target associations`() {
+    val parameter = ContractParameter("helper", "canvas", ParameterKind.CANVAS)
+
+    fun supplied(id: String) =
+      CallArguments(
+        mapOf(
+          parameter to
+            ArgumentExpression.Canvas(
+              CanvasExpression.Layer(id, CanvasExpression.Empty, site = site(id)),
+            ),
+        ),
+      )
+    val module =
+      ModuleContract(
+        "local",
+        callables =
+          listOf(
+            entry("helper"),
+            entry(
+              "entry",
+              Effect.Call("first", "helper", supplied("first-layer"), site("first")),
+              Effect.Call("second", "helper", supplied("second-layer"), site("second")),
+              Effect.Call("unknown", "missing.helper", supplied("unknown-layer"), site("unknown")),
+            ),
+          ),
+      )
+    val request = AnalysisRequest(module)
+    val graph = MosaicGraph.render(request)
+    assertEquals(graph, MosaicGraph.render(request))
+    val entryNode = nodeId(graph, "Callable: entry")
+    val helper = nodeId(graph, "Callable: helper")
+    val first = nodeId(graph, "Call: first (helper)")
+    val second = nodeId(graph, "Call: second (helper)")
+    val unknown = nodeId(graph, "Call: unknown (missing.helper)")
+    val firstLayer = nodeId(graph, "Canvas layer: first-layer")
+    val secondLayer = nodeId(graph, "Canvas layer: second-layer")
+    assertEdge(graph, entryNode, first, "call")
+    assertEdge(graph, entryNode, second, "call")
+    assertEdge(graph, first, helper, "target")
+    assertEdge(graph, second, helper, "target")
+    assertEdge(graph, first, firstLayer, "argument canvas")
+    assertEdge(graph, second, secondLayer, "argument canvas")
+    assertFalse(graph.contains("  $first -->|\"argument canvas\"| $secondLayer"))
+    assertFalse(graph.contains("  $second -->|\"argument canvas\"| $firstLayer"))
+    assertEdge(graph, unknown, nodeId(graph, "Unknown callable: missing.helper"), "target")
+    assertEdge(graph, unknown, nodeId(graph, "Canvas layer: unknown-layer"), "argument canvas")
+  }
+
+  @Test fun `Canvas runtime invocation owns argument and caller effects while simple call stays compact`() {
+    val parameter = ContractParameter("helperCanvas", "canvas", ParameterKind.CANVAS)
+    val contextual =
+      CanvasExpression.RuntimeCall(
+        "helperCanvas",
+        CallArguments(
+          mapOf(
+            parameter to
+              ArgumentExpression.Canvas(
+                CanvasExpression.Layer("runtime-layer", CanvasExpression.Empty, site = site("runtime-layer")),
+              ),
+          ),
+        ),
+        site("context-call"),
+        callerEffects = listOf(lookup("during-call", metrics)),
+      )
+    val module =
+      ModuleContract(
+        "local",
+        canvases =
+          listOf(
+            CanvasContract("helperCanvas", result = CanvasExpression.Empty, site = site("helper")),
+            CanvasContract("contextCanvas", result = contextual, site = site("context")),
+            CanvasContract(
+              "simpleCanvas",
+              result = CanvasExpression.RuntimeCall("helperCanvas", site = site("simple-call")),
+              site = site("simple"),
+            ),
+          ),
+      )
+    val graph = MosaicGraph.render(AnalysisRequest(module))
+    val invocation = nodeId(graph, "Canvas call: helperCanvas")
+    val target = nodeId(graph, "Canvas: helperCanvas")
+    assertEdge(graph, nodeId(graph, "Canvas: contextCanvas"), invocation, "result")
+    assertEdge(graph, invocation, target, "returns Canvas")
+    assertEdge(graph, invocation, nodeId(graph, "Canvas layer: runtime-layer"), "argument canvas")
+    assertEdge(graph, invocation, nodeId(graph, "REQUIRED lookup: example.Metrics"), "requires")
+    assertEdge(graph, nodeId(graph, "Canvas: simpleCanvas"), target, "result")
+  }
+
   @Test fun `compose nodes preserve each Tile and Canvas association`() {
     val firstCanvas = CanvasExpression.Layer("first-layer", CanvasExpression.Empty, site = site("first-layer"))
     val secondCanvas = CanvasExpression.Layer("second-layer", CanvasExpression.Empty, site = site("second-layer"))
