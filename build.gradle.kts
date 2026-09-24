@@ -8,20 +8,19 @@ allprojects {
 
 tasks.register("release") {
   group = "publishing"
-  description = "Publish all Mosaic publications to Maven Central"
+  description = "Publish Mosaic to Maven Central and the Gradle Plugin Portal"
 
-  dependsOn("releaseToMavenCentral")
+  dependsOn("releaseToMavenCentral", ":mosaic-gradle-plugin:publishPlugins")
 }
 
 tasks.register("releaseToMavenCentral") {
   group = "publishing"
-  description = "Publish all Mosaic publications to Maven Central"
+  description = "Publish Mosaic modules to Maven Central"
   dependsOn(
-    ":mosaic-core:publishToMavenCentral",
-    ":mosaic-test:publishToMavenCentral",
-    ":mosaic-bom:publishToMavenCentral",
-    ":mosaic-analysis-core:publishToMavenCentral",
-    ":mosaic-compiler-plugin:publishToMavenCentral",
-    ":mosaic-gradle-plugin:publishToMavenCentral",
+    ":mosaic-core:publishAndReleaseToMavenCentral",
+    ":mosaic-test:publishAndReleaseToMavenCentral",
+    ":mosaic-bom:publishAndReleaseToMavenCentral",
+    ":mosaic-compiler-plugin:publishAndReleaseToMavenCentral",
+    ":mosaic-gradle-plugin:publishAndReleaseToMavenCentral",
   )
 }

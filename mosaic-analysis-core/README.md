@@ -1,8 +1,9 @@
 # Mosaic analysis core
 
-`mosaic-analysis-core` is a published, compiler-independent semantic kernel used
-by Mosaic analysis build tooling. It is not an application runtime dependency
-or a BOM entry.
+`mosaic-analysis-core` is an internal, compiler-independent semantic kernel used
+by Mosaic analysis build tooling. Its implementation is bundled into the
+compiler and Gradle plugins; it is not published separately, an application
+runtime dependency, or a BOM entry.
 It accepts immutable, hand-authored contracts describing Canvas construction,
 lookups, Tile composition, calls, conditions, and selected verification roots.
 It verifies exact Canvas-key availability and eager local singleton construction

@@ -135,15 +135,13 @@ provisional. The analysis tooling is not included in the BOM.
 
 ## Publication
 
-The release publishes `org.buildmosaic:mosaic-analysis-core`,
-`org.buildmosaic:mosaic-compiler-plugin`, and
+The release publishes `org.buildmosaic:mosaic-compiler-plugin` and
 `org.buildmosaic:mosaic-gradle-plugin` to Maven Central at the same Mosaic
-version. Gradle generates the `org.buildmosaic.analysis` plugin marker. The
-compiler plugin is a self-contained artifact loaded by the normal Kotlin compiler;
-analysis-core and the compiler plugin are implementation support artifacts,
-not ordinary application dependencies or BOM entries. For a release, publish
-the three support/implementation artifacts with `releaseToMavenCentral`, wait
-until they resolve from Maven Central, then validate and publish the Gradle
-plugin through the Plugin Portal with `:mosaic-gradle-plugin:publishPlugins`.
-Local installation tests use a temporary Maven repository and do not run a
-remote publication task.
+version. Gradle also generates the `org.buildmosaic.analysis` plugin marker.
+Both plugins bundle the internal analysis-core implementation they need;
+`mosaic-analysis-core` is not published separately. The compiler plugin remains
+a separate artifact loaded through Kotlin Gradle Plugin's standard
+`getPluginArtifact()` resolution. These analysis artifacts are not application
+dependencies or BOM entries. The root `release` task publishes the five Mosaic
+modules to Maven Central, then submits the Gradle plugin through the Plugin
+Portal. Local installation tests use a temporary Maven repository.

@@ -29,7 +29,8 @@ val testKitKotlinPlugin =
   }
 
 dependencies {
-  implementation(project(":mosaic-analysis-core"))
+  compileOnly(project(":mosaic-analysis-core"))
+  testImplementation(project(":mosaic-analysis-core"))
   compileOnly("org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.10")
   add(testKitKotlinPlugin.name, "org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.10")
   testImplementation(project(":mosaic-core"))
@@ -38,11 +39,28 @@ dependencies {
   testImplementation(kotlin("test"))
 }
 
+val bundledAnalysisRuntime =
+  configurations.create("bundledAnalysisRuntime") {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+  }
+dependencies { add(bundledAnalysisRuntime.name, project(":mosaic-analysis-core")) }
+
+tasks.jar {
+  dependsOn(bundledAnalysisRuntime)
+  duplicatesStrategy = DuplicatesStrategy.FAIL
+  exclude("META-INF/versions/**/module-info.class")
+  from({
+    bundledAnalysisRuntime.filter { it.extension == "jar" }.map { zipTree(it) }
+  })
+}
+
 tasks.test {
   useJUnitPlatform()
 }
 
 tasks.named<PluginUnderTestMetadata>("pluginUnderTestMetadata") {
+  pluginClasspath.from(tasks.jar)
   pluginClasspath.from(testKitKotlinPlugin)
 }
 
@@ -65,4 +83,8 @@ gradlePlugin {
 
 tasks.test {
   dependsOn(":mosaic-compiler-plugin:jar", ":mosaic-core:jar")
+}
+
+tasks.named("publishPlugins") {
+  mustRunAfter(rootProject.tasks.named("releaseToMavenCentral"))
 }

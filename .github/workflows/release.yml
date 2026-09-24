@@ -4,24 +4,22 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing immutable version tag, for example 0.3.0
+        description: Existing immutable version tag, for example 0.4.0
         required: true
         type: string
-
-permissions:
-  contents: read
 
 concurrency:
   group: mosaic-release
   cancel-in-progress: false
 
 jobs:
-  validate:
-    name: Validate tagged source
+  release:
+    name: Publish release
     runs-on: ubuntu-latest
-    timeout-minutes: 90
-    outputs:
-      sha: ${{ steps.tag.outputs.sha }}
+    timeout-minutes: 180
+    environment: release
+    permissions:
+      contents: write
     steps:
       - name: Require dispatch from main
         env:
@@ -36,7 +34,6 @@ jobs:
           ref: ${{ github.sha }}
 
       - name: Fetch and validate the immutable tag
-        id: tag
         env:
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
@@ -51,134 +48,32 @@ jobs:
           entry_date="${entry##* - }"
           test "$(date -d "$entry_date" +%F)" = "$entry_date"
           test -z "$(git status --porcelain)"
-          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
           echo "Validated $RELEASE_TAG at $sha"
 
-      - &java
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: zulu
           java-version: '21'
           cache: gradle
 
-      - name: Build repository
-        run: ./gradlew clean build
+      - name: Check repository
+        run: ./gradlew check
 
-      - name: Build examples
-        run: ./gradlew clean build -p examples
+      - name: Check examples
+        run: ./gradlew check -p examples
 
-      - name: Check published installation
-        run: ./gradlew :mosaic-gradle-plugin:test --tests org.buildmosaic.gradle.PublishedInstallationTest
-
-      - name: Check Maven publication task graph without uploading
-        run: ./gradlew :mosaic-core:publishAndReleaseToMavenCentral :mosaic-test:publishAndReleaseToMavenCentral :mosaic-bom:publishAndReleaseToMavenCentral :mosaic-analysis-core:publishAndReleaseToMavenCentral :mosaic-compiler-plugin:publishAndReleaseToMavenCentral :mosaic-gradle-plugin:publishAndReleaseToMavenCentral --dry-run --no-configuration-cache
-
-      - name: Validate plugin metadata without release credentials
-        run: ./gradlew :mosaic-gradle-plugin:validatePlugins --no-configuration-cache
-
-      - name: Check patch whitespace
-        run: git diff --check
-
-  maven:
-    name: Publish Maven Central
-    needs: validate
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    environment: release
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.validate.outputs.sha }}
-
-      - &verify-tag
-        name: Verify remote tag still points to validated source
-        env:
-          RELEASE_TAG: ${{ inputs.tag }}
-          RELEASE_SHA: ${{ needs.validate.outputs.sha }}
-        run: |
-          git fetch --no-tags origin "refs/tags/$RELEASE_TAG"
-          test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$RELEASE_SHA"
-          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
-          test -z "$(git status --porcelain)"
-
-      - *java
-
-      - name: Publish and automatically release all six Maven modules
+      - name: Publish release
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_PRIVATE_KEY }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
-        run: |
-          # Vanniktech 0.34.0's explicit publishToMavenCentral() configuration
-          # needs these built-in tasks to enable automatic Central release.
-          ./gradlew \
-            :mosaic-core:publishAndReleaseToMavenCentral \
-            :mosaic-test:publishAndReleaseToMavenCentral \
-            :mosaic-bom:publishAndReleaseToMavenCentral \
-            :mosaic-analysis-core:publishAndReleaseToMavenCentral \
-            :mosaic-compiler-plugin:publishAndReleaseToMavenCentral \
-            :mosaic-gradle-plugin:publishAndReleaseToMavenCentral \
-            --no-configuration-cache
-
-  plugin:
-    name: Submit Gradle Plugin Portal publication
-    needs: [validate, maven]
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    environment: release
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.validate.outputs.sha }}
-
-      - *verify-tag
-
-      - name: Require public Maven implementation artifacts
-        env:
-          RELEASE_TAG: ${{ inputs.tag }}
-        run: |
-          for module in mosaic-analysis-core mosaic-compiler-plugin mosaic-gradle-plugin; do
-            url="https://repo.maven.apache.org/maven2/org/buildmosaic/$module/$RELEASE_TAG/$module-$RELEASE_TAG.pom"
-            curl --fail --silent --show-error --head "$url" >/dev/null || {
-              echo "::error::$module $RELEASE_TAG is not public yet; rerun this failed job after Central propagation."
-              exit 1
-            }
-          done
-
-      - *java
-
-      # Plugin Publish 2.0.0 authenticates for server-side --validate-only.
-      - name: Validate Plugin Portal publication without uploading
-        env:
           GRADLE_PUBLISH_KEY: ${{ secrets.GRADLE_PUBLISH_KEY }}
           GRADLE_PUBLISH_SECRET: ${{ secrets.GRADLE_PUBLISH_SECRET }}
-          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_PRIVATE_KEY }}
-          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
-        run: ./gradlew :mosaic-gradle-plugin:publishPlugins --validate-only --no-configuration-cache
+        run: ./gradlew release --no-configuration-cache
 
-      - name: Submit Gradle plugin
-        env:
-          GRADLE_PUBLISH_KEY: ${{ secrets.GRADLE_PUBLISH_KEY }}
-          GRADLE_PUBLISH_SECRET: ${{ secrets.GRADLE_PUBLISH_SECRET }}
-          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_PRIVATE_KEY }}
-          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
-        run: ./gradlew :mosaic-gradle-plugin:publishPlugins --no-configuration-cache
-
-  draft:
-    name: Create draft GitHub Release
-    needs: [validate, plugin]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.validate.outputs.sha }}
-
-      - *verify-tag
-
-      - name: Create draft from checked-in release notes and changelog
+      - name: Create GitHub Release from checked-in release notes and changelog
         env:
           RELEASE_TAG: ${{ inputs.tag }}
           GH_TOKEN: ${{ github.token }}
@@ -193,16 +88,12 @@ jobs:
             copy && $0 != heading && /^## / {exit}
             copy {gsub(/\]\(mosaic-gradle-plugin\/README.md/, "](https://github.com/Nick-Abbott/Mosaic/blob/" tag "/mosaic-gradle-plugin/README.md"); print}
           ' CHANGELOG.md >> "$notes"
-          if existing_draft="$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' 2>&1)"; then
-            if [[ "$existing_draft" != true ]]; then
-              echo "::error::A published GitHub Release already exists for $RELEASE_TAG"
-              exit 1
-            fi
-            echo "Existing draft found for $RELEASE_TAG"
-          elif [[ "$existing_draft" == 'release not found' ]]; then
-            gh release create "$RELEASE_TAG" --verify-tag --draft --title "Mosaic $RELEASE_TAG" --notes-file "$notes"
+          if existing_release="$(gh release view "$RELEASE_TAG" --json url --jq '.url' 2>&1)"; then
+            echo "::error::A GitHub Release already exists for $RELEASE_TAG: $existing_release"
+            exit 1
+          elif [[ "$existing_release" == 'release not found' ]]; then
+            gh release create "$RELEASE_TAG" --verify-tag --title "Mosaic $RELEASE_TAG" --notes-file "$notes"
           else
-            echo "::error::Could not inspect GitHub Release for $RELEASE_TAG: $existing_draft"
+            echo "::error::Could not inspect GitHub Release for $RELEASE_TAG: $existing_release"
             exit 1
           fi
-          echo 'GitHub Release is a draft. Publish it after Plugin Portal approval and public visibility are confirmed.'

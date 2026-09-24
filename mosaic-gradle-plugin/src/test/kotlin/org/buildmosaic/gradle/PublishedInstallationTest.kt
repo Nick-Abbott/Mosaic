@@ -28,7 +28,6 @@ class PublishedInstallationTest {
       ":mosaic-core:publishAllPublicationsToInstallTestRepository",
       ":mosaic-test:publishAllPublicationsToInstallTestRepository",
       ":mosaic-bom:publishAllPublicationsToInstallTestRepository",
-      ":mosaic-analysis-core:publishAllPublicationsToInstallTestRepository",
       ":mosaic-compiler-plugin:publishAllPublicationsToInstallTestRepository",
       ":mosaic-gradle-plugin:publishAllPublicationsToInstallTestRepository",
       "-Pmosaic.installTestRepository=${maven.absolutePath}",
@@ -44,7 +43,6 @@ class PublishedInstallationTest {
     for (module in listOf(
       "mosaic-core",
       "mosaic-test",
-      "mosaic-analysis-core",
       "mosaic-compiler-plugin",
       "mosaic-gradle-plugin",
     )) {
@@ -57,13 +55,19 @@ class PublishedInstallationTest {
       assertTrue(pom.contains("<name>The Apache License, Version 2.0</name>"), pom)
     }
     val bom = maven.resolve("org/buildmosaic/mosaic-bom/$version/mosaic-bom-$version.pom").readText()
+    assertTrue(!maven.resolve("org/buildmosaic/mosaic-analysis-core").exists())
     assertTrue(bom.contains("<artifactId>mosaic-core</artifactId>"), bom)
     assertTrue(bom.contains("<artifactId>mosaic-test</artifactId>"), bom)
     assertTrue(!bom.contains("<artifactId>mosaic-analysis-core</artifactId>"), bom)
     val pluginPom =
       maven.resolve("org/buildmosaic/mosaic-gradle-plugin/$version/mosaic-gradle-plugin-$version.pom").readText()
-    assertTrue(pluginPom.contains("<artifactId>mosaic-analysis-core</artifactId>"))
+    assertTrue(!pluginPom.contains("<artifactId>mosaic-analysis-core</artifactId>"), pluginPom)
     assertTrue(!pluginPom.contains("kotlin-gradle-plugin"), pluginPom)
+    JarFile(maven.resolve("org/buildmosaic/mosaic-gradle-plugin/$version/mosaic-gradle-plugin-$version.jar")).use {
+        jar ->
+      assertTrue(jar.getEntry("org/buildmosaic/analysis/SummaryCodec.class") != null)
+      assertTrue(jar.getEntry("kotlinx/serialization/json/Json.class") != null)
+    }
     val compilerPom =
       maven.resolve("org/buildmosaic/mosaic-compiler-plugin/$version/mosaic-compiler-plugin-$version.pom").readText()
     assertTrue(!compilerPom.contains("<artifactId>mosaic-analysis-core</artifactId>"), compilerPom)
@@ -81,6 +85,7 @@ class PublishedInstallationTest {
           jar.getInputStream(entry).bufferedReader().readText().trim(),
         )
       }
+      assertTrue(jar.getEntry("org/buildmosaic/analysis/SummaryCodec.class") != null)
       assertTrue(jar.getEntry("kotlinx/serialization/json/Json.class") != null)
       assertTrue(jar.entries().asSequence().none { it.name.startsWith("com/fasterxml/jackson/") })
     }
