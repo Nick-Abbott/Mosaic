@@ -5,7 +5,7 @@ predate this maintained changelog; their release history is not reconstructed he
 
 ## [Unreleased]
 
-## [0.3.0] - Unreleased
+## [0.3.0] - 2026-09-23
 
 ### Added
 
