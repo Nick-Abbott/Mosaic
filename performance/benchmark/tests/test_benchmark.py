@@ -1,6 +1,7 @@
 import json
 import sys
 import unittest
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -35,7 +36,9 @@ class BenchmarkLogicTest(unittest.TestCase):
             "successful_requests": {"values": {"count": 28}},
             "http_failures": {"values": {"count": 2}},
             "http_reqs": {"values": {"count": 30}},
+            "iterations": {"values": {"count": 30}},
             "dropped_iterations": {"values": {"count": 1}},
+            "iteration_duration": {"values": {"avg": 5, "med": 4, "p(95)": 9, "p(99)": 11}},
             "successful_latency": {"values": {"avg": 4, "med": 3, "p(95)": 8, "p(99)": 10}},
         }}
         self.assertEqual(b.trend(summary, "successful_latency"),
@@ -44,7 +47,10 @@ class BenchmarkLogicTest(unittest.TestCase):
         self.assertEqual((result["successful_requests"], result["http_failures"],
                           result["dropped_iterations"], result["completed_rps"],
                           result["latency_p99_ms"]), (28, 2, 1, 10, 10))
+        self.assertEqual((result["started_iterations"], result["iteration_duration_p99_ms"]), (30, 11))
+        self.assertEqual((result["iterations"], result["http_reqs"]), (30, 30))
         summary["metrics"]["http_reqs"]["values"]["count"] = 29
+        summary["metrics"]["iterations"]["values"]["count"] = 29
         with self.assertRaisesRegex(ValueError, "accounting mismatch"):
             b.normalized_k6(summary, 3)
 
@@ -57,9 +63,84 @@ class BenchmarkLogicTest(unittest.TestCase):
                           result["dropped_iterations"], result["completed_rps"],
                           result["latency_mean_ms"], result["latency_p99_ms"]),
                          (4, 0, 0, 2, 2, 5))
+        self.assertEqual(result["iteration_duration_p95_ms"], 5)
+        self.assertEqual(result["k6_vus_max"], 20)
         del summary["metrics"]["http_reqs"]
         with self.assertRaisesRegex(ValueError, "missing http_reqs.count"):
             b.normalized_k6(summary, 2)
+
+    def test_k6_v2_2_summary_shape(self):
+        fixture = Path(__file__).parent / "fixtures" / "k6-v2.2-summary.json"
+        result = b.normalized_k6(json.loads(fixture.read_text()), 3)
+        self.assertEqual((result["started_iterations"], result["dropped_iterations"],
+                          result["iteration_duration_p99_ms"], result["k6_vus_max"]),
+                         (31, 0, 24.2, 20))
+
+    def test_iteration_request_invariant(self):
+        fixture = Path(__file__).parent / "fixtures" / "k6-v2.3-summary.json"
+        summary = json.loads(fixture.read_text())
+        summary["metrics"]["iterations"]["count"] = 3
+        with self.assertRaisesRegex(ValueError, "iterations 3 != http_reqs 4"):
+            b.normalized_k6(summary, 2)
+
+    def test_arrival_accounting_and_policy(self):
+        exact = b.arrival_accounting(800, 10, 8000, 0)
+        self.assertEqual((exact["expected_arrivals"], exact["accounted_arrivals"],
+                          exact["unaccounted_arrivals"], exact["arrival_fidelity_percent"]),
+                         (8000, 8000, 0, 100))
+        self.assertTrue(exact["arrival_fidelity_valid"])
+        self.assertTrue(b.arrival_accounting(800, 10, 7999, 0)["arrival_fidelity_valid"])
+        self.assertTrue(b.arrival_accounting(10, 10, 99, 0)["arrival_fidelity_valid"])
+        self.assertFalse(b.arrival_accounting(10, 10, 98, 0)["arrival_fidelity_valid"])
+        self.assertTrue(b.arrival_accounting(800, 10, 7900, 100)["arrival_fidelity_valid"])
+        short = b.arrival_accounting(3200, 10, 30040, 1165)
+        self.assertEqual(short["unaccounted_arrivals"], 795)
+        self.assertFalse(short["arrival_fidelity_valid"])
+        self.assertIn("unaccounted 795", b.arrival_violation(short))
+        self.assertTrue(b.arrival_accounting(10, 10, 101, 0)["arrival_fidelity_valid"])
+        over = b.arrival_accounting(10, 10, 102, 0)
+        self.assertFalse(over["arrival_fidelity_valid"])
+        self.assertIn("over-accounted", b.arrival_violation(over))
+        self.assertFalse(b.arrival_accounting(800, 10, 7990, 0)["arrival_fidelity_valid"])
+        with self.assertRaisesRegex(ValueError, "whole-second"):
+            b.arrival_accounting(800, 1.5, 1200, 0)
+
+    def test_generator_cpu_conversion_and_sampler(self):
+        start = SimpleNamespace(ru_utime=1.0, ru_stime=0.5)
+        end = SimpleNamespace(ru_utime=3.0, ru_stime=1.5)
+        self.assertEqual(b.generator_cpu_metrics(start, end, 2),
+                         {"generator_cpu_seconds": 3, "generator_cpu_core_equivalents": 1.5})
+        with tempfile.TemporaryDirectory() as temporary:
+            sampler = b.ProcessSampler(__import__("os").getpid(), Path(temporary) / "samples.csv", "generator")
+            sampler.start()
+            sampler.stop()
+            self.assertTrue(sampler.rows)
+            self.assertGreater(sampler.rows[0]["rss_mib"], 0)
+
+    def test_invalid_points_are_excluded_from_exploratory_comparison(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            rows = []
+            for variant, valid in (("direct", True), ("mosaic", False)):
+                rows.append({"route": "light", "latency_profile": "zero", "offered_rps": 10,
+                             "variant": variant, "repetition": 1, "run_order": 1,
+                             "valid_comparison_point": valid, "expected_arrivals": 100,
+                             "started_iterations": 99, "dropped_iterations": 0,
+                             "unaccounted_arrivals": 1, "arrival_fidelity_percent": 99,
+                             "cpu_core_equivalents": 0.1, "generator_cpu_core_equivalents": 0.2,
+                             "successful_requests": 99, "http_failures": 0, "latency_p95_ms": 1})
+            b.write_load_summary(Path(temporary), rows)
+            markdown = (Path(temporary) / "summary.md").read_text()
+            self.assertIn("INVALID: 1", markdown)
+            self.assertIn("**INVALID**", markdown)
+            self.assertEqual(len((Path(temporary) / "summary.csv").read_text().splitlines()), 1)
+
+    def test_exploratory_warning_and_authoritative_failure(self):
+        row = {"valid_comparison_point": False, "arrival_fidelity_violation": "unaccounted 20 arrivals"}
+        with patch("builtins.print") as printed:
+            b.enforce_arrival_fidelity(row, True, "case")
+        self.assertIn("WARNING: INVALID LOAD POINT", printed.call_args.args[0])
+        with self.assertRaisesRegex(ValueError, "authoritative arrival fidelity failed"):
+            b.enforce_arrival_fidelity(row, False, "case")
 
     def test_alternating_order(self):
         self.assertEqual(b.paired_order(1), ("direct", "mosaic"))
@@ -77,6 +158,7 @@ class BenchmarkLogicTest(unittest.TestCase):
                        {"cases": {"light": {"zero": [0]}}},
                        {"cases": {"light": {"zero": [10, 10]}}},
                        {"max_vus": 30}, {"repetitions": 0},
+                       {"measurement_seconds": 1.5}, {"arrival_fidelity_tolerance_percent": -0.1},
                        {"graceful_stop_seconds": 0}, {"graceful_stop_seconds": -1}):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 b.validate_config({**config, **change})

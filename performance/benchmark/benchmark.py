@@ -9,6 +9,7 @@ import math
 import os
 import platform
 import re
+import resource
 import shutil
 import socket
 import statistics
@@ -31,6 +32,7 @@ PROFILES = ("zero", "service")
 DEFAULT_JVM = ("-Xms64m", "-Xmx512m", "-XX:+UseG1GC")
 DEFAULT_GRACEFUL_STOP_SECONDS = 30
 DEFAULT_CPU_WORK = 20_000
+DEFAULT_ARRIVAL_TOLERANCE_PERCENT = 0.1
 READINESS_POLL_INTERVAL_SECONDS = 0.005
 FIELDS = (
     "successful_requests", "http_failures", "dropped_iterations", "completed_rps",
@@ -67,6 +69,12 @@ def validate_config(config):
     if config["max_vus"] != config["preallocated_vus"]:
         fail("max_vus must equal preallocated_vus for fixed VU allocation")
     config.setdefault("graceful_stop_seconds", DEFAULT_GRACEFUL_STOP_SECONDS)
+    if int(config["measurement_seconds"]) != config["measurement_seconds"]:
+        fail("measurement_seconds must be a whole number of seconds for exact scheduled arrivals")
+    config.setdefault("arrival_fidelity_tolerance_percent", DEFAULT_ARRIVAL_TOLERANCE_PERCENT)
+    tolerance = config["arrival_fidelity_tolerance_percent"]
+    if isinstance(tolerance, bool) or not isinstance(tolerance, (int, float)) or not math.isfinite(tolerance) or tolerance < 0 or tolerance > 1:
+        fail("arrival_fidelity_tolerance_percent must be between 0 and 1")
     require_positive(config["graceful_stop_seconds"], "graceful_stop_seconds")
     if "cpu_work" in config:
         validate_cpu_work(config["cpu_work"])
@@ -155,7 +163,7 @@ def parse_proc_status(status):
 
 def cpu_seconds(start, end, ticks_per_second):
     if start[2] != end[2]:
-        fail("application PID was reused during measurement")
+        fail("process PID was reused during measurement")
     elapsed = (end[0] + end[1] - start[0] - start[1]) / ticks_per_second
     if elapsed < 0:
         fail("negative process CPU delta")
@@ -208,7 +216,10 @@ def normalized_k6(summary, duration):
     successful = count("successful_requests", optional=True)
     failed = count("http_failures", optional=True)
     completed = count("http_reqs")
+    iterations = count("iterations")
     dropped = count("dropped_iterations", optional=True)
+    if iterations != completed:
+        fail(f"k6 workload invariant violated: iterations {iterations} != http_reqs {completed}")
     if successful + failed != completed:
         fail(f"k6 request accounting mismatch: {successful} + {failed} != {completed}")
     if successful:
@@ -220,10 +231,25 @@ def normalized_k6(summary, duration):
             fail("unsupported k6 summary: missing successful latency percentiles; check --summary-trend-stats")
     else:
         latency = {key: None for key in ("avg", "med", "p(95)", "p(99)")}
+    try:
+        iteration_duration = trend(summary, "iteration_duration")
+    except (KeyError, TypeError) as exc:
+        raise ValueError("unsupported k6 summary: missing iteration_duration metric") from exc
+    if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in iteration_duration.values()):
+        fail("unsupported k6 summary: missing iteration_duration percentiles; check --summary-trend-stats")
+    # k6 2.2's vus_max is the available VU ceiling, not peak active VUs.
+    vus_max = None
+    if "vus_max" in metrics:
+        vus_max = metric_values(metrics, "vus_max").get("value")
+        if isinstance(vus_max, bool) or not isinstance(vus_max, (int, float)) or not math.isfinite(vus_max) or vus_max < 0:
+            fail("unsupported k6 summary: invalid vus_max.value")
     return {
         "successful_requests": successful,
         "http_failures": failed,
+        "http_reqs": completed,
         "completed_requests": completed,
+        "iterations": iterations,
+        "started_iterations": iterations,
         "dropped_iterations": dropped,
         "completed_rps": completed / duration,
         "successful_rps": successful / duration,
@@ -231,7 +257,52 @@ def normalized_k6(summary, duration):
         "latency_p50_ms": latency["med"],
         "latency_p95_ms": latency["p(95)"],
         "latency_p99_ms": latency["p(99)"],
+        "iteration_duration_mean_ms": iteration_duration["avg"],
+        "iteration_duration_p50_ms": iteration_duration["med"],
+        "iteration_duration_p95_ms": iteration_duration["p(95)"],
+        "iteration_duration_p99_ms": iteration_duration["p(99)"],
+        "k6_vus_max": vus_max,
     }
+
+
+def arrival_accounting(rate, duration, iterations, dropped, tolerance_percent=DEFAULT_ARRIVAL_TOLERANCE_PERCENT):
+    """Integer-second schedule with a small symmetric boundary allowance."""
+    if isinstance(rate, bool) or not isinstance(rate, int) or rate <= 0 or isinstance(duration, bool) or not isinstance(duration, (int, float)) or duration <= 0 or not math.isfinite(duration) or int(duration) != duration:
+        fail("arrival accounting requires integer RPS and whole-second duration")
+    expected = rate * int(duration)
+    accounted = iterations + dropped
+    missing = expected - accounted
+    allowed = max(1, expected * tolerance_percent / 100)
+    return {"expected_arrivals": expected, "accounted_arrivals": accounted,
+            "unaccounted_arrivals": missing, "arrival_fidelity_percent": accounted / expected * 100,
+            "max_unaccounted_arrivals": allowed,
+            "arrival_fidelity_valid": abs(missing) <= allowed}
+
+
+def arrival_violation(accounting):
+    if accounting["unaccounted_arrivals"] < -accounting["max_unaccounted_arrivals"]:
+        return f"over-accounted {abs(accounting['unaccounted_arrivals'])} scheduled arrivals"
+    if not accounting["arrival_fidelity_valid"]:
+        return (f"unaccounted {accounting['unaccounted_arrivals']} of {accounting['expected_arrivals']} "
+                f"scheduled arrivals (allowed {accounting['max_unaccounted_arrivals']:g})")
+    return None
+
+
+def enforce_arrival_fidelity(row, exploratory, context):
+    if row["valid_comparison_point"]:
+        return
+    message = f"arrival fidelity failed for {context}: {row['arrival_fidelity_violation']}"
+    if exploratory:
+        print(f"WARNING: INVALID LOAD POINT: {message}", file=sys.stderr)
+    else:
+        fail(f"authoritative {message}")
+
+
+def generator_cpu_metrics(start_usage, end_usage, elapsed):
+    cpu = (end_usage.ru_utime + end_usage.ru_stime) - (start_usage.ru_utime + start_usage.ru_stime)
+    if cpu < 0 or elapsed <= 0:
+        fail("invalid generator CPU measurement")
+    return {"generator_cpu_seconds": cpu, "generator_cpu_core_equivalents": cpu / elapsed}
 
 
 def aggregate(rows):
@@ -303,6 +374,7 @@ def metadata(config, args, app_cpus, load_cpus, jvm_options, state):
         "mosaic_version": next((line.split("=", 1)[1] for line in (ROOT / "gradle.properties").read_text().splitlines() if line.startswith("mosaic.version=")), None),
         "raw_k6_timeseries": args.raw_k6,
         "skip_build": args.skip_build,
+        "arrival_fidelity_mode": "exploratory-warning" if getattr(args, "exploratory_arrivals", False) else "authoritative-fail",
     }
 
 
@@ -434,8 +506,8 @@ def read_status(pid):
 
 
 class ProcessSampler:
-    def __init__(self, pid, path):
-        self.pid, self.path = pid, path
+    def __init__(self, pid, path, name="application"):
+        self.pid, self.path, self.name = pid, path, name
         self.stop_event = threading.Event()
         self.rows = []
         self.error = None
@@ -451,6 +523,9 @@ class ProcessSampler:
                                   "rss_mib": memory["VmRSS"], "vmhwm_mib": memory["VmHWM"]})
                 if self.stop_event.wait(0.1):
                     break
+        except FileNotFoundError as exc:
+            if self.name != "generator" or not self.rows:
+                self.error = exc
         except Exception as exc:
             self.error = exc
 
@@ -465,12 +540,21 @@ class ProcessSampler:
             writer.writeheader()
             writer.writerows(self.rows)
         if self.error:
-            raise RuntimeError(f"application process sampling failed: {self.error}") from self.error
+            raise RuntimeError(f"{self.name} process sampling failed: {self.error}") from self.error
         if not self.rows or any(row["rss_mib"] is None for row in self.rows):
-            fail("application RSS samples are missing")
+            fail(f"{self.name} RSS samples are missing")
 
 
-def run_k6(route, rps, seconds, graceful_stop_seconds, port, vus, max_vus, directory, load_cpus, raw):
+def verify_k6_process(pid):
+    """taskset execs k6 in place; reject a surviving wrapper or unrelated PID."""
+    exe = Path(f"/proc/{pid}/exe").resolve()
+    argv = [x.decode(errors="replace") for x in Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0") if x]
+    if not argv or "k6" not in exe.name or Path(argv[0]).name != "k6":
+        fail(f"generator PID {pid} is not k6: exe={exe}, argv={argv[:1]}")
+
+
+def run_k6(route, rps, seconds, graceful_stop_seconds, port, vus, max_vus, directory, load_cpus, raw,
+           measure_generator=False):
     directory.mkdir(parents=True, exist_ok=True)
     cmd = ["k6", "run", "--quiet", "--summary-export", str(directory / "k6-summary.json"),
            "--summary-trend-stats", "avg,med,p(90),p(95),p(99),p(99.9)"]
@@ -485,10 +569,42 @@ def run_k6(route, rps, seconds, graceful_stop_seconds, port, vus, max_vus, direc
         cmd = ["taskset", "-c", ",".join(map(str, load_cpus)), *cmd]
     write_json(directory / "k6-command.json", cmd)
     with (directory / "k6-stdout.log").open("w") as stdout, (directory / "k6-stderr.log").open("w") as stderr:
-        completed = subprocess.run(cmd, cwd=ROOT, stdout=stdout, stderr=stderr)
-    if completed.returncode:
-        fail(f"k6 exited with status {completed.returncode}; inspect {directory / 'k6-stderr.log'}")
-    return json.loads((directory / "k6-summary.json").read_text())
+        usage_start = resource.getrusage(resource.RUSAGE_CHILDREN) if measure_generator else None
+        start = time.monotonic()
+        process = subprocess.Popen(cmd, cwd=ROOT, stdout=stdout, stderr=stderr)
+        sampler = None
+        try:
+            if measure_generator:
+                # The taskset executable must have replaced itself before sampling.
+                for _ in range(100):
+                    try:
+                        verify_k6_process(process.pid)
+                        break
+                    except (FileNotFoundError, ValueError):
+                        if process.poll() is not None:
+                            fail("k6 exited before generator identity could be verified")
+                        time.sleep(0.01)
+                else:
+                    fail("taskset did not exec the expected k6 process")
+                sampler = ProcessSampler(process.pid, directory / "generator-samples.csv", "generator")
+                sampler.start()
+            returncode = process.wait()
+        finally:
+            if process.poll() is None:
+                process.terminate()
+                process.wait()
+            end = time.monotonic()
+            if sampler:
+                sampler.stop()
+    if returncode:
+        fail(f"k6 exited with status {returncode}; inspect {directory / 'k6-stderr.log'}")
+    generator = {}
+    if measure_generator:
+        generator = generator_cpu_metrics(usage_start, resource.getrusage(resource.RUSAGE_CHILDREN), end - start)
+        rss = [row["rss_mib"] for row in sampler.rows]
+        generator.update({"generator_average_rss_mib": statistics.mean(rss),
+                          "generator_peak_rss_mib": max(rss), "generator_pid": process.pid})
+    return json.loads((directory / "k6-summary.json").read_text()), generator
 
 
 def load_case(variant, route, profile, rps, repetition, order, config, session, args, jvm_options, app_cpus, load_cpus):
@@ -498,7 +614,7 @@ def load_case(variant, route, profile, rps, repetition, order, config, session, 
     try:
         readiness = wait_ready(process, port, variant, args.readiness_timeout, started, jvm_options)
         warmup_rps = config.get("warmup_rps", rps)
-        warmup = run_k6(route, warmup_rps, config["warmup_seconds"], config["graceful_stop_seconds"], port, config["preallocated_vus"],
+        warmup, _ = run_k6(route, warmup_rps, config["warmup_seconds"], config["graceful_stop_seconds"], port, config["preallocated_vus"],
                         config["max_vus"], directory / "warmup", load_cpus, False)
         warmup_counts = normalized_k6(warmup, config["warmup_seconds"])
         if warmup_counts["successful_requests"] == 0 or warmup_counts["http_failures"]:
@@ -514,29 +630,43 @@ def load_case(variant, route, profile, rps, repetition, order, config, session, 
         start = time.monotonic()
         sampler.start()
         try:
-            summary = run_k6(route, rps, config["measurement_seconds"], config["graceful_stop_seconds"], port,
-                             config["preallocated_vus"], config["max_vus"], directory, load_cpus, args.raw_k6)
+            summary, generator = run_k6(route, rps, config["measurement_seconds"], config["graceful_stop_seconds"], port,
+                             config["preallocated_vus"], config["max_vus"], directory, load_cpus, args.raw_k6,
+                             measure_generator=True)
         finally:
             end = time.monotonic()
             cpu_end = read_stat(process.pid)
             sampler.stop()
         cpu = cpu_seconds(cpu_start, cpu_end, os.sysconf("SC_CLK_TCK"))
-        numbers = normalized_k6(summary, config["measurement_seconds"])
+        try:
+            numbers = normalized_k6(summary, config["measurement_seconds"])
+        except ValueError as exc:
+            write_json(directory / "result.json", {"variant": variant, "route": route,
+                       "latency_profile": profile, "offered_rps": rps, "repetition": repetition,
+                       "valid_comparison_point": False, "integrity_error": str(exc), **generator})
+            raise
+        accounting = arrival_accounting(rps, config["measurement_seconds"], numbers["started_iterations"],
+                                        numbers["dropped_iterations"], config["arrival_fidelity_tolerance_percent"])
+        violation = arrival_violation(accounting)
         rss = [row["rss_mib"] for row in sampler.rows]
         result = {"variant": variant, "route": route, "latency_profile": profile, "offered_rps": rps,
                   "port": port, "warmup_rps": warmup_rps, "cpu_work": args.cpu_work,
                   "graceful_stop_seconds": config["graceful_stop_seconds"],
+                  "arrival_fidelity_tolerance_percent": config["arrival_fidelity_tolerance_percent"],
                   "preallocated_vus": config["preallocated_vus"], "max_vus": config["max_vus"],
                   "duration_seconds": config["measurement_seconds"], "measurement_wall_seconds": end - start,
                   "repetition": repetition, "run_order": order, "readiness_seconds": readiness,
                   "process_cpu_seconds": cpu, "cpu_core_equivalents": cpu / (end - start),
                   "cpu_ms_per_successful_request": cpu_ms_per_request(cpu, numbers["successful_requests"]),
                   "average_rss_mib": statistics.mean(rss), "peak_rss_mib": max(rss),
-                  "vmhwm_mib": sampler.rows[-1]["vmhwm_mib"], **numbers}
+                  "vmhwm_mib": sampler.rows[-1]["vmhwm_mib"], **generator, **numbers, **accounting,
+                  "valid_comparison_point": violation is None, "arrival_fidelity_violation": violation}
         write_json(directory / "result.json", result)
         if result["dropped_iterations"]:
             print(f"WARNING: {slug} {variant} rep {repetition} dropped {result['dropped_iterations']} k6 iterations; inspect generator capacity")
-        print(f"{slug} {variant} rep {repetition}: {result['successful_requests']} successes, {result['http_failures']} HTTP failures, {result['dropped_iterations']} drops")
+        if violation:
+            print(f"INVALID LOAD POINT: {slug} {variant} rep {repetition}: {violation}; raw result preserved at {directory / 'result.json'}", file=sys.stderr)
+        print(f"{slug} {variant} rep {repetition}: {result['successful_requests']} successes, {result['http_failures']} HTTP failures, {result['dropped_iterations']} drops; fidelity {result['arrival_fidelity_percent']:.3f}%")
         return result
     finally:
         terminate(process, stdout, stderr)
@@ -558,12 +688,23 @@ def startup_sample(variant, repetition, order, session, args, jvm_options, app_c
 
 def write_load_summary(session, rows):
     write_json(session / "load-results.json", rows)
-    aggregated = aggregate(rows)
+    eligible = {}
+    for row in rows:
+        key = (row["route"], row["latency_profile"], row["offered_rps"], row["repetition"])
+        if row["valid_comparison_point"]:
+            eligible.setdefault(key, []).append(row)
+    comparable = [row for pair in eligible.values() if {row["variant"] for row in pair} == set(VARIANTS) for row in pair]
+    aggregated = aggregate(comparable) if comparable else []
     with (session / "summary.csv").open("w", newline="") as output:
-        writer = csv.DictWriter(output, fieldnames=aggregated[0].keys())
+        writer = csv.DictWriter(output, fieldnames=aggregated[0].keys() if aggregated else
+                                ("route", "latency_profile", "offered_rps", "metric", "direct_median", "mosaic_median",
+                                 "median_paired_absolute_difference", "median_paired_relative_percent",
+                                 "paired_repetitions", "relative_repetitions", "direct_repetitions", "mosaic_repetitions"))
         writer.writeheader()
         writer.writerows(aggregated)
-    lines = ["# Load summary", "", "Independent medians describe each variant. Paired differences compare direct and Mosaic within each repetition; their median is the primary A/B comparison.",
+    invalid = [row for row in rows if not row["valid_comparison_point"]]
+    lines = ["# Load summary", "", f"**{'INVALID: ' + str(len(invalid)) + ' load point(s) failed arrival fidelity; excluded from comparisons.' if invalid else 'All recorded load points passed arrival fidelity.'}**", "",
+             "Independent medians describe each variant. Paired differences compare direct and Mosaic within each repetition; their median is the primary A/B comparison.",
              "Latency is for successful responses. Positive paired differences mean Mosaic is larger. Individual runs remain in `load/` and `load-results.json`.", "",
              "| Route | Profile | Offered RPS | Metric | Direct median | Mosaic median | Median paired difference | Median paired relative difference | Pairs with relative value |",
              "| --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |"]
@@ -573,12 +714,12 @@ def write_load_summary(session, rows):
         difference = row["median_paired_relative_percent"]
         difference_text = "—" if difference is None else f"{difference:.3f}%"
         lines.append(f"| {row['route']} | {row['latency_profile']} | {row['offered_rps']} | {row['metric']} | {fmt(row['direct_median'])} | {fmt(row['mosaic_median'])} | {fmt(row['median_paired_absolute_difference'])} | {difference_text} | {row['relative_repetitions']} |")
-    lines += ["", "## Individual repetitions and anomalies", "", "| Case | Variant | Rep | Order | Successes | HTTP failures | Drops | p95 ms | CPU ms/success | Peak RSS MiB |",
-              "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
+    lines += ["", "## Individual repetitions and anomalies", "", "| Case | Variant | Rep | Status | Expected | Iterations | Drops | Unaccounted | Fidelity % | App CPU cores | Generator CPU cores | Successes | HTTP failures | p95 ms |",
+              "| --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
     for row in rows:
         p95 = "—" if row["latency_p95_ms"] is None else f"{row['latency_p95_ms']:.3f}"
-        cpu_per_success = "—" if row["cpu_ms_per_successful_request"] is None else f"{row['cpu_ms_per_successful_request']:.3f}"
-        lines.append(f"| {row['route']}/{row['latency_profile']}/{row['offered_rps']} | {row['variant']} | {row['repetition']} | {row['run_order']} | {row['successful_requests']} | {row['http_failures']} | {row['dropped_iterations']} | {p95} | {cpu_per_success} | {row['peak_rss_mib']:.3f} |")
+        status = "VALID" if row["valid_comparison_point"] else "**INVALID**"
+        lines.append(f"| {row['route']}/{row['latency_profile']}/{row['offered_rps']} | {row['variant']} | {row['repetition']} | {status} | {row['expected_arrivals']} | {row['started_iterations']} | {row['dropped_iterations']} | {row['unaccounted_arrivals']} | {row['arrival_fidelity_percent']:.3f} | {row['cpu_core_equivalents']:.3f} | {row['generator_cpu_core_equivalents']:.3f} | {row['successful_requests']} | {row['http_failures']} | {p95} |")
     (session / "summary.md").write_text("\n".join(lines) + "\n")
 
 
@@ -646,6 +787,10 @@ def parse_args():
     parser.add_argument("--allow-dirty", action="store_true", help="Exploratory run with a dirty tree; recorded in metadata")
     parser.add_argument("--skip-build", action="store_true", help="Use previously installed distributions")
     parser.add_argument("--raw-k6", action="store_true", help="Keep large JSON time series for measured loads")
+    parser.add_argument("--arrival-fidelity-tolerance-percent", type=float,
+                        help="Maximum signed arrival-accounting deviation as a percent, with a one-arrival floor (default 0.1)")
+    parser.add_argument("--exploratory-arrivals", action="store_true",
+                        help="Warn and preserve invalid load points instead of aborting the session")
     parser.add_argument("--output", type=Path, help="New session directory; default performance/results/<UTC timestamp>")
     sub = parser.add_subparsers(dest="command", required=True)
     startup = sub.add_parser("startup", help="Fresh JVM startup comparison")
@@ -696,6 +841,8 @@ def main():
             config["warmup_rps"] = args.warmup_rps
     if args.graceful_stop_seconds is not None and args.command != "startup":
         config["graceful_stop_seconds"] = args.graceful_stop_seconds
+    if args.arrival_fidelity_tolerance_percent is not None and args.command != "startup":
+        config["arrival_fidelity_tolerance_percent"] = args.arrival_fidelity_tolerance_percent
     args.cpu_work = effective_cpu_work(args.cpu_work, config)
     config["cpu_work"] = args.cpu_work
     if args.command != "startup":
@@ -724,9 +871,12 @@ def main():
                     for rps in rates:
                         for repetition in range(1, config["repetitions"] + 1):
                             for order, variant in enumerate(paired_order(repetition), 1):
-                                rows.append(load_case(variant, route, profile, rps, repetition, order, config,
-                                                      session, args, jvm_options, app_cpus, load_cpus))
-                            write_load_summary(session, rows)
+                                row = load_case(variant, route, profile, rps, repetition, order, config,
+                                                session, args, jvm_options, app_cpus, load_cpus)
+                                rows.append(row)
+                                write_load_summary(session, rows)
+                                enforce_arrival_fidelity(row, args.exploratory_arrivals,
+                                                         f"{route}/{profile}/{rps} {variant} rep {repetition}; inspect {session / 'summary.md'}")
     finally:
         final_state = git_state()
         metadata_path = session / "metadata.json"

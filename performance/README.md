@@ -91,7 +91,7 @@ during timed measurements. The shared `benchmark/k6/scenario.js` sends one POST
 per constant-arrival-rate iteration, with deterministic inputs 1, 7, 42, 99
 chosen by global scenario iteration index. It selects the correct field for
 each route. k6 checks 2xx status and records successful requests, HTTP failures,
-successful-response latency, and dropped iterations. It discards response bodies
+successful-response latency, iteration duration, completed iterations, and dropped iterations. It discards response bodies
 after status validation; the equivalence tests validate body semantics.
 
 Open-loop constant arrival rate keeps the offered rate independent of response
@@ -104,6 +104,29 @@ recorded and must be equal, so k6 does not grow its VU pool differently across
 variants. Use several offered RPS values per route and profile to examine a
 load curve. The example smoke rates are deliberately low and not universal
 thresholds.
+
+The harness checks the one-request-per-iteration contract: `iterations ==
+http_reqs` and `successful_requests + http_failures == http_reqs`. It computes
+`expected_arrivals = offered_rps × measurement_seconds` from integer RPS and
+whole-second publication durations. A **dropped iteration** is scheduled work
+that k6 could not start; it still counts toward offered-load accounting. An
+**unaccounted arrival** is in the nominal schedule but appears in neither
+`iterations` nor `dropped_iterations`. The latter indicates generator or
+scheduler integrity trouble, not application throughput. The signed difference
+is retained, so over-accounting is visible too. Reference k6 2.2.0 produced
+one extra iteration at a 3-second smoke boundary; the same tiny allowance
+therefore applies to either sign of the difference.
+
+By default, at most `max(1, 0.1% of expected_arrivals)` unaccounted arrivals
+are allowed. This is a count comparison: since counts are integers, a
+fractional allowance effectively rounds down. Over-accounting beyond the
+allowance fails.
+`--arrival-fidelity-tolerance-percent` can set another small percent (0 through
+1); the one-arrival floor remains. Invalid points keep raw k6 output and a
+marked `result.json`, but abort an authoritative session and never enter its
+paired comparison. `--exploratory-arrivals` continues a calibration session
+with a loud warning and excludes invalid pairs from comparisons. It does not
+replace configured RPS with achieved RPS.
 
 For every route/profile/rate/repetition/variant, the runner launches a **fresh
 JVM**, waits for successful `GET /health` using an external monotonic clock,
@@ -149,6 +172,11 @@ it covers the process lifetime, including warmup, so it is **not** the
 measurement-window peak. No forced GC is used. The runner verifies that the
 launcher PID has become the expected Java application process; it fails if it
 cannot identify the process reliably.
+The measured k6 invocation is sampled separately after verifying that its PID
+is the k6 process (including through `taskset`, which execs in place). Linux
+child-process usage gives generator CPU seconds and core equivalents, while
+`/proc` samples give generator mean and peak RSS. Warmup k6 usage is excluded.
+These are generator diagnostics, never part of the Mosaic/direct score.
 
 The same fixed JVM options apply to both variants: `-Xms64m -Xmx512m
 -XX:+UseG1GC`. Repeat `--jvm-option` to replace the full list; optionally
@@ -181,8 +209,8 @@ The committed smoke suite passed with reference k6 **v2.2.0**; the same harness
 was also validated with k6 **v2.3.0**. Their observed `--summary-export` JSON
 has metric values directly under each metric and may
 omit zero-event counters; the parser also accepts the older nested `values`
-form. A missing required request count, malformed metric, or unreconciled
-success/failure count fails explicitly. Human console output is never parsed.
+form. A missing required count, malformed metric, unreconciled request count,
+or iteration/request mismatch fails explicitly. Human console output is never parsed.
 
 From the repository root, use a clean committed tree for an authoritative
 session. A dirty tree requires `--allow-dirty` and is marked in metadata.
@@ -193,6 +221,7 @@ go before the command:
 python3 performance/benchmark/benchmark.py startup --samples 20
 python3 performance/benchmark/benchmark.py case --route aggregate --profile service --rps 100 --repetitions 3
 python3 performance/benchmark/benchmark.py suite --config performance/benchmark/config/smoke.json
+python3 performance/benchmark/benchmark.py --exploratory-arrivals case --route aggregate --profile service --rps 800
 python3 -m unittest discover -s performance/benchmark/tests -v
 ```
 
@@ -218,7 +247,7 @@ performance/results/<UTC session>/
   startup/{samples.json,pairs.json,summary.json,summary.md}
   load/<route>-<profile>-<rps>-rps/{direct,mosaic}/rep-N/
     result.json, launch.json, k6-command.json,
-    k6-summary.json, process-samples.csv,
+    k6-summary.json, process-samples.csv, generator-samples.csv,
     stdout.log, stderr.log, k6-stdout.log, k6-stderr.log
     warmup/{k6-command.json,k6-summary.json}
   load-results.json
@@ -231,7 +260,12 @@ arrival duration, actual measurement wall time, graceful-stop maximum, CPU work,
 repetition, pair order, success/failure/drop counts, completed and
 successful RPS, mean/p50/p95/p99 successful-response latency, process CPU,
 CPU core equivalents, CPU per successful request, RSS mean/peak, VmHWM, and
-readiness time. The raw k6 end summary and per-sample process CSV remain
+readiness time. It also records expected, started, accounted, and unaccounted
+arrivals, fidelity percent, iteration-duration mean/p50/p95/p99, generator CPU
+and RSS, k6's `vus_max` available-VU ceiling, and a comparison-validity flag.
+The `vus_max` summary does not report peak active VUs. The human summary lists every run's
+arrival accounting and both CPU core counts; invalid runs are prominent and
+excluded from paired deltas. The raw k6 end summary and per-sample process CSV remain
 available to audit normalization. `--raw-k6` additionally writes large k6
 time-series JSON files. CSV and Markdown summaries show each variant's
 independent median and the median of within-repetition Mosaic-minus-direct
