@@ -167,15 +167,19 @@ later publication can describe actual topology.
 ## Running it
 
 Requirements: Linux with `/proc`, Java 21, Python 3, `lscpu`, and k6 on `PATH`
-for load runs. The runner builds installed distributions automatically before
-each session. To build them explicitly:
+for load runs. Authoritative, publishable benchmark sessions should use this
+documented reference environment, with k6 **v2.2.0** from the pinned Nix
+environment. Other k6 versions may work for exploratory runs. The runner
+builds installed distributions automatically before each session. To build
+them explicitly:
 
 ```bash
 ./gradlew :direct-app:installDist :mosaic-app:installDist -p performance
 ```
 
-The end-of-run parser was validated with k6 **v2.3.0**. Its
-`--summary-export` JSON has metric values directly under each metric and may
+The committed smoke suite passed with reference k6 **v2.2.0**; the same harness
+was also validated with k6 **v2.3.0**. Their observed `--summary-export` JSON
+has metric values directly under each metric and may
 omit zero-event counters; the parser also accepts the older nested `values`
 form. A missing required request count, malformed metric, or unreconciled
 success/failure count fails explicitly. Human console output is never parsed.
@@ -237,7 +241,9 @@ Every run's failure and drop counts remain visible; no significance test or
 outlier removal is performed.
 Metadata records UTC time, git state before and after, OS/kernel/architecture,
 CPU model and `lscpu`, total memory, Java executable and version, JVM options,
-k6 version, CPU affinities, workload config, and Ktor/Mosaic versions.
+k6 version actually used for the session, CPU affinities, workload config,
+and Ktor/Mosaic versions. This keeps exploratory runs with other k6 versions
+auditable.
 
 The load interval begins just before the measured k6 process starts and ends
 when it exits, so application CPU and RSS include the generator's setup,
