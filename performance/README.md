@@ -9,6 +9,13 @@ endpoint-specific structured concurrency and explicit distinct-key batching;
 The root build does not include these applications. The composite build substitutes
 current Mosaic source for the Mosaic dependency without Maven Local publishing.
 
+The Mosaic Tile and MultiTile graph is defined once for the application lifetime.
+Its application Canvas binds the shared simulator; each request supplies its
+customer ID, catalog ID, or compute seed in a child Canvas layer. Request-layer
+construction, Mosaic request creation, Canvas lookups, and composition are
+intentionally part of the future measured request cost. Reusable graph-definition
+allocation is outside that cost.
+
 Both distributions use the same Netty engine, Kotlin/JVM 21, routes, JSON
 configuration, and simulator. No request logging or tracing is enabled by default.
 The direct runtime classpath is checked by `:direct-app:assertNoMosaicRuntime`

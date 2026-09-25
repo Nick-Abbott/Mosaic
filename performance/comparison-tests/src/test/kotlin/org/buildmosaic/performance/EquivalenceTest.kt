@@ -63,23 +63,63 @@ class EquivalenceTest {
 
   @Test fun concurrentRequestsHaveIndependentCaches() = runBlocking {
     val config = AppConfig(latency = LatencyProfile.SERVICE, tracing = true, cpuWork = 1000)
-    for (factory in listOf<(SimulatedServices) -> ScenarioExecutor>(::DirectExecutor, ::MosaicExecutor)) {
-      val services = SimulatedServices(config)
-      val executor = factory(services)
-      val results = (0 until 8).map { async { executor.batching(BatchingInput(9)) } }.awaitAll()
-      assertTrue(results.all { it == results.first() })
-      val calls = services.trace().filter { it.service == "products" }
-      assertEquals(8, calls.size)
-      assertTrue(calls.all { it.keys.size == 24 })
+    val ids = listOf(3, 9, 3, 17, 9, 23, 17, 23)
+    val directServices = SimulatedServices(config)
+    val mosaicServices = SimulatedServices(config)
+    val direct = DirectExecutor(directServices)
+    val mosaic = MosaicExecutor(mosaicServices)
 
-      val aggregates = (0 until 8).map { async { executor.aggregate(AggregateInput(9)) } }.awaitAll()
-      assertTrue(aggregates.all { it == aggregates.first() })
-      val aggregateCalls = services.trace().filter { it.service != "products" }
-      assertEquals(8 * 28, aggregateCalls.size)
-      assertEquals(8, aggregateCalls.count { it.service == "customer" })
-      assertEquals(8, aggregateCalls.count { it.service == "authorization" })
+    val directPending = ids.map { id -> async { executeAll(direct, id) } }
+    val mosaicPending = ids.map { id -> async { executeAll(mosaic, id) } }
+    val directResults = directPending.awaitAll()
+    val mosaicResults = mosaicPending.awaitAll()
+    assertEquals(directResults, mosaicResults)
+
+    // Sequential reference requests prove each concurrent response kept its own input.
+    val referenceServices = SimulatedServices(config)
+    val reference = DirectExecutor(referenceServices)
+    assertEquals(ids.map { executeAll(reference, it) }, directResults)
+    ids.zip(mosaicResults).forEach { (id, result) ->
+      assertEquals(id.toString(), result.light.customer.key)
+      assertEquals(id.toString(), result.aggregate.shared.first().key)
+      assertEquals(productSections(id).first().first(), result.batching.sections.first().products.first().id)
+    }
+
+    val expectedTrace = normalized(referenceServices.trace())
+    for (calls in listOf(directServices.trace(), mosaicServices.trace())) {
+      assertEquals(expectedTrace, normalized(calls))
+      assertEquals(ids.size * 2, calls.count { it.service == "customer" })
+      assertEquals(ids.size * 2, calls.count { it.service == "preferences" })
+      assertEquals(ids.size, calls.count { it.service == "account" })
+      assertEquals(ids.size, calls.count { it.service == "authorization" })
+      assertTrue(sectionServiceNames.all { service -> calls.count { it.service == service } == ids.size })
+      assertEquals(ids.size, calls.count { it.service == "products" })
+      assertEquals(
+        ids.map { productSections(it).flatten().toSet().map(Int::toString).sorted() }
+          .sortedBy { it.joinToString() },
+        calls.filter { it.service == "products" }.map(Call::keys).sortedBy { it.joinToString() },
+      )
+      assertEquals(
+        ids.flatMap { id -> (0 until 6).map { branch -> "$id:$branch:${config.cpuWork}" } }.sorted(),
+        calls.filter { it.service == "cpu" }.flatMap(Call::keys).sorted(),
+      )
     }
   }
+
+  private data class ScenarioOutputs(
+    val light: LightResponse,
+    val aggregate: AggregateResponse,
+    val batching: BatchingResponse,
+    val compute: ComputeResponse,
+  )
+
+  private suspend fun executeAll(executor: ScenarioExecutor, id: Int): ScenarioOutputs =
+    ScenarioOutputs(
+      executor.light(LightInput(id)),
+      executor.aggregate(AggregateInput(id)),
+      executor.batching(BatchingInput(id)),
+      executor.compute(ComputeInput(id.toLong())),
+    )
 
   @Test fun httpResponsesMatch() {
     val direct = DirectExecutor(SimulatedServices(AppConfig()))
