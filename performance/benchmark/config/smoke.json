@@ -8,6 +8,7 @@
   "warmup_seconds": 2,
   "settle_seconds": 1,
   "measurement_seconds": 3,
+  "graceful_stop_seconds": 5,
   "preallocated_vus": 20,
   "max_vus": 20
 }

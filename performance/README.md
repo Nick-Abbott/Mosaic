@@ -110,6 +110,17 @@ JVM**, waits for successful `GET /health` using an external monotonic clock,
 warms the target route with k6, waits for a quiet period, samples the process
 while a separate k6 invocation measures, then terminates the JVM. Defaults for
 a `case` are 15 seconds warmup, 3 seconds quiet, and 30 seconds measurement.
+The scenario permits up to 30 seconds of graceful completion after arrivals
+stop; healthy runs exit as soon as in-flight iterations finish. This is an
+explicit `GRACEFUL_STOP` input to k6, not a force-cancel at the arrival
+boundary. The smoke config uses a 5 second grace for its tiny requests. Set
+`graceful_stop_seconds` in a suite JSON or use the global
+`--graceful-stop-seconds` flag; the value must be positive.
+`duration_seconds` is the configured offered-arrival interval, while
+`measurement_wall_seconds` is the actual sampled interval, including k6 setup
+and graceful completion. Completed and successful RPS divide requests
+completed from scheduled arrivals by `duration_seconds`. CPU and RSS sampling
+continues until k6 exits after in-flight work completes.
 Warmup defaults to the measured offered rate and has its own preserved k6
 summary; it never contributes to load metrics. A `suite` reads a JSON
 route × profile → offered RPS list. Each repetition runs a direct/Mosaic pair
@@ -120,6 +131,10 @@ The separate `startup` command uses a fresh JVM per sample and measures
 process launch to the first successful `/health` response. It alternates order
 the same way and defaults to 20 samples per variant. Startup always uses zero
 latency and is summarized separately with median, mean, p95, min, and max.
+The external HTTP readiness probe sleeps 5 ms between attempts; this polling
+interval is recorded in session metadata. The startup summary also reports
+each direct/Mosaic pair's difference in milliseconds and percent, plus their
+medians. Raw individual samples and pairs remain available.
 Readiness time is also recorded for each load run as context, but it is not
 part of its latency or CPU metrics.
 
@@ -139,7 +154,11 @@ The same fixed JVM options apply to both variants: `-Xms64m -Xmx512m
 -XX:+UseG1GC`. Repeat `--jvm-option` to replace the full list; optionally
 use `--active-processor-count N`. The effective list is recorded. `AlwaysPreTouch`
 and app configuration overrides in JVM options are rejected. Tracing is
-explicitly set false. Optional `--app-cpus` and `--load-cpus` accept Linux
+explicitly set false. `--cpu-work` sets the same work count for both variants;
+it defaults to 20,000 and accepts integers from 100 through 2,000,000. A suite
+JSON may set `cpu_work`; the CLI flag takes precedence. The effective value
+appears in session, launch, and normalized load metadata. `/health` does not
+depend on it. Optional `--app-cpus` and `--load-cpus` accept Linux
 CPU lists such as `0-3,6`; if both are supplied they must be disjoint and
 available to the runner. The runner does not infer physical-core topology.
 Unpinned runs remain possible. Session metadata includes `lscpu` output so a
@@ -155,6 +174,12 @@ each session. To build them explicitly:
 ./gradlew :direct-app:installDist :mosaic-app:installDist -p performance
 ```
 
+The end-of-run parser was validated with k6 **v2.3.0**. Its
+`--summary-export` JSON has metric values directly under each metric and may
+omit zero-event counters; the parser also accepts the older nested `values`
+form. A missing required request count, malformed metric, or unreconciled
+success/failure count fails explicitly. Human console output is never parsed.
+
 From the repository root, use a clean committed tree for an authoritative
 session. A dirty tree requires `--allow-dirty` and is marked in metadata.
 `--skip-build` uses existing distributions for exploratory runs. Global flags
@@ -169,6 +194,9 @@ python3 -m unittest discover -s performance/benchmark/tests -v
 
 The `case` command supports `--warmup-seconds`, `--settle-seconds`,
 `--measurement-seconds`, `--warmup-rps`, `--preallocated-vus`, and `--max-vus`.
+Global `--graceful-stop-seconds` and `--cpu-work` controls go before `case` or
+`suite`. For example, `--cpu-work 50000 suite --config ...` overrides a suite's
+`cpu_work` field for one experiment without creating another workload matrix.
 The committed smoke suite uses one repetition and short intervals only to
 check that applications, readiness, warmup, k6 output, and `/proc` sampling
 work. It cannot establish a performance difference. For a publication-oriented
@@ -183,7 +211,7 @@ Each session writes an ignored, self-contained directory:
 performance/results/<UTC session>/
   metadata.json
   startup/{direct,mosaic}/rep-N/{result.json,launch.json,stdout.log,stderr.log}
-  startup/{samples.json,summary.json,summary.md}
+  startup/{samples.json,pairs.json,summary.json,summary.md}
   load/<route>-<profile>-<rps>-rps/{direct,mosaic}/rep-N/
     result.json, launch.json, k6-command.json,
     k6-summary.json, process-samples.csv,
@@ -195,22 +223,26 @@ performance/results/<UTC session>/
 ```
 
 Each load `result.json` records variant, route, latency profile, offered RPS,
-duration, repetition, pair order, success/failure/drop counts, completed and
+arrival duration, actual measurement wall time, graceful-stop maximum, CPU work,
+repetition, pair order, success/failure/drop counts, completed and
 successful RPS, mean/p50/p95/p99 successful-response latency, process CPU,
 CPU core equivalents, CPU per successful request, RSS mean/peak, VmHWM, and
 readiness time. The raw k6 end summary and per-sample process CSV remain
 available to audit normalization. `--raw-k6` additionally writes large k6
-time-series JSON files. CSV and Markdown summaries use the median of all
-repetitions per metric and show direct and Mosaic side by side with relative
-differences where defined; they also show every run's failure and drop counts.
+time-series JSON files. CSV and Markdown summaries show each variant's
+independent median and the median of within-repetition Mosaic-minus-direct
+absolute and relative differences. The paired relative median is the primary
+A/B comparison value. A zero direct baseline has no relative percentage.
+Every run's failure and drop counts remain visible; no significance test or
+outlier removal is performed.
 Metadata records UTC time, git state before and after, OS/kernel/architecture,
 CPU model and `lscpu`, total memory, Java executable and version, JVM options,
 k6 version, CPU affinities, workload config, and Ktor/Mosaic versions.
 
 The load interval begins just before the measured k6 process starts and ends
-when it exits, so application CPU and RSS include the generator's setup and
-teardown time around the configured arrival interval. The reported completed
-RPS uses the configured arrival duration, while CPU core equivalents use the
+when it exits, so application CPU and RSS include the generator's setup,
+graceful completion, and teardown time around the configured arrival interval.
+The reported completed RPS uses the configured arrival duration, while CPU core equivalents use the
 actual process-sampling wall time. Longer intervals reduce this boundary
 effect. RSS is a 100 ms sampled estimate and can miss a shorter peak; VmHWM
 has a different lifetime scope. The harness measures one JVM process, not

@@ -22,7 +22,7 @@ export const options = {
       duration: __ENV.DURATION,
       preAllocatedVUs: Number(__ENV.PREALLOCATED_VUS),
       maxVUs: Number(__ENV.MAX_VUS),
-      gracefulStop: '0s',
+      gracefulStop: __ENV.GRACEFUL_STOP,
     },
   },
 };

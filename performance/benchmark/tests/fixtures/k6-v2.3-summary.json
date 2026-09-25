@@ -1,0 +1,20 @@
+{
+  "root_group": {
+    "name": "",
+    "path": "",
+    "groups": [],
+    "checks": []
+  },
+  "metrics": {
+    "successful_requests": { "count": 4, "rate": 2 },
+    "http_reqs": { "count": 4, "rate": 2 },
+    "successful_latency": {
+      "avg": 2,
+      "med": 1.5,
+      "p(90)": 3,
+      "p(95)": 4,
+      "p(99)": 5,
+      "p(99.9)": 6
+    }
+  }
+}

@@ -5,6 +5,7 @@ import argparse
 import csv
 import datetime as dt
 import json
+import math
 import os
 import platform
 import re
@@ -28,6 +29,9 @@ VARIANTS = ("direct", "mosaic")
 ROUTES = ("light", "aggregate", "batching", "compute")
 PROFILES = ("zero", "service")
 DEFAULT_JVM = ("-Xms64m", "-Xmx512m", "-XX:+UseG1GC")
+DEFAULT_GRACEFUL_STOP_SECONDS = 30
+DEFAULT_CPU_WORK = 20_000
+READINESS_POLL_INTERVAL_SECONDS = 0.005
 FIELDS = (
     "successful_requests", "http_failures", "dropped_iterations", "completed_rps",
     "latency_mean_ms", "latency_p50_ms", "latency_p95_ms", "latency_p99_ms",
@@ -41,7 +45,7 @@ def fail(message):
 
 
 def require_positive(value, name):
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
         fail(f"{name} must be positive")
 
 
@@ -62,6 +66,10 @@ def validate_config(config):
             fail(f"{key} must be an integer")
     if config["max_vus"] != config["preallocated_vus"]:
         fail("max_vus must equal preallocated_vus for fixed VU allocation")
+    config.setdefault("graceful_stop_seconds", DEFAULT_GRACEFUL_STOP_SECONDS)
+    require_positive(config["graceful_stop_seconds"], "graceful_stop_seconds")
+    if "cpu_work" in config:
+        validate_cpu_work(config["cpu_work"])
     if "warmup_rps" in config:
         require_positive(config["warmup_rps"], "warmup_rps")
         if not isinstance(config["warmup_rps"], int) or isinstance(config["warmup_rps"], bool):
@@ -82,6 +90,16 @@ def validate_config(config):
                 if not isinstance(rate, int) or isinstance(rate, bool):
                     fail(f"{route}/{profile} offered RPS must be an integer")
     return config
+
+
+def validate_cpu_work(value):
+    if isinstance(value, bool) or not isinstance(value, int) or not 100 <= value <= 2_000_000:
+        fail("cpu_work must be an integer from 100 to 2,000,000")
+    return value
+
+
+def effective_cpu_work(cli_value, config):
+    return validate_cpu_work(cli_value if cli_value is not None else config.get("cpu_work", DEFAULT_CPU_WORK))
 
 
 def parse_cpu_set(spec):
@@ -158,24 +176,50 @@ def percentile(values, p):
     return ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)
 
 
+def metric_values(metrics, name):
+    metric = metrics[name]
+    if not isinstance(metric, dict):
+        fail(f"unsupported k6 summary: {name} is not a metric object")
+    values = metric.get("values", metric)  # k6 1.x nests values; k6 2.3 exports them directly.
+    if not isinstance(values, dict):
+        fail(f"unsupported k6 summary: {name} has no metric values")
+    return values
+
+
 def trend(summary, name):
-    values = summary.get("metrics", {}).get(name, {}).get("values", {})
+    values = metric_values(summary["metrics"], name)
     return {key: values.get(key) for key in ("avg", "med", "p(95)", "p(99)")}
 
 
 def normalized_k6(summary, duration):
-    metrics = summary.get("metrics", {})
-    def count(name):
-        return int(metrics.get(name, {}).get("values", {}).get("count", 0))
-    successful = count("successful_requests")
-    failed = count("http_failures")
+    if not isinstance(summary, dict) or not isinstance(summary.get("metrics"), dict):
+        fail("unsupported k6 summary: expected a metrics object from --summary-export")
+    metrics = summary["metrics"]
+    def count(name, optional=False):
+        if optional and name not in metrics:
+            return 0  # k6 2.3 omits Counter metrics with no events.
+        try:
+            value = metric_values(metrics, name)["count"]
+        except (KeyError, TypeError) as exc:
+            raise ValueError(f"unsupported k6 summary: missing {name}.count") from exc
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0 or int(value) != value:
+            fail(f"unsupported k6 summary: invalid {name}.count")
+        return int(value)
+    successful = count("successful_requests", optional=True)
+    failed = count("http_failures", optional=True)
     completed = count("http_reqs")
-    dropped = count("dropped_iterations")
+    dropped = count("dropped_iterations", optional=True)
     if successful + failed != completed:
         fail(f"k6 request accounting mismatch: {successful} + {failed} != {completed}")
-    latency = trend(summary, "successful_latency")
-    if successful and any(v is None for v in latency.values()):
-        fail("k6 summary lacks successful latency percentiles; check --summary-trend-stats")
+    if successful:
+        try:
+            latency = trend(summary, "successful_latency")
+        except (KeyError, TypeError) as exc:
+            raise ValueError("unsupported k6 summary: missing successful_latency metric") from exc
+        if any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in latency.values()):
+            fail("unsupported k6 summary: missing successful latency percentiles; check --summary-trend-stats")
+    else:
+        latency = {key: None for key in ("avg", "med", "p(95)", "p(99)")}
     return {
         "successful_requests": successful,
         "http_failures": failed,
@@ -193,19 +237,32 @@ def normalized_k6(summary, duration):
 def aggregate(rows):
     grouped = {}
     for row in rows:
-        key = (row["route"], row["latency_profile"], row["offered_rps"], row["variant"])
-        grouped.setdefault(key, []).append(row)
+        key = (row["route"], row["latency_profile"], row["offered_rps"], row["repetition"])
+        pair = grouped.setdefault(key, {})
+        if row["variant"] in pair:
+            fail(f"duplicate paired result: {key} {row['variant']}")
+        pair[row["variant"]] = row
     result = []
     for route, profile, rps in sorted({key[:3] for key in grouped}):
-        direct = grouped.get((route, profile, rps, "direct"), [])
-        mosaic = grouped.get((route, profile, rps, "mosaic"), [])
+        pairs = [pair for key, pair in grouped.items() if key[:3] == (route, profile, rps)]
+        if any(set(pair) != set(VARIANTS) for pair in pairs):
+            fail(f"incomplete direct/Mosaic pair: {route}/{profile}/{rps}")
         for metric in FIELDS:
-            d = statistics.median(row[metric] for row in direct if row.get(metric) is not None) if direct and all(row.get(metric) is not None for row in direct) else None
-            m = statistics.median(row[metric] for row in mosaic if row.get(metric) is not None) if mosaic and all(row.get(metric) is not None for row in mosaic) else None
+            direct_values = [pair["direct"].get(metric) for pair in pairs]
+            mosaic_values = [pair["mosaic"].get(metric) for pair in pairs]
+            direct_valid = [value for value in direct_values if value is not None]
+            mosaic_valid = [value for value in mosaic_values if value is not None]
+            differences = [(m - d, (m - d) / d * 100 if d else None)
+                           for d, m in zip(direct_values, mosaic_values) if d is not None and m is not None]
+            relative = [value for _, value in differences if value is not None]
             result.append({"route": route, "latency_profile": profile, "offered_rps": rps,
-                           "metric": metric, "direct_median": d, "mosaic_median": m,
-                           "mosaic_vs_direct_percent": (m - d) / d * 100 if d not in (None, 0) and m is not None else None,
-                           "direct_repetitions": len(direct), "mosaic_repetitions": len(mosaic)})
+                           "metric": metric,
+                           "direct_median": statistics.median(direct_valid) if direct_valid else None,
+                           "mosaic_median": statistics.median(mosaic_valid) if mosaic_valid else None,
+                           "median_paired_absolute_difference": statistics.median(value for value, _ in differences) if differences else None,
+                           "median_paired_relative_percent": statistics.median(relative) if relative else None,
+                           "paired_repetitions": len(differences), "relative_repetitions": len(relative),
+                           "direct_repetitions": len(direct_valid), "mosaic_repetitions": len(mosaic_valid)})
     return result
 
 
@@ -235,9 +292,10 @@ def metadata(config, args, app_cpus, load_cpus, jvm_options, state):
         "java_executable": str(Path(shutil.which("java")).resolve()),
         "java_version": command_output("java", "-version"),
         "jvm_options": jvm_options, "k6_version": command_output("k6", "version") if shutil.which("k6") else None,
-        "application_environment": {"MOSAIC_PERFORMANCE_TRACING": "false", "MOSAIC_PERFORMANCE_CPU_WORK": "20000"},
+        "application_environment": {"MOSAIC_PERFORMANCE_TRACING": "false", "MOSAIC_PERFORMANCE_CPU_WORK": str(args.cpu_work)},
         "proc_clock_ticks_per_second": os.sysconf("SC_CLK_TCK"),
         "rss_sample_interval_seconds": 0.1,
+        "readiness_poll_interval_seconds": READINESS_POLL_INTERVAL_SECONDS,
         "application_cpu_affinity": app_cpus, "load_cpu_affinity": load_cpus,
         "available_cpu_affinity": sorted(os.sched_getaffinity(0)),
         "benchmark_configuration": config,
@@ -273,14 +331,14 @@ def free_port():
         return sock.getsockname()[1]
 
 
-def app_env(port, profile, jvm_options):
+def app_env(port, profile, jvm_options, cpu_work):
     env = os.environ.copy()
     for key in ("JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS", "APP_OPTS",
                 "DIRECT_APP_OPTS", "MOSAIC_APP_OPTS"):
         env.pop(key, None)
     java_home = Path(shutil.which("java")).resolve().parent.parent
     env.update({"JAVA_HOME": str(java_home), "MOSAIC_PERFORMANCE_PORT": str(port),
-                "MOSAIC_PERFORMANCE_LATENCY": profile, "MOSAIC_PERFORMANCE_CPU_WORK": "20000",
+                "MOSAIC_PERFORMANCE_LATENCY": profile, "MOSAIC_PERFORMANCE_CPU_WORK": str(cpu_work),
                 "MOSAIC_PERFORMANCE_TRACING": "false", "JAVA_OPTS": " ".join(jvm_options)})
     return env
 
@@ -322,7 +380,7 @@ def wait_ready(process, port, variant, timeout, started, jvm_options):
                     return time.monotonic() - started
         except (urllib.error.URLError, TimeoutError, ConnectionError):
             pass
-        time.sleep(0.05)
+        time.sleep(READINESS_POLL_INTERVAL_SECONDS)
     fail(f"{variant} did not become ready within {timeout}s; inspect stderr.log")
 
 
@@ -335,7 +393,7 @@ def launch(variant, profile, directory, args, jvm_options, app_cpus):
     cmd = [str(binary)]
     if app_cpus:
         cmd = ["taskset", "-c", ",".join(map(str, app_cpus)), *cmd]
-    env = app_env(port, profile, jvm_options)
+    env = app_env(port, profile, jvm_options, args.cpu_work)
     if env["MOSAIC_PERFORMANCE_TRACING"] != "false":
         fail("tracing must be false")
     write_json(directory / "launch.json", {"command": cmd, "port": port,
@@ -412,14 +470,15 @@ class ProcessSampler:
             fail("application RSS samples are missing")
 
 
-def run_k6(route, rps, seconds, port, vus, max_vus, directory, load_cpus, raw):
+def run_k6(route, rps, seconds, graceful_stop_seconds, port, vus, max_vus, directory, load_cpus, raw):
     directory.mkdir(parents=True, exist_ok=True)
     cmd = ["k6", "run", "--quiet", "--summary-export", str(directory / "k6-summary.json"),
            "--summary-trend-stats", "avg,med,p(90),p(95),p(99),p(99.9)"]
     if raw:
         cmd += ["--out", f"json={directory / 'k6-timeseries.json'}"]
     for key, value in {"BASE_URL": f"http://127.0.0.1:{port}", "ROUTE": route, "OFFERED_RPS": rps,
-                       "DURATION": f"{seconds}s", "PREALLOCATED_VUS": vus, "MAX_VUS": max_vus}.items():
+                       "DURATION": f"{seconds:g}s", "GRACEFUL_STOP": f"{graceful_stop_seconds:g}s",
+                       "PREALLOCATED_VUS": vus, "MAX_VUS": max_vus}.items():
         cmd += ["--env", f"{key}={value}"]
     cmd.append(str(SCRIPT))
     if load_cpus:
@@ -439,7 +498,7 @@ def load_case(variant, route, profile, rps, repetition, order, config, session, 
     try:
         readiness = wait_ready(process, port, variant, args.readiness_timeout, started, jvm_options)
         warmup_rps = config.get("warmup_rps", rps)
-        warmup = run_k6(route, warmup_rps, config["warmup_seconds"], port, config["preallocated_vus"],
+        warmup = run_k6(route, warmup_rps, config["warmup_seconds"], config["graceful_stop_seconds"], port, config["preallocated_vus"],
                         config["max_vus"], directory / "warmup", load_cpus, False)
         warmup_counts = normalized_k6(warmup, config["warmup_seconds"])
         if warmup_counts["successful_requests"] == 0 or warmup_counts["http_failures"]:
@@ -455,7 +514,7 @@ def load_case(variant, route, profile, rps, repetition, order, config, session, 
         start = time.monotonic()
         sampler.start()
         try:
-            summary = run_k6(route, rps, config["measurement_seconds"], port,
+            summary = run_k6(route, rps, config["measurement_seconds"], config["graceful_stop_seconds"], port,
                              config["preallocated_vus"], config["max_vus"], directory, load_cpus, args.raw_k6)
         finally:
             end = time.monotonic()
@@ -465,7 +524,8 @@ def load_case(variant, route, profile, rps, repetition, order, config, session, 
         numbers = normalized_k6(summary, config["measurement_seconds"])
         rss = [row["rss_mib"] for row in sampler.rows]
         result = {"variant": variant, "route": route, "latency_profile": profile, "offered_rps": rps,
-                  "port": port, "warmup_rps": warmup_rps,
+                  "port": port, "warmup_rps": warmup_rps, "cpu_work": args.cpu_work,
+                  "graceful_stop_seconds": config["graceful_stop_seconds"],
                   "preallocated_vus": config["preallocated_vus"], "max_vus": config["max_vus"],
                   "duration_seconds": config["measurement_seconds"], "measurement_wall_seconds": end - start,
                   "repetition": repetition, "run_order": order, "readiness_seconds": readiness,
@@ -503,16 +563,16 @@ def write_load_summary(session, rows):
         writer = csv.DictWriter(output, fieldnames=aggregated[0].keys())
         writer.writeheader()
         writer.writerows(aggregated)
-    lines = ["# Load summary", "", "Medians across repetitions; Mosaic relative to direct. Individual runs are in `load/` and `load-results.json`.",
-             "Latency is for successful responses. Positive relative differences mean Mosaic is larger.", "",
-             "| Route | Profile | Offered RPS | Metric | Direct median | Mosaic median | Relative difference |",
-             "| --- | --- | ---: | --- | ---: | ---: | ---: |"]
+    lines = ["# Load summary", "", "Independent medians describe each variant. Paired differences compare direct and Mosaic within each repetition; their median is the primary A/B comparison.",
+             "Latency is for successful responses. Positive paired differences mean Mosaic is larger. Individual runs remain in `load/` and `load-results.json`.", "",
+             "| Route | Profile | Offered RPS | Metric | Direct median | Mosaic median | Median paired difference | Median paired relative difference | Pairs with relative value |",
+             "| --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |"]
     for row in aggregated:
         def fmt(value):
             return "—" if value is None else f"{value:.3f}"
-        difference = row["mosaic_vs_direct_percent"]
+        difference = row["median_paired_relative_percent"]
         difference_text = "—" if difference is None else f"{difference:.3f}%"
-        lines.append(f"| {row['route']} | {row['latency_profile']} | {row['offered_rps']} | {row['metric']} | {fmt(row['direct_median'])} | {fmt(row['mosaic_median'])} | {difference_text} |")
+        lines.append(f"| {row['route']} | {row['latency_profile']} | {row['offered_rps']} | {row['metric']} | {fmt(row['direct_median'])} | {fmt(row['mosaic_median'])} | {fmt(row['median_paired_absolute_difference'])} | {difference_text} | {row['relative_repetitions']} |")
     lines += ["", "## Individual repetitions and anomalies", "", "| Case | Variant | Rep | Order | Successes | HTTP failures | Drops | p95 ms | CPU ms/success | Peak RSS MiB |",
               "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
     for row in rows:
@@ -522,19 +582,55 @@ def write_load_summary(session, rows):
     (session / "summary.md").write_text("\n".join(lines) + "\n")
 
 
-def write_startup_summary(session, rows):
-    write_json(session / "startup" / "samples.json", rows)
+def aggregate_startup(rows):
     summary = {}
     for variant in VARIANTS:
         values = [row["readiness_seconds"] for row in rows if row["variant"] == variant]
+        if not values:
+            fail(f"startup samples missing for {variant}")
         summary[variant] = {"samples": len(values), "median_seconds": statistics.median(values),
                             "mean_seconds": statistics.mean(values), "p95_seconds": percentile(values, 95),
                             "min_seconds": min(values), "max_seconds": max(values)}
+    paired = {}
+    for row in rows:
+        pair = paired.setdefault(row["repetition"], {})
+        if row["variant"] in pair:
+            fail(f"duplicate startup sample: repetition {row['repetition']} {row['variant']}")
+        pair[row["variant"]] = row["readiness_seconds"]
+    if any(set(pair) != set(VARIANTS) for pair in paired.values()):
+        fail("incomplete direct/Mosaic startup pair")
+    pairs = []
+    for repetition, pair in sorted(paired.items()):
+        direct, mosaic = pair["direct"], pair["mosaic"]
+        pairs.append({"repetition": repetition, "direct_readiness_seconds": direct,
+                      "mosaic_readiness_seconds": mosaic,
+                      "mosaic_minus_direct_ms": (mosaic - direct) * 1000,
+                      "mosaic_vs_direct_percent": (mosaic - direct) / direct * 100 if direct else None})
+    relative = [pair["mosaic_vs_direct_percent"] for pair in pairs if pair["mosaic_vs_direct_percent"] is not None]
+    summary["paired"] = {"samples": len(pairs),
+                         "median_mosaic_minus_direct_ms": statistics.median(pair["mosaic_minus_direct_ms"] for pair in pairs),
+                         "median_mosaic_vs_direct_percent": statistics.median(relative) if relative else None}
+    return summary, pairs
+
+
+def write_startup_summary(session, rows):
+    write_json(session / "startup" / "samples.json", rows)
+    summary, pairs = aggregate_startup(rows)
+    write_json(session / "startup" / "pairs.json", pairs)
     write_json(session / "startup" / "summary.json", summary)
     lines = ["# Startup and readiness", "", "Fresh JVM for every sample; process launch to first successful /health response.", "",
              "| Variant | Samples | Median s | Mean s | p95 s | Min s | Max s |", "| --- | ---: | ---: | ---: | ---: | ---: | ---: |"]
-    for variant, value in summary.items():
+    for variant in VARIANTS:
+        value = summary[variant]
         lines.append(f"| {variant} | {value['samples']} | {value['median_seconds']:.3f} | {value['mean_seconds']:.3f} | {value['p95_seconds']:.3f} | {value['min_seconds']:.3f} | {value['max_seconds']:.3f} |")
+    paired_summary = summary["paired"]
+    relative_text = "—" if paired_summary["median_mosaic_vs_direct_percent"] is None else f"{paired_summary['median_mosaic_vs_direct_percent']:.3f}%"
+    lines += ["", f"Median paired Mosaic − direct: {paired_summary['median_mosaic_minus_direct_ms']:.3f} ms; median paired relative difference: {relative_text}.",
+              "", "| Rep | Direct s | Mosaic s | Mosaic − direct ms | Mosaic vs direct |",
+              "| ---: | ---: | ---: | ---: | ---: |"]
+    for pair in pairs:
+        relative_text = "—" if pair["mosaic_vs_direct_percent"] is None else f"{pair['mosaic_vs_direct_percent']:.3f}%"
+        lines.append(f"| {pair['repetition']} | {pair['direct_readiness_seconds']:.3f} | {pair['mosaic_readiness_seconds']:.3f} | {pair['mosaic_minus_direct_ms']:.3f} | {relative_text} |")
     (session / "startup" / "summary.md").write_text("\n".join(lines) + "\n")
 
 
@@ -544,6 +640,8 @@ def parse_args():
     parser.add_argument("--load-cpus", help="Linux CPU list/ranges for k6")
     parser.add_argument("--jvm-option", action="append", help="Repeat to replace all default JVM options")
     parser.add_argument("--active-processor-count", type=int)
+    parser.add_argument("--cpu-work", type=int, help="Service CPU work for both apps (100..2000000); overrides suite config")
+    parser.add_argument("--graceful-stop-seconds", type=float, help="Maximum k6 in-flight completion time after arrivals stop (default 30)")
     parser.add_argument("--readiness-timeout", type=float, default=30)
     parser.add_argument("--allow-dirty", action="store_true", help="Exploratory run with a dirty tree; recorded in metadata")
     parser.add_argument("--skip-build", action="store_true", help="Use previously installed distributions")
@@ -586,7 +684,9 @@ def main():
         require_positive(args.samples, "samples")
         config = {"startup_samples": args.samples, "latency_profile": "zero"}
     elif args.command == "suite":
-        config = validate_config(json.loads(args.config.read_text()))
+        config = json.loads(args.config.read_text())
+        if not isinstance(config, dict):
+            fail("suite configuration must be a JSON object")
     else:
         config = {"cases": {args.route: {args.profile: [args.rps]}}, "repetitions": args.repetitions,
                   "warmup_seconds": args.warmup_seconds, "settle_seconds": args.settle_seconds,
@@ -594,6 +694,11 @@ def main():
                   "max_vus": args.max_vus}
         if args.warmup_rps is not None:
             config["warmup_rps"] = args.warmup_rps
+    if args.graceful_stop_seconds is not None and args.command != "startup":
+        config["graceful_stop_seconds"] = args.graceful_stop_seconds
+    args.cpu_work = effective_cpu_work(args.cpu_work, config)
+    config["cpu_work"] = args.cpu_work
+    if args.command != "startup":
         validate_config(config)
     state = git_state()
     if state["status"] and not args.allow_dirty:
