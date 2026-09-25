@@ -15,7 +15,7 @@ Mosaic-core introduces a revolutionary DSL approach that eliminates boilerplate 
 
 ```kotlin
 dependencies {
-  implementation("org.buildmosaic:mosaic-core:0.3.0")
+  implementation("org.buildmosaic:mosaic-core:0.4.0")
 }
 ```
 

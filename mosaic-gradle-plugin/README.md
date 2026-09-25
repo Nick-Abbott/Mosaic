@@ -5,7 +5,7 @@
 The `org.buildmosaic.analysis` plugin supports pure Kotlin/JVM `main` sources
 under `src/main/kotlin` with Kotlin Gradle plugin and compiler **2.2.10 only**.
 It is build tooling: it does not apply Kotlin or add Mosaic application runtime
-dependencies. Add Maven Central to plugin and dependency repositories. Install version 0.3.0 with:
+dependencies. Add Maven Central to plugin and dependency repositories. Install version 0.4.0 with:
 
 ```kotlin
 import org.buildmosaic.gradle.MosaicAnalysisEnforcement
@@ -13,7 +13,7 @@ import org.buildmosaic.gradle.MosaicAnalysisRole
 
 plugins {
   kotlin("jvm") version "2.2.10"
-  id("org.buildmosaic.analysis") version "0.3.0"
+  id("org.buildmosaic.analysis") version "0.4.0"
 }
 
 mosaicAnalysis {
@@ -25,9 +25,10 @@ mosaicAnalysis {
 ## Roles and enforcement
 
 `role` and `enforcement` are independent typed settings. The defaults are
-`APPLICATION` and `STANDARD`. With an empty `roots` list, applications discover
-outermost Mosaic execution contexts from the selected contracts. Add explicit
-callable IDs when an application needs to choose its own entry contexts:
+`APPLICATION` and `STANDARD`. The normal application setup above leaves `roots`
+empty, so analysis discovers the outermost safe Mosaic execution contexts from
+selected contracts. Add explicit callable IDs when an application needs to
+choose its own entry contexts; these entries replace discovery exactly:
 
 ```kotlin
 mosaicAnalysis { roots.add("app.entry()") }
@@ -80,18 +81,20 @@ and `check`.
 ## Dependency documentation
 
 Run `./gradlew mosaicGraph` to write `build/reports/mosaic-analysis/graph.md`.
-The Markdown contains Mermaid diagrams for every local Tile and Canvas, their
-Mosaic relationships, and only referenced dependency contracts. For example,
-if `ResponseTile` composes `ProfileTile`, which requests `UserRepository`, the
-diagram links both Tiles and shows the Canvas requirement on `ProfileTile`.
+The Markdown contains Mermaid diagrams for local Tiles and MultiTiles, Canvas
+bindings and requirements, their Mosaic relationships, and relevant selected
+dependency contracts. For example, if `ResponseTile` composes `ProfileTile`,
+which requests `UserRepository`, the diagram links both Tiles and shows the
+Canvas requirement on `ProfileTile`.
 
 The module overview makes no verification claim. APPLICATION graphs include a
-focused diagram and analyzer findings for each discovered or explicit root;
-LIBRARY graphs show the overview only. Missing or unverified
+focused diagram and analyzer findings for each discovered or explicit root,
+including uncertainty and the selected receiver; LIBRARY graphs show the
+overview only. Missing or unverified
 requirements appear in the report without failing graph generation; invalid
 roots, summaries, and conflicting selected owners still fail. The diagrams
-describe possible static relationships, not runtime execution order, call
-counts, or MultiTile batch sizes.
+describe possible static relationships, not runtime traces, execution order,
+timing, call counts, or exact MultiTile batches.
 
 To retain a snapshot for team documentation, copy the generated Markdown into
 your documentation directory and commit that copy. Mermaid-capable Markdown
@@ -114,12 +117,14 @@ validates and exports the complete local summary as `EXPORT_ONLY`. Both roles
 package the same summary resource.
 
 Automatic discovery follows selected-contract calls to `compose` execution and
-selects the outermost safely established selected-contract boundary. A local or
-dependency template method that forwards to an application override is
-specialized for each concrete application receiver. Unrelated lookups, Canvas
-factories, and unknown declarations do not create roots. If no safe root covers
-the Mosaic execution found, verification and graph generation fail with a root
-selection error; configure an explicit root to select a different context.
+selects the outermost safely established selected-contract boundary. A template
+method in local code or a library or framework dependency that forwards to an
+application override is specialized for each concrete application receiver.
+Unrelated lookups and unknown declarations do not create roots by themselves.
+Constructing a Canvas without a Mosaic execution path does not create one. If no
+safe root covers the Mosaic execution found, verification and graph
+generation fail with a root selection error and guidance to configure an
+explicit root.
 Configured roots replace automatic selection exactly. Reports show how roots
 were selected and any concrete receiver. LIBRARY with no roots passes ordinary
 `check`/`build` after extraction and local summary validation. Explicit
