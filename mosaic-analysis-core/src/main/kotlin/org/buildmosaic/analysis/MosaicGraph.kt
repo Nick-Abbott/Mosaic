@@ -39,6 +39,8 @@ object MosaicGraph {
         appendLine()
         appendLine("## Root: ${heading(root.root.id)}")
         appendLine()
+        appendLine("Selection: ${root.root.selection}; receiver: ${heading(root.root.receiverType ?: "none")}")
+        appendLine()
         appendLine("Status: ${root.status}")
         appendLine()
         append(graph.render())

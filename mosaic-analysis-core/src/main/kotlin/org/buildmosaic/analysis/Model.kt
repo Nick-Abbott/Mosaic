@@ -346,7 +346,14 @@ data class SelectedRoot(
   val target: String,
   val arguments: CallArguments = CallArguments(),
   val site: SourceLocation? = null,
+  val receiverType: String? = null,
+  val selection: RootSelection = RootSelection.EXPLICIT,
 )
+
+enum class RootSelection {
+  EXPLICIT,
+  AUTOMATIC,
+}
 
 data class ExternalAssumption(
   val id: String,

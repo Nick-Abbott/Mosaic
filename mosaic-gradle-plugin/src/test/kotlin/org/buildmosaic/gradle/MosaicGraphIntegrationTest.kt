@@ -9,7 +9,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class MosaicGraphIntegrationTest {
-  @Test fun `graph works without roots and tracks inputs`() {
+  @Test fun `graph discovers and overrides roots`() {
     val root = Files.createTempDirectory("mosaic-graph-").toFile()
     val repository = File(System.getProperty("user.dir")).parentFile
     val compiler = File(repository, "mosaic-compiler-plugin/build/libs/mosaic-compiler-plugin-${mosaicVersion()}.jar")
@@ -29,18 +29,20 @@ class MosaicGraphIntegrationTest {
       )
     }
     val output = File(app, "build/reports/mosaic-analysis/graph.md")
-    val rootFree = run(app, "mosaicGraph")
-    assertEquals(TaskOutcome.SUCCESS, rootFree.task(":mosaicGraph")?.outcome)
+    val automatic = run(app, "mosaicGraph")
+    assertEquals(TaskOutcome.SUCCESS, automatic.task(":mosaicGraph")?.outcome)
     val overview = output.readText()
     assertTrue(overview.contains("Tile: app.IdleTile"), overview)
-    assertFalse(overview.contains("## Root:"), overview)
-    assertFalse(overview.contains("Status:"), overview)
+    assertTrue(overview.contains("## Root: app.entry()"), overview)
+    assertTrue(overview.contains("Selection: AUTOMATIC; receiver: none"), overview)
+    assertTrue(overview.contains("Status: FAILED"), overview)
 
     File(app, "build.gradle.kts").appendText("\nmosaicAnalysis { roots.add(\"app.entry()\") }\n")
     val focused = run(app, "mosaicGraph")
     assertEquals(TaskOutcome.SUCCESS, focused.task(":mosaicGraph")?.outcome)
     val report = output.readText()
     assertTrue(report.contains("## Root: app.entry()"), report)
+    assertTrue(report.contains("Selection: EXPLICIT; receiver: none"), report)
     assertTrue(report.contains("Tile: app.IdleTile"), report)
     assertTrue(report.contains("Status: FAILED"), report)
     assertTrue(report.contains("MISSING"), report)

@@ -19,16 +19,21 @@ plugins {
 mosaicAnalysis {
   role = MosaicAnalysisRole.APPLICATION
   enforcement = MosaicAnalysisEnforcement.STANDARD
-  roots.add("app.entry()")
 }
 ```
 
 ## Roles and enforcement
 
 `role` and `enforcement` are independent typed settings. The defaults are
-`APPLICATION` and `STANDARD`. Applications must name one or more explicit
-callable roots. Libraries can omit roots and still export the same complete
-summary in their JAR:
+`APPLICATION` and `STANDARD`. With an empty `roots` list, applications discover
+outermost Mosaic execution contexts from the selected contracts. Add explicit
+callable IDs when an application needs to choose its own entry contexts:
+
+```kotlin
+mosaicAnalysis { roots.add("app.entry()") }
+```
+
+Libraries omit roots and export the same complete summary in their JAR:
 
 ```kotlin
 mosaicAnalysis {
@@ -80,9 +85,9 @@ Mosaic relationships, and only referenced dependency contracts. For example,
 if `ResponseTile` composes `ProfileTile`, which requests `UserRepository`, the
 diagram links both Tiles and shows the Canvas requirement on `ProfileTile`.
 
-The module overview works without configured roots and makes no verification
-claim. When `mosaicAnalysis.roots` is configured, the report also includes a
-focused diagram and analyzer findings for each root. Missing or unverified
+The module overview makes no verification claim. APPLICATION graphs include a
+focused diagram and analyzer findings for each discovered or explicit root;
+LIBRARY graphs show the overview only. Missing or unverified
 requirements appear in the report without failing graph generation; invalid
 roots, summaries, and conflicting selected owners still fail. The diagrams
 describe possible static relationships, not runtime execution order, call
@@ -104,15 +109,21 @@ Kotlin’s own incremental compilation handles public constants, typealiases,
 inline bodies, and other source-resolution changes. Mosaic does no additional
 source-resolution fingerprinting or separate K2 compilation.
 
-In APPLICATION mode verification checks configured roots. In LIBRARY mode it
+In APPLICATION mode verification checks discovered or configured roots. In LIBRARY mode it
 validates and exports the complete local summary as `EXPORT_ONLY`. Both roles
 package the same summary resource.
 
-Roots are explicit callable IDs. APPLICATION with no roots fails both
-`verifyMosaicMain` and `check`/`build`, with guidance to configure roots or select
-LIBRARY. LIBRARY with no roots passes ordinary `check`/`build` after extraction
-and local summary validation. Explicit `verifyMosaicMain` and `verifyMosaic` use
-the same role-specific behavior.
+Automatic discovery follows selected-contract calls to `compose` execution and
+selects the outermost safely established selected-contract boundary. A
+dependency template method that forwards to an application override is
+specialized for each concrete application receiver. Unrelated lookups, Canvas
+factories, and unknown declarations do not create roots. If no safe root covers
+the Mosaic execution found, verification and graph generation fail with a root
+selection error; configure an explicit root to select a different context.
+Configured roots replace automatic selection exactly. Reports show how roots
+were selected and any concrete receiver. LIBRARY with no roots passes ordinary
+`check`/`build` after extraction and local summary validation. Explicit
+`verifyMosaicMain` and `verifyMosaic` use the same role-specific behavior.
 
 | Role | Enforcement | Result |
 | --- | --- | --- |
