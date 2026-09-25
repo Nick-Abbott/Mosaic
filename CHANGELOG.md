@@ -5,6 +5,8 @@ predate this maintained changelog; their release history is not reconstructed he
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-24
+
 ### Added
 
 - Automatic discovery of safe application analysis roots from selected contracts,
