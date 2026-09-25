@@ -1,0 +1,13 @@
+{
+  "label": "non-authoritative smoke; verifies harness operation only",
+  "cases": {
+    "light": { "zero": [20] },
+    "aggregate": { "service": [10] }
+  },
+  "repetitions": 1,
+  "warmup_seconds": 2,
+  "settle_seconds": 1,
+  "measurement_seconds": 3,
+  "preallocated_vus": 20,
+  "max_vus": 20
+}

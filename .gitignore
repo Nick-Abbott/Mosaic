@@ -11,3 +11,6 @@ bin
 target
 ktDebugJsonLog.txt
 .kotlin
+performance/results/
+__pycache__/
+*.pyc
