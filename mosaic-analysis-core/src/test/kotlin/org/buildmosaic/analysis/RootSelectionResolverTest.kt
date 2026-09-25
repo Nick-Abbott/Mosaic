@@ -158,6 +158,75 @@ class RootSelectionResolverTest {
     assertTrue(report.roots.single().specializedContracts.contains("App.respond"))
   }
 
+  @Test fun `local Canvas template is anchored and local caller supersedes it`() {
+    val baseCanvas = ContractParameter("Base.respond", "canvas", ParameterKind.CANVAS)
+    val appCanvas = ContractParameter("App.respond", "canvas", ParameterKind.CANVAS)
+    val layer =
+      CanvasExpression.Layer(
+        "provided",
+        CanvasExpression.Empty,
+        listOf(Binding(metrics, site = site)),
+        site = site,
+      )
+    val local =
+      ModuleContract(
+        "app",
+        callables =
+          listOf(
+            callable(
+              "Base.handle",
+              Effect.ConstructCanvas("base", CanvasExpression.Alias("base", layer), site),
+              Effect.Call(
+                "respond",
+                "Base.respond",
+                CallArguments(
+                  mapOf(baseCanvas to ArgumentExpression.Canvas(CanvasExpression.ValueReference("base", site))),
+                ),
+                site,
+                DispatchReceiver.Forwarded,
+                true,
+              ),
+            ),
+            callable(
+              "Base.respond",
+              Effect.Unknown("abstract", "body unavailable", site),
+              parameters = listOf(baseCanvas),
+            ),
+            callable(
+              "App.respond",
+              compose("execute", CanvasExpression.ParameterValue(appCanvas)),
+              parameters = listOf(appCanvas),
+            ),
+          ),
+        overrides =
+          listOf(
+            ResolvedOverride("App", "Base.respond", "App.respond", listOf(OverrideSlot(baseCanvas, appCanvas, 0))),
+          ),
+        tiles =
+          listOf(
+            TileContract(
+              "work",
+              listOf(Effect.Lookup("need", CanvasExpression.Current, metrics, LookupKind.REQUIRED, site)),
+              site,
+            ),
+          ),
+      )
+    val selected = roots(local)
+    assertEquals(listOf("Base.handle @ App"), selected.map { it.id })
+    assertEquals("App", selected.single().receiverType)
+    val report = MosaicAnalyzer().analyze(AnalysisRequest(local, roots = selected))
+    assertEquals(RootStatus.VERIFIED, report.roots.single().status)
+    assertTrue(report.findings.any { it.kind == FindingKind.REQUIRED_LOOKUP && it.certainty == Certainty.VERIFIED })
+
+    val entry =
+      callable(
+        "entry",
+        Effect.Call("start", "Base.handle", site = site, receiver = DispatchReceiver.Concrete("App")),
+      )
+    val entered = local.copy(callables = local.callables + entry)
+    assertEquals(listOf("entry"), roots(entered).map { it.id })
+  }
+
   @Test fun `receiver activations have independent incoming callers and independent outcomes`() {
     val baseCanvas = ContractParameter("Base.respond", "canvas", ParameterKind.CANVAS)
     val firstCanvas = ContractParameter("First.respond", "canvas", ParameterKind.CANVAS)
@@ -294,9 +363,16 @@ class RootSelectionResolverTest {
             callable("Bad.respond", compose("bad")),
           ),
         overrides = listOf(ResolvedOverride("Bad", "Base.respond", "Bad.respond")),
+        tiles = listOf(TileContract("work", emptyList(), site)),
       )
-    val failure = assertFailsWith<IllegalArgumentException> { roots(local) }
-    assertTrue(failure.message.orEmpty().contains("Bad.respond"))
+    val selected = roots(local)
+    assertEquals(listOf("entry", "relay @ Bad"), selected.map { it.id })
+    val report = MosaicAnalyzer().analyze(AnalysisRequest(local, roots = selected))
+    val receiverless = report.roots.single { it.root.target == "entry" }
+    assertEquals(RootStatus.UNVERIFIED, receiverless.status)
+    assertTrue(receiverless.findings.any { it.reason.contains("Virtual receiver is unresolved") })
+    assertFalse("Bad.respond" in receiverless.specializedContracts)
+    assertEquals(RootStatus.VERIFIED, report.roots.single { it.root.receiverType == "Bad" }.status)
   }
 
   @Test fun `dependency caller above an anchored template becomes the receiver-specific root`() {

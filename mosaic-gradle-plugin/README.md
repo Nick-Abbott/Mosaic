@@ -114,7 +114,7 @@ validates and exports the complete local summary as `EXPORT_ONLY`. Both roles
 package the same summary resource.
 
 Automatic discovery follows selected-contract calls to `compose` execution and
-selects the outermost safely established selected-contract boundary. A
+selects the outermost safely established selected-contract boundary. A local or
 dependency template method that forwards to an application override is
 specialized for each concrete application receiver. Unrelated lookups, Canvas
 factories, and unknown declarations do not create roots. If no safe root covers

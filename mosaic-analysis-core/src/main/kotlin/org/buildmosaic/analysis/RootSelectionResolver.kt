@@ -198,10 +198,9 @@ object RootSelectionResolver {
     private fun anchoredTemplates(): Set<Activation> =
       overrides.filter { contracts[it.implementationId]?.owner == localOwner }.flatMap { override ->
         contracts.filterValues { contract ->
-          contract.owner != localOwner &&
-            contract.shape.calls.any { call ->
-              call.virtual && call.receiver == DispatchReceiver.Forwarded && call.target == override.baseId
-            }
+          contract.shape.calls.any { call ->
+            call.virtual && call.receiver == DispatchReceiver.Forwarded && call.target == override.baseId
+          }
         }.keys.map { Activation(it, override.receiverType) }
       }.filter { it in nodes }.toSet()
 
