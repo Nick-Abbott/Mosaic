@@ -4,7 +4,7 @@ import org.buildmosaic.analysis.AnalysisPolicy
 import org.buildmosaic.analysis.AnalysisRequest
 import org.buildmosaic.analysis.ModuleContract
 import org.buildmosaic.analysis.MosaicAnalyzer
-import org.buildmosaic.analysis.SelectedRoot
+import org.buildmosaic.analysis.RootSelectionResolver
 import org.buildmosaic.analysis.SummaryCodec
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
@@ -118,10 +118,19 @@ abstract class VerifyMosaicTask : DefaultTask() {
         MosaicAnalysisEnforcement.STANDARD -> AnalysisPolicy.DEFAULT
         MosaicAnalysisEnforcement.STRICT -> AnalysisPolicy.STRICT
       }
-    val rootsList = selectedRoots.map { SelectedRoot(it, it) }
+    val rootsList =
+      try {
+        RootSelectionResolver.resolve(program, dependencies, selectedRoots)
+      } catch (failure: IllegalArgumentException) {
+        failWithDiagnostic(
+          output,
+          "Root selection error",
+          GradleException(failure.message ?: "Mosaic root selection failed", failure),
+        )
+      }
     val report = MosaicAnalyzer().analyze(AnalysisRequest(program, dependencies, rootsList, policy = policy))
     validateResolvedRoots(output, report)
-    writeReport(output, MosaicVerificationReport.application(report, role.get(), enforcement.get(), selectedRoots))
+    writeReport(output, MosaicVerificationReport.application(report, role.get(), enforcement.get()))
     if (!report.policyDecision.passed) throw GradleException("Mosaic verification failed; see ${output.absolutePath}")
     if (report.policyDecision.warnings.isNotEmpty()) {
       logger.warn("Mosaic verification passed with warnings; see ${output.absolutePath}")
@@ -184,9 +193,6 @@ private fun configurationError(
     MosaicAnalysisRole.APPLICATION ->
       when {
         selectedRoots.any { it.isBlank() } -> "Mosaic APPLICATION roots must not be blank"
-        selectedRoots.isEmpty() ->
-          "Mosaic APPLICATION verification requires at least one root. " +
-            "Configure mosaicAnalysis.roots or select role = MosaicAnalysisRole.LIBRARY."
         else -> null
       }
     MosaicAnalysisRole.LIBRARY ->

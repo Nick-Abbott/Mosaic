@@ -5,6 +5,19 @@ predate this maintained changelog; their release history is not reconstructed he
 
 ## [Unreleased]
 
+### Added
+
+- Automatic discovery of safe application analysis roots from selected contracts,
+  including local and dependency template/framework paths specialized for
+  application receivers.
+- `mosaicGraph` generates Markdown and Mermaid diagrams for local contracts,
+  relevant dependencies, and application root findings.
+
+### Changed
+
+- Application roots are optional; explicitly configured roots replace automatic
+  selection exactly.
+
 ## [0.3.0] - 2026-09-23
 
 ### Added

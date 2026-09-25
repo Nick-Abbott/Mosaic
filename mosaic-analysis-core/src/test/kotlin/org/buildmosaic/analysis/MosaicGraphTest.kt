@@ -93,6 +93,57 @@ class MosaicGraphTest {
     assertTrue(graph.contains("Status: VERIFIED"))
   }
 
+  @Test fun `automatic receiver roots have separate focused status sections`() {
+    val provided =
+      CanvasExpression.Layer(
+        "metrics",
+        CanvasExpression.Empty,
+        listOf(Binding(Fact.Known(metrics), site = site("binding"))),
+        site = site("layer"),
+      )
+    val local =
+      ModuleContract(
+        "local",
+        callables =
+          listOf(
+            entry("A.respond", compose("good", provided, "worker")),
+            entry("B.respond", compose("bad", CanvasExpression.Empty, "worker")),
+          ),
+        tiles = listOf(tile("worker", lookup("need", metrics))),
+        overrides =
+          listOf(
+            ResolvedOverride("A", "Base.respond", "A.respond"),
+            ResolvedOverride("B", "Base.respond", "B.respond"),
+          ),
+      )
+    val dependency =
+      ModuleContract(
+        "dependency",
+        callables =
+          listOf(
+            entry(
+              "Base.handle",
+              Effect.Call(
+                "respond",
+                "Base.respond",
+                site = site("dispatch"),
+                receiver = DispatchReceiver.Forwarded,
+                virtualDispatch = true,
+              ),
+            ),
+          ),
+      )
+    val roots = RootSelectionResolver.resolve(local, listOf(dependency), emptyList())
+    val graph = MosaicGraph.render(AnalysisRequest(local, listOf(dependency), roots))
+    val first = graph.substringAfter("## Root: Base.handle @ A").substringBefore("## Root: Base.handle @ B")
+    val second = graph.substringAfter("## Root: Base.handle @ B")
+    assertTrue(first.contains("Selection: AUTOMATIC; receiver: A"))
+    assertTrue(first.contains("Status: VERIFIED"))
+    assertTrue(second.contains("Selection: AUTOMATIC; receiver: B"))
+    assertTrue(second.contains("Status: FAILED"))
+    assertTrue(second.contains("| MISSING |"))
+  }
+
   @Test fun `shared references and cycles have one contract node each`() {
     val first =
       tile(

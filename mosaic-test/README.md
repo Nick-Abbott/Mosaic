@@ -26,7 +26,7 @@ val LocaleKey = CanvasKey(String::class, "locale")
 
 ```kotlin
 dependencies {
-  testImplementation("org.buildmosaic:mosaic-test:0.3.0")
+  testImplementation("org.buildmosaic:mosaic-test:0.4.0")
 }
 ```
 

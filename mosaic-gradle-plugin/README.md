@@ -5,7 +5,7 @@
 The `org.buildmosaic.analysis` plugin supports pure Kotlin/JVM `main` sources
 under `src/main/kotlin` with Kotlin Gradle plugin and compiler **2.2.10 only**.
 It is build tooling: it does not apply Kotlin or add Mosaic application runtime
-dependencies. Add Maven Central to plugin and dependency repositories. Install version 0.3.0 with:
+dependencies. Add Maven Central to plugin and dependency repositories. Install version 0.4.0 with:
 
 ```kotlin
 import org.buildmosaic.gradle.MosaicAnalysisEnforcement
@@ -13,22 +13,28 @@ import org.buildmosaic.gradle.MosaicAnalysisRole
 
 plugins {
   kotlin("jvm") version "2.2.10"
-  id("org.buildmosaic.analysis") version "0.3.0"
+  id("org.buildmosaic.analysis") version "0.4.0"
 }
 
 mosaicAnalysis {
   role = MosaicAnalysisRole.APPLICATION
   enforcement = MosaicAnalysisEnforcement.STANDARD
-  roots.add("app.entry()")
 }
 ```
 
 ## Roles and enforcement
 
 `role` and `enforcement` are independent typed settings. The defaults are
-`APPLICATION` and `STANDARD`. Applications must name one or more explicit
-callable roots. Libraries can omit roots and still export the same complete
-summary in their JAR:
+`APPLICATION` and `STANDARD`. The normal application setup above leaves `roots`
+empty, so analysis discovers the outermost safe Mosaic execution contexts from
+selected contracts. Add explicit callable IDs when an application needs to
+choose its own entry contexts; these entries replace discovery exactly:
+
+```kotlin
+mosaicAnalysis { roots.add("app.entry()") }
+```
+
+Libraries omit roots and export the same complete summary in their JAR:
 
 ```kotlin
 mosaicAnalysis {
@@ -75,18 +81,20 @@ and `check`.
 ## Dependency documentation
 
 Run `./gradlew mosaicGraph` to write `build/reports/mosaic-analysis/graph.md`.
-The Markdown contains Mermaid diagrams for every local Tile and Canvas, their
-Mosaic relationships, and only referenced dependency contracts. For example,
-if `ResponseTile` composes `ProfileTile`, which requests `UserRepository`, the
-diagram links both Tiles and shows the Canvas requirement on `ProfileTile`.
+The Markdown contains Mermaid diagrams for local Tiles and MultiTiles, Canvas
+bindings and requirements, their Mosaic relationships, and relevant selected
+dependency contracts. For example, if `ResponseTile` composes `ProfileTile`,
+which requests `UserRepository`, the diagram links both Tiles and shows the
+Canvas requirement on `ProfileTile`.
 
-The module overview works without configured roots and makes no verification
-claim. When `mosaicAnalysis.roots` is configured, the report also includes a
-focused diagram and analyzer findings for each root. Missing or unverified
+The module overview makes no verification claim. APPLICATION graphs include a
+focused diagram and analyzer findings for each discovered or explicit root,
+including uncertainty and the selected receiver; LIBRARY graphs show the
+overview only. Missing or unverified
 requirements appear in the report without failing graph generation; invalid
 roots, summaries, and conflicting selected owners still fail. The diagrams
-describe possible static relationships, not runtime execution order, call
-counts, or MultiTile batch sizes.
+describe possible static relationships, not runtime traces, execution order,
+timing, call counts, or exact MultiTile batches.
 
 To retain a snapshot for team documentation, copy the generated Markdown into
 your documentation directory and commit that copy. Mermaid-capable Markdown
@@ -104,15 +112,23 @@ Kotlin’s own incremental compilation handles public constants, typealiases,
 inline bodies, and other source-resolution changes. Mosaic does no additional
 source-resolution fingerprinting or separate K2 compilation.
 
-In APPLICATION mode verification checks configured roots. In LIBRARY mode it
+In APPLICATION mode verification checks discovered or configured roots. In LIBRARY mode it
 validates and exports the complete local summary as `EXPORT_ONLY`. Both roles
 package the same summary resource.
 
-Roots are explicit callable IDs. APPLICATION with no roots fails both
-`verifyMosaicMain` and `check`/`build`, with guidance to configure roots or select
-LIBRARY. LIBRARY with no roots passes ordinary `check`/`build` after extraction
-and local summary validation. Explicit `verifyMosaicMain` and `verifyMosaic` use
-the same role-specific behavior.
+Automatic discovery follows selected-contract calls to `compose` execution and
+selects the outermost safely established selected-contract boundary. A template
+method in local code or a library or framework dependency that forwards to an
+application override is specialized for each concrete application receiver.
+Unrelated lookups and unknown declarations do not create roots by themselves.
+Constructing a Canvas without a Mosaic execution path does not create one. If no
+safe root covers the Mosaic execution found, verification and graph
+generation fail with a root selection error and guidance to configure an
+explicit root.
+Configured roots replace automatic selection exactly. Reports show how roots
+were selected and any concrete receiver. LIBRARY with no roots passes ordinary
+`check`/`build` after extraction and local summary validation. Explicit
+`verifyMosaicMain` and `verifyMosaic` use the same role-specific behavior.
 
 | Role | Enforcement | Result |
 | --- | --- | --- |

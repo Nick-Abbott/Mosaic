@@ -4,7 +4,7 @@ import org.buildmosaic.analysis.AnalysisPolicy
 import org.buildmosaic.analysis.AnalysisRequest
 import org.buildmosaic.analysis.ModuleContract
 import org.buildmosaic.analysis.MosaicGraph
-import org.buildmosaic.analysis.SelectedRoot
+import org.buildmosaic.analysis.RootSelectionResolver
 import org.buildmosaic.analysis.SummaryCodec
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
@@ -57,7 +57,16 @@ abstract class MosaicGraphTask : DefaultTask() {
     val dependencies = MosaicDependencyReader.read(dependencySummaries)
     val modules = listOf(program) + dependencies
     requireUniqueSelectedOwners(modules)
-    val selected = selectedRoots.distinct().sorted().map { resolveRoot(it, modules) }
+    val selected =
+      if (role.get() == MosaicAnalysisRole.LIBRARY) {
+        emptyList()
+      } else {
+        try {
+          RootSelectionResolver.resolve(program, dependencies, selectedRoots)
+        } catch (failure: IllegalArgumentException) {
+          throw GradleException(failure.message ?: "Mosaic root selection failed", failure)
+        }
+      }
     val policy =
       if (enforcement.get() == MosaicAnalysisEnforcement.STRICT) {
         AnalysisPolicy.STRICT
@@ -95,16 +104,4 @@ abstract class MosaicGraphTask : DefaultTask() {
     } catch (failure: IOException) {
       throw GradleException("Invalid local Mosaic summary: ${failure.message}", failure)
     }
-
-  private fun resolveRoot(
-    id: String,
-    modules: List<ModuleContract>,
-  ): SelectedRoot {
-    if (modules.none { module -> module.callables.any { it.id == id } || module.canvases.any { it.id == id } }) {
-      throw GradleException(
-        "Selected root '$id' does not resolve to a callable or Canvas contract in the selected Mosaic contracts",
-      )
-    }
-    return SelectedRoot(id, id)
-  }
 }

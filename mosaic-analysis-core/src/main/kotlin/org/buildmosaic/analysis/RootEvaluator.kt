@@ -34,7 +34,7 @@ internal class RootEvaluator(
   private var nextCanvasInstance = 0
 
   fun evaluate(): RootReport {
-    val initial = EvaluationContext(scope = root.target)
+    val initial = EvaluationContext(scope = root.target, knownReceiverType = root.receiverType)
     when (val callable = registry.callable(root.target)) {
       is Resolution.Found -> evaluateRootCallable(callable.value, initial)
       is Resolution.Conflict -> addConflict(initial, root.target, callable.owners, rootSite())

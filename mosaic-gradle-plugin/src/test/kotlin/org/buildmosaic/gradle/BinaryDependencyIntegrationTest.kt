@@ -12,7 +12,9 @@ package org.buildmosaic.gradle
 import org.buildmosaic.analysis.AnalysisPolicy
 import org.buildmosaic.analysis.AnalysisRequest
 import org.buildmosaic.analysis.CanvasExpression
+import org.buildmosaic.analysis.Certainty
 import org.buildmosaic.analysis.MosaicAnalyzer
+import org.buildmosaic.analysis.RootSelectionResolver
 import org.buildmosaic.analysis.RootStatus
 import org.buildmosaic.analysis.SUMMARY_PATH
 import org.buildmosaic.analysis.SelectedRoot
@@ -126,11 +128,19 @@ class BinaryDependencyIntegrationTest {
         "app",
         pluginJar,
         listOf(coreJar, platformJar, adapterJar, tileJar),
-        listOf("app.entry()", "app.adapterEntry()", "app.slotEntry()"),
         enforcement = "STRICT",
       )
     val appBuildFile = File(app, "build.gradle.kts")
     val strictBuildText = appBuildFile.readText()
+    val explicitBuildText =
+      strictBuildText + "\n" +
+        """
+        mosaicAnalysis {
+          roots.add("app.entry()")
+          roots.add("app.adapterEntry()")
+          roots.add("app.slotEntry()")
+        }
+        """.trimIndent()
     File(app, "src/main/kotlin/App.kt").apply {
       parentFile.mkdirs()
       writeText(
@@ -145,6 +155,13 @@ class BinaryDependencyIntegrationTest {
           single<Service> { Service(paint<Metrics>()) }
         }
         class ApplicationComponent : PlatformComponent() {
+          override suspend fun respond(base: Canvas, requestId: String): String {
+            val application = applicationLayer(base)
+            val request = application.withLayer { single<RequestContext> { RequestContext(requestId) } }
+            return request.create().compose(EnterpriseTile)
+          }
+        }
+        class FrameworkApplication : PlatformComponent() {
           override suspend fun respond(base: Canvas, requestId: String): String {
             val application = applicationLayer(base)
             val request = application.withLayer { single<RequestContext> { RequestContext(requestId) } }
@@ -169,9 +186,14 @@ class BinaryDependencyIntegrationTest {
     val initialReport = File(app, "build/reports/mosaic-analysis/main.txt").readText()
     val initialSummaryBytes = File(app, "build/mosaic-analysis/main/summary.json").readBytes()
     assertEquals(TaskOutcome.SUCCESS, initial.task(":verifyMosaicMain")?.outcome)
+    assertTrue(initialReport.contains("Root selection: AUTOMATIC"), initialReport)
     assertTrue(initialReport.contains("Root app.entry(): VERIFIED"), initialReport)
     assertTrue(initialReport.contains("Root app.adapterEntry(): VERIFIED"), initialReport)
     assertTrue(initialReport.contains("Root app.slotEntry(): VERIFIED"), initialReport)
+    assertTrue(
+      initialReport.contains("@ app.FrameworkApplication: VERIFIED; receiver app.FrameworkApplication"),
+      initialReport,
+    )
     assertTrue(initialReport.contains("CONSTRUCTION_LOOKUP"), initialReport)
     assertFalse(initialReport.contains("Dependency metadata:"), initialReport)
     listOf(
@@ -193,6 +215,18 @@ class BinaryDependencyIntegrationTest {
           dependency,
         ).use { SummaryCodec.decode(it.getInputStream(it.getJarEntry(SUMMARY_PATH)).readBytes()).module }
       }
+    val frameworkRoot =
+      RootSelectionResolver.resolve(appSummary, selectedDependencies, emptyList())
+        .single { it.receiverType == "app.FrameworkApplication" }
+    assertTrue(frameworkRoot.target.startsWith("platform.PlatformComponent.handle("))
+    val frameworkReport =
+      MosaicAnalyzer().analyze(AnalysisRequest(appSummary, selectedDependencies, listOf(frameworkRoot)))
+    assertEquals(RootStatus.VERIFIED, frameworkReport.roots.single().status)
+    assertTrue(
+      frameworkReport.findings.any {
+        it.key?.classId == "platform.Metrics" && it.certainty == Certainty.VERIFIED
+      },
+    )
     val standaloneOverride =
       MosaicAnalyzer().analyze(
         AnalysisRequest(
@@ -271,6 +305,7 @@ class BinaryDependencyIntegrationTest {
     assertEquals(initialReport, File(app, "build/reports/mosaic-analysis/main.txt").readText())
 
     val completeBytes = platformJar.readBytes()
+    appBuildFile.writeText(explicitBuildText)
     rewriteSummary(platformJar, null)
     val missingMetadata = run(app, "verifyMosaicMain", expectFailure = true)
     val missingReport = File(app, "build/reports/mosaic-analysis/main.txt").readText()
@@ -282,7 +317,7 @@ class BinaryDependencyIntegrationTest {
       missingReport,
     )
     appBuildFile.writeText(
-      strictBuildText.replace(
+      explicitBuildText.replace(
         "enforcement = org.buildmosaic.gradle.MosaicAnalysisEnforcement.STRICT",
         "enforcement = org.buildmosaic.gradle.MosaicAnalysisEnforcement.STANDARD",
       ),
@@ -293,7 +328,7 @@ class BinaryDependencyIntegrationTest {
     assertTrue(standardUnknown.output.contains("Mosaic verification passed with warnings"), standardUnknown.output)
     assertTrue(standardReport.contains("PASSED WITH WARNINGS"), standardReport)
     assertTrue(standardReport.contains("UNVERIFIED"), standardReport)
-    appBuildFile.writeText(strictBuildText)
+    appBuildFile.writeText(explicitBuildText)
     rewriteSummary(platformJar, "{malformed".toByteArray())
     val malformed = run(app, "verifyMosaicMain", expectFailure = true)
     val malformedReport = File(app, "build/reports/mosaic-analysis/main.txt").readText()

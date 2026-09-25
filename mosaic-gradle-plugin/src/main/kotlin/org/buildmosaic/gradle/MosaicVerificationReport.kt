@@ -2,6 +2,7 @@ package org.buildmosaic.gradle
 
 import org.buildmosaic.analysis.AnalysisReport
 import org.buildmosaic.analysis.Finding
+import org.buildmosaic.analysis.RootSelection
 
 internal object MosaicVerificationReport {
   fun library(enforcement: MosaicAnalysisEnforcement): String =
@@ -18,7 +19,6 @@ internal object MosaicVerificationReport {
     report: AnalysisReport,
     role: MosaicAnalysisRole,
     enforcement: MosaicAnalysisEnforcement,
-    roots: List<String>,
   ): String {
     val result =
       when {
@@ -30,10 +30,15 @@ internal object MosaicVerificationReport {
       appendLine("Mosaic analysis: ${report.configurationStatus}")
       appendLine("Role: $role")
       appendLine("Enforcement: $enforcement")
-      appendLine("Roots selected: ${roots.joinToString()}")
+      val selection = report.roots.firstOrNull()?.root?.selection ?: RootSelection.EXPLICIT
+      appendLine("Root selection: $selection")
+      appendLine("Roots selected: ${report.roots.joinToString { it.root.id }}")
       appendLine("Result: $result")
       report.roots.forEach { root ->
-        appendLine("Root ${root.root.target}: ${root.status}; contracts ${root.specializedContracts.joinToString()}")
+        appendLine(
+          "Root ${root.root.id}: ${root.status}; receiver ${root.root.receiverType ?: "none"}; " +
+            "contracts ${root.specializedContracts.joinToString()}",
+        )
       }
       report.findings.forEach { finding -> appendFinding(finding) }
     }
