@@ -14,9 +14,10 @@ changes in Mosaic. Fixtures are deterministic, and ordinary tests verify their
 results, shared-leaf deduplication, and MultiTile cache states.
 
 This is a micro/milli-benchmark suite for runtime costs. It does not measure an
-application workload, databases, network services, or a Mosaic-versus-handwritten
-Kotlin application. That comparison is planned separately. No performance claim
-or regression threshold is based on these initial results.
+application workload, databases, or network services. The separate
+[`performance/`](../performance/README.md) build contains application-level
+Mosaic versus handwritten Kotlin comparison workloads. No performance claim
+or regression threshold is based on these initial suites.
 
 ## Run
 
