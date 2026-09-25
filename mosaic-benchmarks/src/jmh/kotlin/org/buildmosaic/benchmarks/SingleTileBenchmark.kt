@@ -1,5 +1,6 @@
 package org.buildmosaic.benchmarks
 
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.runBlocking
 import org.buildmosaic.core.Mosaic
 import org.buildmosaic.core.Tile
@@ -45,6 +46,9 @@ open class SingleTileBenchmark {
   @Benchmark
   @OperationsPerInvocation(BATCH_SIZE)
   open fun completedCacheHit(): Int = suspendBatch { cached.compose(trivial) }
+
+  @Benchmark
+  open fun completedCacheHitAsync(): Deferred<Int> = cached.composeAsync(trivial)
 
   @Benchmark
   @OperationsPerInvocation(BATCH_SIZE)

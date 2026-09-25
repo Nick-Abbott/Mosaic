@@ -5,9 +5,10 @@ Mosaic uses JMH for repeatable JVM timing and allocation measurements. The inter
 included in the BOM. JMH handles warmup, measurement, forks, and JVM profiling;
 the suite does not time operations with a clock in benchmark code.
 
-The suite measures request Mosaic creation, SingleTile cold execution and completed
-cache hits, small CPU tiles, graph width/depth/shared dependencies, MultiTile
-cold/half-cached/fully cached requests, and Canvas lookup and layer creation.
+The suite measures request Mosaic creation from an already-built Canvas, SingleTile
+cold execution and completed `compose()` and `composeAsync()` cache hits, small CPU
+tiles, graph width/depth/shared dependencies, MultiTile cold/half-cached/fully
+cached requests, and Canvas lookup and layer creation.
 Control methods help distinguish changes in the JVM or coroutine bridge from
 changes in Mosaic. Fixtures are deterministic, and ordinary tests verify their
 results, shared-leaf deduplication, and MultiTile cache states.
@@ -43,9 +44,9 @@ operation:
 
 ```bash
 java -jar mosaic-benchmarks/build/libs/mosaic-benchmarks-*-jmh.jar \
-  '.*MosaicCreationBenchmark.*' -bm avgt -wi 3 -i 5 -w 1s -r 1s -f 2 \
+  '.*SingleTileBenchmark.completedCacheHitAsync' -bm avgt -wi 3 -i 5 -w 1s -r 1s -f 2 \
   -tu us -prof gc -rf json \
-  -rff mosaic-benchmarks/build/creation-gc.json
+  -rff mosaic-benchmarks/build/cache-hit-async-gc.json
 ```
 
 The module's `check` task compiles benchmark sources without executing them.
@@ -57,7 +58,9 @@ and use JMH `@OperationsPerInvocation(32)`. JMH therefore reports per-operation
 time rather than per-batch time, while the entry bridge is amortized. The helper
 does not supply a Mosaic request or coroutine scope; each benchmark decides when
 to create those. Synchronous creation and lookup methods call the runtime
-directly. The direct and suspending controls reveal some of the harness cost.
+directly. The completed `composeAsync()` cache-hit benchmark directly returns the
+cached `Deferred` without awaiting it. The direct and suspending controls reveal
+some of the harness cost.
 
 MultiTile request and cache setup occurs in JMH invocation setup so the timed
 method always sees the stated cache state. For allocation profiling, JMH's GC
