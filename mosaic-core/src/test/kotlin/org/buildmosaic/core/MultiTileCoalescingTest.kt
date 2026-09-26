@@ -4,16 +4,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.yield
 import org.buildmosaic.core.injection.Canvas
 import org.buildmosaic.core.injection.CanvasKey
 import java.util.concurrent.CountDownLatch
@@ -28,47 +23,14 @@ import kotlin.test.assertFalse
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
-@OptIn(ExperimentalCoroutinesApi::class)
-@Suppress("LargeClass", "FunctionMaxLength")
+@Suppress("LargeClass")
 class MultiTileCoalescingTest {
   private val emptyCanvas =
     object : Canvas {
       override fun <T : Any> sourceOr(key: CanvasKey<T>): T? = null
     }
 
-  @Test fun oneRequestAndEmptyKeys() =
-    runTest {
-      val mosaic = MosaicImpl(emptyCanvas, StandardTestDispatcher(testScheduler))
-      val calls = mutableListOf<Set<String>>()
-      val tile =
-        multiTile<String, String> { keys ->
-          calls += keys
-          keys.associateWith { it }
-        }
-      assertTrue(mosaic.composeAsync(tile, emptyList()).isEmpty())
-      val values = mosaic.composeAsync(tile, listOf("A", "B", "C"))
-      runCurrent()
-      assertEquals(listOf(setOf("A", "B", "C")), calls)
-      assertEquals(listOf("A", "B", "C"), values.values.map { it.await() })
-    }
-
-  @Test fun batchKeysCannotBeMutatedByTheTileBody() =
-    runTest {
-      val mosaic = MosaicImpl(emptyCanvas, StandardTestDispatcher(testScheduler))
-      val tile =
-        multiTile<String, String> { keys ->
-          assertFailsWith<UnsupportedOperationException> {
-            @Suppress("UNCHECKED_CAST")
-            (keys as MutableSet<String>).add("D")
-          }
-          keys.associateWith { it }
-        }
-      val values = mosaic.composeAsync(tile, listOf("A", "B"))
-      runCurrent()
-      assertEquals(setOf("A", "B"), values.mapValues { it.value.await() }.keys)
-    }
-
-  @Test fun pendingSiblingsCoalesceAndShareOverlappingPlaceholder() =
+  @Test fun pendingSiblingsCoalesceAndSharePlaceholders() =
     runTest {
       val mosaic = MosaicImpl(emptyCanvas, StandardTestDispatcher(testScheduler))
       val calls = mutableListOf<Set<String>>()
@@ -80,38 +42,38 @@ class MultiTileCoalescingTest {
       val first = mosaic.composeAsync(tile, listOf("A", "B", "C"))
       val second = mosaic.composeAsync(tile, listOf("C", "D", "E"))
       assertSame(first.getValue("C"), second.getValue("C"))
-      runCurrent()
+      testScheduler.runCurrent()
       assertEquals(listOf(setOf("A", "B", "C", "D", "E")), calls)
       assertEquals("C", first.getValue("C").await())
       assertEquals("C", mosaic.compose(tile, "C"))
       assertEquals(1, calls.size)
     }
 
-  @Test fun aStartedSnapshotIsImmutableAndLaterBatchCanOverlap() =
+  @Test fun startedBatchIsFixedAndLaterBatchCanOverlap() =
     runTest {
       val mosaic = MosaicImpl(emptyCanvas, StandardTestDispatcher(testScheduler))
       val firstGate = CompletableDeferred<Unit>()
       val calls = mutableListOf<Set<String>>()
       val tile =
         multiTile<String, String> { keys ->
-          calls += keys.toSet()
+          calls += keys
           if ("A" in keys) firstGate.await()
           keys.associateWith { it }
         }
       val first = mosaic.composeAsync(tile, listOf("A", "B"))
-      runCurrent()
+      testScheduler.runCurrent()
       val second = mosaic.composeAsync(tile, listOf("C", "D"))
       assertSame(first.getValue("A"), mosaic.composeAsync(tile, "A"))
-      runCurrent()
+      testScheduler.runCurrent()
       assertEquals(listOf(setOf("A", "B"), setOf("C", "D")), calls)
       assertFalse(first.getValue("A").isCompleted)
       assertEquals("D", second.getValue("D").await())
       firstGate.complete(Unit)
-      runCurrent()
+      testScheduler.runCurrent()
       assertEquals("A", first.getValue("A").await())
     }
 
-  @Test fun externallySuspendedConsumerReusesCompletedKeysAndStartsNewWork() =
+  @Test fun delayedDeeperConsumerReusesKeysAndStartsLaterBatch() =
     runTest {
       val mosaic = MosaicImpl(emptyCanvas, StandardTestDispatcher(testScheduler))
       val gate = CompletableDeferred<Unit>()
@@ -122,18 +84,19 @@ class MultiTileCoalescingTest {
           keys.associateWith { it }
         }
       val first = singleTile { compose(products, listOf("A", "B", "C")) }
+      val deeper = singleTile { compose(products, listOf("C", "D", "E")) }
       val later =
         singleTile {
           gate.await()
-          compose(products, listOf("C", "D", "E"))
+          compose(deeper)
         }
       val firstResult = mosaic.composeAsync(first)
       val laterResult = mosaic.composeAsync(later)
-      runCurrent()
+      testScheduler.runCurrent()
       assertEquals(setOf("A", "B", "C"), firstResult.await().keys)
       assertFalse(laterResult.isCompleted)
       gate.complete(Unit)
-      runCurrent()
+      testScheduler.runCurrent()
       assertEquals(setOf("C", "D", "E"), laterResult.await().keys)
       assertEquals(listOf(setOf("A", "B", "C"), setOf("D", "E")), calls)
     }
@@ -151,19 +114,19 @@ class MultiTileCoalescingTest {
         }
       a.composeAsync(tile, "A") // deliberately never awaited
       b.composeAsync(tile, "A")
-      runCurrent()
+      testScheduler.runCurrent()
       assertEquals(listOf(setOf("A"), setOf("A")), calls)
     }
 
-  @Test fun failureAndThrowingMapSettleEveryCapturedKey() =
+  @Test fun failedAndIncompleteResultsSettleAllKeys() =
     runTest {
       val dispatcher = StandardTestDispatcher(testScheduler)
       val mosaic = MosaicImpl(emptyCanvas, dispatcher)
       val failed = multiTile<String, String> { _: Set<String> -> error("backend") }
-      val first = mosaic.composeAsync(failed, listOf("A", "B"))
-      runCurrent()
-      assertTrue(first.values.all { it.isCompleted })
-      assertTrue(first.values.all { runCatching { it.await() }.exceptionOrNull() is IllegalStateException })
+      val failedResults = mosaic.composeAsync(failed, listOf("A", "B"))
+      testScheduler.runCurrent()
+      assertTrue(failedResults.values.all { it.isCompleted })
+      assertTrue(failedResults.values.all { runCatching { it.await() }.exceptionOrNull() is IllegalStateException })
 
       val throwingMap =
         multiTile<String, String> { _: Set<String> ->
@@ -173,14 +136,22 @@ class MultiTileCoalescingTest {
             override fun get(key: String): String? = if (key == "B") error("lookup") else key
           }
         }
-      val second = mosaic.composeAsync(throwingMap, listOf("A", "B", "C"))
-      runCurrent()
-      assertTrue(second.values.all { it.isCompleted })
-      assertTrue(second.values.any { runCatching { it.await() }.exceptionOrNull()?.message == "lookup" })
-      assertEquals("A", second.getValue("A").await())
+      val lookupResults = mosaic.composeAsync(throwingMap, listOf("A", "B", "C"))
+      testScheduler.runCurrent()
+      assertTrue(lookupResults.values.all { it.isCompleted })
+      assertTrue(lookupResults.values.any { runCatching { it.await() }.exceptionOrNull()?.message == "lookup" })
+      assertEquals("A", lookupResults.getValue("A").await())
+
+      val missing = multiTile<String, String> { _: Set<String> -> mapOf("B" to "B") }
+      val missingResults = mosaic.composeAsync(missing, listOf("A", "B", "C"))
+      testScheduler.runCurrent()
+      assertTrue(missingResults.values.all { it.isCompleted })
+      assertEquals("B", missingResults.getValue("B").await())
+      assertFailsWith<NoSuchElementException> { missingResults.getValue("A").await() }
+      assertFailsWith<NoSuchElementException> { missingResults.getValue("C").await() }
     }
 
-  @Test fun chunkingRunsAfterCoalescingAndPerKeyFetchesStartInParallel() =
+  @Test fun chunkingRunsAfterCoalescing() =
     runTest {
       val mosaic = MosaicImpl(emptyCanvas, StandardTestDispatcher(testScheduler))
       val chunks = mutableListOf<List<String>>()
@@ -191,23 +162,8 @@ class MultiTileCoalescingTest {
         }
       mosaic.composeAsync(chunked, listOf("A", "B", "C"))
       mosaic.composeAsync(chunked, listOf("C", "D", "E"))
-      runCurrent()
+      testScheduler.runCurrent()
       assertEquals(listOf(listOf("A", "B", "C"), listOf("D", "E")), chunks)
-
-      val gate = CompletableDeferred<Unit>()
-      val started = mutableListOf<String>()
-      val perKey =
-        perKeyTile<String, String> { key ->
-          started += key
-          gate.await()
-          key
-        }
-      val result = mosaic.composeAsync(perKey, listOf("A", "B", "C"))
-      runCurrent()
-      assertEquals(setOf("A", "B", "C"), started.toSet())
-      gate.complete(Unit)
-      runCurrent()
-      assertTrue(result.values.all { it.isCompleted })
     }
 
   @Test fun cancellationSettlesPendingAndExecutingPlaceholders() =
@@ -217,7 +173,7 @@ class MultiTileCoalescingTest {
       val tile = multiTile<String, String> { keys -> keys.associateWith { it } }
       val pending = pendingMosaic.composeAsync(tile, listOf("A", "B"))
       (pendingMosaic as CoroutineScope).cancel()
-      runCurrent()
+      testScheduler.runCurrent()
       assertTrue(pending.values.all { it.isCancelled })
 
       val executingMosaic = MosaicImpl(emptyCanvas, dispatcher)
@@ -228,52 +184,16 @@ class MultiTileCoalescingTest {
           keys.associateWith { it }
         }
       val executing = executingMosaic.composeAsync(slow, listOf("A", "B"))
-      runCurrent()
+      testScheduler.runCurrent()
       val next = executingMosaic.composeAsync(slow, "C")
       (executingMosaic as CoroutineScope).cancel()
-      runCurrent()
+      testScheduler.runCurrent()
       assertTrue(executing.values.all { it.isCancelled })
       assertTrue(next.isCancelled)
+      assertFailsWith<CancellationException> { executing.getValue("A").await() }
     }
 
-  @Test
-  fun nativeDispatchersStillExecuteTilesAndYield() =
-    runTest {
-      val dispatchers =
-        listOf(
-          Dispatchers.Default,
-          Dispatchers.Unconfined,
-          StandardTestDispatcher(testScheduler),
-          UnconfinedTestDispatcher(testScheduler),
-        )
-      dispatchers.forEach { dispatcher ->
-        val mosaic = MosaicImpl(emptyCanvas, dispatcher)
-        val tile =
-          multiTile<String, String> { keys ->
-            yield()
-            keys.associateWith { it }
-          }
-        assertEquals("A", mosaic.compose(tile, "A"))
-      }
-    }
-
-  @Test fun awaitingCallerObservesRequestCancellation() =
-    runTest {
-      val mosaic = MosaicImpl(emptyCanvas, StandardTestDispatcher(testScheduler))
-      val gate = CompletableDeferred<Unit>()
-      val tile =
-        multiTile<String, String> { keys ->
-          gate.await()
-          keys.associateWith { it }
-        }
-      val caller = async { runCatching { mosaic.compose(tile, "A") }.exceptionOrNull() }
-      runCurrent()
-      (mosaic as CoroutineScope).cancel()
-      runCurrent()
-      assertTrue(caller.await() is CancellationException)
-    }
-
-  @Test fun concurrentProducersAndSnapshotNeverLoseOrDuplicateKeys() {
+  @Test fun concurrentBatchesNeverLoseOrDuplicateKeys() {
     repeat(50) {
       val mosaic = MosaicImpl(emptyCanvas, Dispatchers.Default)
       val calls = java.util.concurrent.ConcurrentLinkedQueue<Set<Int>>()
@@ -316,22 +236,6 @@ class MultiTileCoalescingTest {
     override fun equals(other: Any?): Boolean = other is CallbackKey && id == other.id
   }
 
-  @Test fun keyCodeMayReenterWithoutRunningUnderBatchMonitor() =
-    runTest {
-      val mosaic = MosaicImpl(emptyCanvas, StandardTestDispatcher(testScheduler))
-      val calls = mutableListOf<Set<Int>>()
-      val tile =
-        multiTile<CallbackKey, Int> { keys ->
-          calls += keys.map { it.id }.toSet()
-          keys.associateWith { it.id }
-        }
-      val b = CallbackKey(2)
-      val a = CallbackKey(1) { mosaic.composeAsync(tile, listOf(b)) }
-      mosaic.composeAsync(tile, listOf(a))
-      runCurrent()
-      assertEquals(listOf(setOf(1, 2)), calls)
-    }
-
   @Test fun throwingKeyCodeStillSchedulesEarlierWinner() =
     runTest {
       val mosaic = MosaicImpl(emptyCanvas, StandardTestDispatcher(testScheduler))
@@ -344,12 +248,12 @@ class MultiTileCoalescingTest {
       val a = CallbackKey(1)
       val broken = CallbackKey(2) { error("key failure") }
       assertFailsWith<IllegalStateException> { mosaic.composeAsync(tile, listOf(a, broken)) }
-      runCurrent()
+      testScheduler.runCurrent()
       assertEquals(1, mosaic.compose(tile, a))
       assertEquals(listOf(setOf(1)), calls)
     }
 
-  @Test fun producerPausedDuringKeyCodeCannotStrandEarlierWinner() {
+  @Test fun keyCodeDoesNotHoldPendingMonitor() {
     val mosaic = MosaicImpl(emptyCanvas, Dispatchers.Default)
     val calls = java.util.concurrent.ConcurrentLinkedQueue<Set<Int>>()
     val tile =

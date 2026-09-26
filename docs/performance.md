@@ -17,8 +17,8 @@ This is a micro/milli-benchmark suite for runtime costs. It does not measure an
 application workload, databases, or network services. The separate
 [`performance/`](../performance/README.md) build contains application-level
 Mosaic versus handwritten Kotlin comparison workloads and published results.
-No public performance claim or regression threshold is based on the JMH suite;
-the application results come from that separate comparison build.
+Published operation timings come from JMH; application CPU and latency results
+come from the separate comparison build. Neither suite defines regression thresholds.
 
 ## Run
 

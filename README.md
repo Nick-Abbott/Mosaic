@@ -182,8 +182,8 @@ inputs, failures, and delays simulated with coroutine virtual time.
 
 ## 📈 **Measured Against Handwritten Kotlin**
 
-Mosaic has a cost. The established 0.4 application benchmarks compare it with
-equivalent optimized Kotlin doing the same downstream work:
+Paired application benchmarks against equivalent optimized Kotlin measure the
+additional CPU Mosaic uses for the same downstream work:
 
 | Workload | Additional Mosaic CPU/request |
 | --- | ---: |
@@ -195,8 +195,8 @@ In the service-backed aggregate case, Mosaic added about **101 µs of CPU/reques
 Median HTTP latency was **21.44 ms direct vs 21.45 ms Mosaic**—a difference below
 the benchmark's approximately 1 ms timing accuracy.
 
-Focused matched 0.5 MultiTile benchmarks found no meaningful stable overhead
-increase from opportunistic coalescing.
+In the coalescing workload, six sibling Tiles referenced 24 distinct products;
+Mosaic fetched every key once in one or two backend batches across 40 samples.
 
 Absolute timings depend on hardware and JVM; each direct/Mosaic pair ran under
 identical conditions. [Results, workloads, and methodology →](performance/README.md)

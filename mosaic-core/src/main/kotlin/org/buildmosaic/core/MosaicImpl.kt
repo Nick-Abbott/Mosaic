@@ -9,7 +9,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.buildmosaic.core.injection.Canvas
-import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.CoroutineContext
 
@@ -32,7 +31,7 @@ open class MosaicImpl(
 
   // Tile management
   private val singleCache = ConcurrentHashMap<Tile<*>, Deferred<*>>()
-  private val multiStates = ConcurrentHashMap<MultiTile<*, *>, PendingMultiTile<*, *>>()
+  private val multiStates = ConcurrentHashMap<MultiTile<*, *>, MultiTileState<*, *>>()
 
   @Suppress("UNCHECKED_CAST")
   override fun <V> composeAsync(tile: Tile<V>): Deferred<V> {
@@ -52,32 +51,31 @@ open class MosaicImpl(
     }
   }
 
-  @Suppress("UNCHECKED_CAST", "NestedBlockDepth")
+  @Suppress("UNCHECKED_CAST")
   override fun <K : Any, V> composeAsync(
     tile: MultiTile<K, V>,
     keys: Collection<K>,
   ): Map<K, Deferred<V>> {
     if (keys.isEmpty()) return emptyMap()
 
-    val state = multiStates.computeIfAbsent(tile) { PendingMultiTile<K, V>() } as PendingMultiTile<K, V>
+    val state = multiStates.computeIfAbsent(tile) { MultiTileState<K, V>() } as MultiTileState<K, V>
     val result = HashMap<K, Deferred<V>>(keys.size)
     val winners = ArrayList<Pair<K, CompletableDeferred<V>>>()
     try {
-      keys.forEach { key ->
+      for (key in keys) {
         val existing = state.cache[key]
         if (existing != null) {
           result[key] = existing
-        } else {
-          val placeholder = CompletableDeferred<V>(coroutineContext[Job])
-          val previous = state.cache.putIfAbsent(key, placeholder)
-          if (previous == null) winners += key to placeholder
-          result[key] = previous ?: placeholder
+          continue
         }
+        val placeholder = CompletableDeferred<V>(coroutineContext[Job])
+        val previous = state.cache.putIfAbsent(key, placeholder)
+        if (previous == null) winners += key to placeholder
+        result[key] = previous ?: placeholder
       }
     } finally {
-      // A key operation may throw after earlier keys won cache slots. Those keys
-      // still need an owner even though this composeAsync call cannot return.
-      val owner = state.add(winners)
+      // Schedule reserved keys even if a later key operation throws.
+      val owner = state.enqueue(winners)
       if (owner != null) launchPending(tile, state, owner)
     }
     return result
@@ -86,18 +84,18 @@ open class MosaicImpl(
   @Suppress("TooGenericExceptionCaught")
   private fun <K : Any, V> launchPending(
     tile: MultiTile<K, V>,
-    state: PendingMultiTile<K, V>,
+    state: MultiTileState<K, V>,
     owner: Any,
   ) {
     try {
       launch {
-        val batch = state.snapshot(owner)
+        val batch = state.takePending(owner)
         if (batch.isNotEmpty()) executeBatch(tile, batch)
       }.invokeOnCompletion { failure ->
-        if (failure != null) state.abort(owner, failure)
+        if (failure != null) state.failPending(owner, failure)
       }
     } catch (failure: Throwable) {
-      state.abort(owner, failure)
+      state.failPending(owner, failure)
       throw failure
     }
   }
@@ -108,7 +106,7 @@ open class MosaicImpl(
     batch: List<Pair<K, CompletableDeferred<V>>>,
   ) {
     try {
-      val keys = Collections.unmodifiableSet(batch.mapTo(LinkedHashSet()) { it.first })
+      val keys = batch.mapTo(LinkedHashSet()) { it.first }
       val values = tile.block(this@MosaicImpl, keys)
       batch.forEach { (key, placeholder) ->
         val value = values[key]
@@ -119,28 +117,26 @@ open class MosaicImpl(
         }
       }
     } catch (failure: Throwable) {
-      // Looking up a value in the returned Map can also throw. Continue settling
-      // the remaining captured placeholders even if a completion handler throws.
-      batch.forEach { (_, placeholder) -> runCatching { placeholder.completeExceptionally(failure) } }
+      batch.forEach { (_, placeholder) -> placeholder.completeExceptionally(failure) }
     }
   }
 }
 
-/** One request-local cache and one pending, not-yet-started batch per MultiTile. */
-private class PendingMultiTile<K : Any, V> {
+// Only the matching owner can take pending work; stale launch cleanup leaves newer work alone.
+private class MultiTileState<K : Any, V> {
   val cache = ConcurrentHashMap<K, CompletableDeferred<V>>()
   private val monitor = Any()
   private val pending = ArrayList<Pair<K, CompletableDeferred<V>>>()
   private var owner: Any? = null
 
-  fun add(winners: List<Pair<K, CompletableDeferred<V>>>): Any? =
+  fun enqueue(winners: List<Pair<K, CompletableDeferred<V>>>): Any? =
     synchronized(monitor) {
       if (winners.isEmpty()) return null
       pending.addAll(winners)
       if (owner != null) null else Any().also { owner = it }
     }
 
-  fun snapshot(expectedOwner: Any): List<Pair<K, CompletableDeferred<V>>> =
+  fun takePending(expectedOwner: Any): List<Pair<K, CompletableDeferred<V>>> =
     synchronized(monitor) {
       if (owner !== expectedOwner) return emptyList()
       val batch = pending.toList()
@@ -149,11 +145,11 @@ private class PendingMultiTile<K : Any, V> {
       batch
     }
 
-  fun abort(
+  fun failPending(
     expectedOwner: Any,
     failure: Throwable,
   ) {
-    val abandoned = snapshot(expectedOwner)
-    abandoned.forEach { (_, placeholder) -> runCatching { placeholder.completeExceptionally(failure) } }
+    val abandoned = takePending(expectedOwner)
+    abandoned.forEach { (_, placeholder) -> placeholder.completeExceptionally(failure) }
   }
 }

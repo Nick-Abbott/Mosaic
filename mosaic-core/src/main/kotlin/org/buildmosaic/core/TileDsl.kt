@@ -35,9 +35,8 @@ fun <T> singleTile(block: suspend Mosaic.() -> T): Tile<T> = Tile(block)
  * based on a set of keys. Multi-tiles support automatic batching, caching,
  * and parallel execution.
  *
- * Within one Mosaic instance, newly won uncached keys pending for the same
- * MultiTile are combined when its scheduled execution begins. Ready work is
- * not intentionally delayed; exact batch boundaries depend on scheduling.
+ * Within one Mosaic, pending uncached keys for the same MultiTile may combine
+ * before execution. There is no intentional wait; batch boundaries depend on scheduling.
  */
 class MultiTile<K : Any, V>(internal val block: suspend Mosaic.(Set<K>) -> Map<K, V>)
 
