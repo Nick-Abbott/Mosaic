@@ -23,6 +23,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import org.buildmosaic.core.injection.Canvas
 import org.buildmosaic.core.injection.CanvasKey
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.collections.mapValues
 import kotlin.test.BeforeTest
@@ -111,11 +112,11 @@ class MosaicConcurrencyTest {
   @Test
   fun `should handle concurrent MultiTile access`() =
     runTest {
-      val retrieveCallCount = AtomicInteger(0)
+      val fetched = ConcurrentLinkedQueue<Set<String>>()
 
       val testTile =
         multiTile { keys: Set<String> ->
-          retrieveCallCount.incrementAndGet()
+          fetched += keys
           delay(5) // Simulate network call
           keys.associateWith { it.replace("key", "value") }
         }
@@ -135,17 +136,17 @@ class MosaicConcurrencyTest {
       assertEquals(mapOf("key2" to "value2", "key3" to "value3"), results[1])
       assertEquals(mapOf("key1" to "value1", "key3" to "value3"), results[2])
 
-      assertEquals(2, retrieveCallCount.get())
+      assertEquals(listOf("key1", "key2", "key3"), fetched.flatMap { it }.sorted())
     }
 
   @Test
   fun `should handle concurrent MultiTile access with async composition`() =
     runTest {
-      val retrieveCallCount = AtomicInteger(0)
+      val fetched = ConcurrentLinkedQueue<Set<String>>()
 
       val testTile =
         multiTile { keys: Set<String> ->
-          retrieveCallCount.incrementAndGet()
+          fetched += keys
           delay(5) // Simulate network call
           keys.associateWith { it.replace("key", "value") }
         }
@@ -171,17 +172,17 @@ class MosaicConcurrencyTest {
       assertEquals(mapOf("key2" to "value2", "key3" to "value3"), results[1])
       assertEquals(mapOf("key1" to "value1", "key3" to "value3"), results[2])
 
-      assertEquals(2, retrieveCallCount.get())
+      assertEquals(listOf("key1", "key2", "key3"), fetched.flatMap { it }.sorted())
     }
 
   @Test
   fun `should handle single key MultiTile concurrent access`() =
     runTest {
-      val retrieveCallCount = AtomicInteger(0)
+      val fetched = ConcurrentLinkedQueue<Set<String>>()
 
       val testTile =
         multiTile { keys: Set<String> ->
-          retrieveCallCount.incrementAndGet()
+          fetched += keys
           delay(5) // Simulate network call
           keys.associateWith { it.replace("key", "value") }
         }
@@ -201,6 +202,6 @@ class MosaicConcurrencyTest {
       assertEquals("value2", results[1])
       assertEquals("value1", results[2]) // Same as first
 
-      assertEquals(2, retrieveCallCount.get())
+      assertEquals(listOf("key1", "key2"), fetched.flatMap { it }.sorted())
     }
 }
