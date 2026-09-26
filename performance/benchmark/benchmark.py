@@ -28,7 +28,7 @@ ROOT = PERFORMANCE.parent
 SCRIPT = Path(__file__).parent / "wrk2" / "scenario.lua"
 RESULTS = PERFORMANCE / "results"
 VARIANTS = ("direct", "mosaic")
-ROUTES = ("light", "aggregate", "batching", "compute")
+ROUTES = ("light", "aggregate", "batching", "coalescing", "compute")
 PROFILES = ("zero", "service")
 DEFAULT_JVM = ("-Xms64m", "-Xmx512m", "-XX:+UseG1GC")
 DEFAULT_CPU_WORK = 20_000
@@ -115,7 +115,7 @@ def connections_for_rate(config, rate):
 
 def request_body(route, input_value):
     field = {"light": "customerId", "aggregate": "customerId",
-             "batching": "catalogId", "compute": "seed"}.get(route)
+             "batching": "catalogId", "coalescing": "catalogId", "compute": "seed"}.get(route)
     if field is None or not isinstance(input_value, int) or isinstance(input_value, bool):
         fail("invalid deterministic wrk2 request input")
     return json.dumps({field: input_value}, separators=(",", ":"))

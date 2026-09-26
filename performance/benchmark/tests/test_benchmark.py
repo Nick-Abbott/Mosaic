@@ -47,7 +47,7 @@ class BenchmarkLogicTest(unittest.TestCase):
 
     def test_deterministic_request_body_and_input_rotation(self):
         for route, body in [('light', '{"customerId":7}'), ('aggregate', '{"customerId":7}'),
-                            ('batching', '{"catalogId":7}'), ('compute', '{"seed":7}')]:
+                            ('batching', '{"catalogId":7}'), ('coalescing', '{"catalogId":7}'), ('compute', '{"seed":7}')]:
             self.assertEqual(b.request_body(route, 7), body)
         self.assertEqual(b.INPUTS, (1, 7, 42, 99))
         with self.assertRaises(ValueError):
@@ -221,6 +221,7 @@ class BenchmarkLogicTest(unittest.TestCase):
                'measurement_seconds': 30, 'calibration_timeout_seconds': 15,
                'tail_seconds': 10, 'wrk2_threads': 4, 'wrk2_connections': 128}
         self.assertIs(b.validate_config(cfg), cfg)
+        b.validate_config({**cfg, 'cases': {'coalescing': {'zero': [800], 'service': [400]}}})
         for change in ({'wrk2_connections': 130}, {'measurement_seconds': 1.5},
                        {'calibration_timeout_seconds': 10}, {'cases': {'compute': {'service': [100]}}}):
             with self.subTest(change=change), self.assertRaises(ValueError):

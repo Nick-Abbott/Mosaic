@@ -29,3 +29,9 @@ jmh {
   resultFormat = "JSON"
   failOnError = true
 }
+
+// Separate from timed JMH: record scheduler behavior without instrumenting benchmarks.
+tasks.register<JavaExec>("coalescingDiagnostic") {
+  classpath = sourceSets.main.get().runtimeClasspath
+  mainClass = "org.buildmosaic.benchmarks.CoalescingDiagnostic"
+}

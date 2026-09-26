@@ -44,6 +44,12 @@ class DirectExecutor(private val services: SimulatedServices) : ScenarioExecutor
     return batchingResponse(sections, products)
   }
 
+  override suspend fun coalescing(input: BatchingInput): BatchingResponse {
+    val sections = coalescingSections(input.catalogId)
+    val products = services.products(sections.flatten().toSet())
+    return batchingResponse(sections, products)
+  }
+
   override suspend fun compute(input: ComputeInput): ComputeResponse = coroutineScope {
     val parts = (0 until 6).map { branch ->
       async(Dispatchers.Default) { services.cpu(input.seed, branch) }

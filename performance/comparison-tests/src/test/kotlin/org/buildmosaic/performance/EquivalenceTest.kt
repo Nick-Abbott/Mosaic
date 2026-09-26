@@ -106,6 +106,58 @@ class EquivalenceTest {
     }
   }
 
+  @Test fun coalescingResponsesAndDownstreamKeysMatch() = runBlocking {
+    for (profile in LatencyProfile.entries) {
+      for (id in listOf(1, 7, 42)) {
+        val config = AppConfig(latency = profile, tracing = true)
+        val directServices = SimulatedServices(config)
+        val mosaicServices = SimulatedServices(config)
+        val direct = DirectExecutor(directServices).coalescing(BatchingInput(id))
+        val mosaic = MosaicExecutor(mosaicServices).coalescing(BatchingInput(id))
+        assertEquals(direct, mosaic)
+        val sections = coalescingSections(id)
+        val expected = (0 until 24).map { id * 1000 + it }.toSet()
+        assertEquals(expected, sections.flatten().toSet())
+        assertTrue(sections.all { it.size == 12 && it.toSet().size == 12 })
+        assertEquals(sections, mosaic.sections.map { it.products.map(Product::id) })
+        assertEquals(72, mosaic.sections.sumOf { it.products.size })
+        assertEquals(mosaic.sections.sumOf { it.products.sumOf(Product::value) }, mosaic.total)
+        assertEquals(1, directServices.trace().size)
+        for (services in listOf(directServices, mosaicServices)) {
+          val calls = services.trace()
+          assertTrue(calls.isNotEmpty())
+          assertTrue(calls.all { it.service == "products" && it.keys.isNotEmpty() })
+          assertEquals(expected.map(Int::toString).sorted(), calls.flatMap(Call::keys).sorted())
+          assertTrue(calls.all { call -> call.keys.all { it.toInt() in expected } })
+        }
+      }
+    }
+  }
+
+  @Test fun concurrentCoalescingRequestsAreIsolated() = runBlocking {
+    val config = AppConfig(latency = LatencyProfile.SERVICE, tracing = true)
+    // Repeated catalogs also prove that the MultiTile cache is scoped to each request.
+    val ids = listOf(3, 9, 3, 17, 9, 23, 17, 23)
+    val directServices = SimulatedServices(config)
+    val mosaicServices = SimulatedServices(config)
+    val direct = DirectExecutor(directServices)
+    val mosaic = MosaicExecutor(mosaicServices)
+    val directPending = ids.map { id -> async { direct.coalescing(BatchingInput(id)) } }
+    val mosaicPending = ids.map { id -> async { mosaic.coalescing(BatchingInput(id)) } }
+    val expected = directPending.awaitAll()
+    val actual = mosaicPending.awaitAll()
+    val reference = DirectExecutor(SimulatedServices(config.copy(tracing = false)))
+    assertEquals(ids.map { reference.coalescing(BatchingInput(it)) }, expected)
+    assertEquals(expected, actual)
+    assertEquals(ids.size, directServices.trace().size)
+    assertEquals(directServices.trace().flatMap(Call::keys).sorted(),
+      mosaicServices.trace().flatMap(Call::keys).sorted())
+    mosaicServices.trace().forEach { call ->
+      assertEquals("products", call.service)
+      assertTrue(ids.any { id -> call.keys.all { it.toInt() in coalescingSections(id).flatten() } })
+    }
+  }
+
   private data class ScenarioOutputs(
     val light: LightResponse,
     val aggregate: AggregateResponse,
@@ -128,6 +180,7 @@ class EquivalenceTest {
       "/light" to """{"customerId":7}""",
       "/aggregate" to """{"customerId":7}""",
       "/batching" to """{"catalogId":7}""",
+      "/coalescing" to """{"catalogId":7}""",
       "/compute" to """{"seed":7}""",
     )
     val directResponses = httpResponses(direct, cases)

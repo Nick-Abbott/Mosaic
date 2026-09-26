@@ -21,6 +21,7 @@ fun Application.scenarioRoutes(executor: ScenarioExecutor) {
     post("/light") { call.respond(executor.light(call.receive<LightInput>())) }
     post("/aggregate") { call.respond(executor.aggregate(call.receive<AggregateInput>())) }
     post("/batching") { call.respond(executor.batching(call.receive<BatchingInput>())) }
+    post("/coalescing") { call.respond(executor.coalescing(call.receive<BatchingInput>())) }
     post("/compute") { call.respond(executor.compute(call.receive<ComputeInput>())) }
   }
 }
