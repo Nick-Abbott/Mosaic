@@ -14,6 +14,14 @@ analysis tooling.
 - `mosaic-gradle-plugin`: optional build integration and verification.
 - `examples`: separate Gradle build for Spring, Ktor, Micronaut, and shared tiles.
 
+## Documentation skills
+
+- For adoption-focused README/project docs and public summaries, read
+  [public-docs](.agents/skills/public-docs/SKILL.md).
+- For guides, reference, and explanations in `docs/` or module documentation, read
+  [technical-docs](.agents/skills/technical-docs/SKILL.md). Route by reader purpose;
+  use both when a change spans both audiences.
+
 ## Analysis invariants
 
 - Support exactly Kotlin compiler and Gradle plugin 2.2.10. Reject unsupported
