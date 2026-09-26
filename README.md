@@ -12,7 +12,7 @@
 **Think from the response up, not the database down.**
 
 Mosaic is a Kotlin library for building backends one response at a time. A **Tile** is a
-reusable suspend computation that reads the data it needs and composes other
+reusable computation that can read request or application data and compose other
 Tiles. Callers ask for its result; Mosaic shares the work within each request.
 
 ## 🚀 **Why Mosaic?**
@@ -103,8 +103,6 @@ Add Mosaic to a Kotlin/JVM project:
 ```kotlin
 dependencies {
   implementation("org.buildmosaic:mosaic-core:0.4.0")
-  testImplementation("org.buildmosaic:mosaic-test:0.4.0")
-  testImplementation(kotlin("test"))
 }
 ```
 
@@ -146,8 +144,8 @@ can turn it into documentation—there's no separate graph to keep in sync by ha
 
 <img src=".github/images/order-architecture.png" width="660" alt="OrderPageTile composes summary and logistics. The summary reaches customer, order, line items, products, and pricing; three branches share OrderTile.">
 
-*Tile-only excerpt rendered from the generated order graph. Labels are shortened
-and composition steps collapsed; only the summary branch is expanded.*
+*An excerpt of the generated order graph, with shorter labels and compose-call
+nodes collapsed for readability.*
 
 Open `build/reports/mosaic-analysis/graph.md` for the full Markdown and Mermaid
 graph, including what each Tile needs from Canvas and where it's bound. The plugin
