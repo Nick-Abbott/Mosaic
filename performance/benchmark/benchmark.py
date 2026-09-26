@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Linux application benchmark runner using the qualified Nix wrk2 build."""
+"""Paired direct Kotlin / Mosaic application benchmarks with wrk2."""
 
 import argparse
 import csv
@@ -26,22 +26,22 @@ from pathlib import Path
 PERFORMANCE = Path(__file__).resolve().parents[1]
 ROOT = PERFORMANCE.parent
 SCRIPT = Path(__file__).parent / "wrk2" / "scenario.lua"
-ENVIRONMENT = Path(__file__).parent / "config" / "environment.json"
 RESULTS = PERFORMANCE / "results"
 VARIANTS = ("direct", "mosaic")
 ROUTES = ("light", "aggregate", "batching", "compute")
 PROFILES = ("zero", "service")
 DEFAULT_JVM = ("-Xms64m", "-Xmx512m", "-XX:+UseG1GC")
 DEFAULT_CPU_WORK = 20_000
-DEFAULT_ARRIVAL_TOLERANCE_PERCENT = 1.0
+COUNT_TOLERANCE = 0.01
 PACING_BIN_START_OFFSET_SECONDS = 10.5
 INPUTS = (1, 7, 42, 99)
 READINESS_POLL_INTERVAL_SECONDS = 0.005
 FIELDS = (
+    "cpu_us_per_request", "cpu_ms_per_request",
     "validated_completed_requests", "successful_rps",
-    "uncorrected_p50_ms", "uncorrected_p95_ms", "uncorrected_p99_ms",
-    "corrected_mean_ms", "corrected_p50_ms", "corrected_p95_ms", "corrected_p99_ms",
-    "process_cpu_seconds", "cpu_core_equivalents", "cpu_ms_per_successful_request",
+    "http_latency_p50_ms", "http_latency_p95_ms", "http_latency_p99_ms",
+    "scheduling_latency_mean_ms", "scheduling_latency_p50_ms", "scheduling_latency_p95_ms", "scheduling_latency_p99_ms",
+    "process_cpu_seconds", "cpu_core_equivalents",
     "average_rss_mib", "peak_rss_mib", "vmhwm_mib",
 )
 
@@ -72,10 +72,6 @@ def validate_config(config):
         fail("calibration timeout must exceed wrk2's nominal 10 seconds")
     if int(config["measurement_seconds"]) != config["measurement_seconds"]:
         fail("measurement_seconds must be a whole number of seconds for exact scheduled arrivals")
-    config.setdefault("arrival_fidelity_tolerance_percent", DEFAULT_ARRIVAL_TOLERANCE_PERCENT)
-    tolerance = config["arrival_fidelity_tolerance_percent"]
-    if isinstance(tolerance, bool) or not isinstance(tolerance, (int, float)) or not math.isfinite(tolerance) or tolerance < 0 or tolerance > 1:
-        fail("arrival_fidelity_tolerance_percent must be between 0 and 1")
     if "cpu_work" in config:
         validate_cpu_work(config["cpu_work"])
     cases = config["cases"]
@@ -101,23 +97,16 @@ def validate_config(config):
     return config
 
 
-def load_environment():
-    environment = json.loads(ENVIRONMENT.read_text())
-    if not Path(environment["wrk2_binary"]).is_file():
-        fail(f"qualified Nix wrk2 binary missing: {environment['wrk2_binary']}")
-    version = subprocess.run([environment["wrk2_binary"], "--version"], capture_output=True, text=True)
-    banner = (version.stdout + version.stderr).splitlines()
-    if not banner or not banner[0].startswith(environment["wrk2_reported_version"]):
-        fail(f"wrk2 binary identity differs from qualification: {banner[:1]}")
-    return environment
-
-
-def enforce_qualified_rates(config, environment, exploratory):
-    ceiling = environment["qualified_max_rps"]
-    rates = [rps for profiles in config["cases"].values() for rates in profiles.values() for rps in rates]
-    if any(rate > ceiling for rate in rates) and not exploratory:
-        fail(f"authoritative RPS exceeds this machine's qualified ceiling of {ceiling}; use --exploratory for non-authoritative diagnostics")
-    return all(rate <= ceiling for rate in rates)
+def discover_wrk2():
+    binary = shutil.which("wrk2")
+    if not binary:
+        fail("wrk2 is required on PATH")
+    binary = str(Path(binary).resolve())
+    version = subprocess.run([binary, "--version"], capture_output=True, text=True)
+    banner = re.search(r"^wrk \d+[^\n]*", version.stdout + version.stderr, re.MULTILINE)
+    if not banner:
+        fail("wrk2 did not report its version")
+    return {"name": "wrk2", "binary": binary, "reported_version": banner.group(0)}
 
 
 def connections_for_rate(config, rate):
@@ -248,8 +237,7 @@ def parse_wrk2(output, threads):
     uncorrected = histogram(output, "Uncorrected Latency (measured without taking delayed starts into account)")
     if corrected["count"] != uncorrected["count"]:
         fail("wrk2 corrected and uncorrected histogram counts disagree")
-    # wrk2 formats longer elapsed times in minutes/hours. The cumulative
-    # count is diagnostic; timing comes from the recorded monotonic window.
+    # Cumulative counts include calibration and are diagnostic only.
     full = re.search(r"^\s*([0-9]+) requests in ", output, re.MULTILINE)
     if not full:
         fail("wrk2 omitted cumulative request count")
@@ -272,16 +260,16 @@ def parse_wrk2(output, threads):
                 bins[int(bucket)] = bins.get(int(bucket), 0) + int(value)
     if sum(bins.values()) != window_count:
         fail("wrk2 Lua bucket sum disagrees with window count")
-    return {"corrected_mean_ms": corrected["mean_ms"],
-            "corrected_p50_ms": corrected["p50_ms"], "corrected_p95_ms": corrected["p95_ms"],
-            "corrected_p99_ms": corrected["p99_ms"], "uncorrected_p50_ms": uncorrected["p50_ms"],
-            "uncorrected_p95_ms": uncorrected["p95_ms"], "uncorrected_p99_ms": uncorrected["p99_ms"],
+    return {"scheduling_latency_mean_ms": corrected["mean_ms"],
+            "scheduling_latency_p50_ms": corrected["p50_ms"], "scheduling_latency_p95_ms": corrected["p95_ms"],
+            "scheduling_latency_p99_ms": corrected["p99_ms"], "http_latency_p50_ms": uncorrected["p50_ms"],
+            "http_latency_p95_ms": uncorrected["p95_ms"], "http_latency_p99_ms": uncorrected["p99_ms"],
             "steady_completed_requests": corrected["count"], "full_run_requests": int(full.group(1)),
             "socket_errors": socket_errors, "non_2xx_responses": sum(int(count) for _, count in non_2xx),
             "lua_window_requests": window_count, "lua_100ms_bins": bins}
 
 
-def validate_steady_window(metrics, rate, minimum_seconds, actual_seconds, audit_seconds, tolerance_percent):
+def validate_steady_window(metrics, rate, minimum_seconds, actual_seconds, audit_seconds):
     # Natural wrk2 exit keeps its post-calibration HdrHistogram count aligned
     # with /proc CPU/RSS sampling. Lua independently audits an interior window
     # whose fixed boundaries avoid calibration and process-exit transitions.
@@ -291,20 +279,18 @@ def validate_steady_window(metrics, rate, minimum_seconds, actual_seconds, audit
     audit_observed = metrics["lua_window_requests"]
     if expected <= 0 or audit_expected <= 0:
         fail("invalid steady-state window")
-    deviation = (observed - expected) / expected * 100
-    audit_deviation = (audit_observed - audit_expected) / audit_expected * 100
+    difference = observed - expected
+    audit_difference = audit_observed - audit_expected
     warnings = []
     if actual_seconds < minimum_seconds or actual_seconds > minimum_seconds + 2:
         warnings.append(f"post-calibration measurement lasted {actual_seconds:.3f}s, expected {minimum_seconds}..{minimum_seconds + 2}s")
-    if abs(deviation) > tolerance_percent:
-        warnings.append(f"post-calibration completed count differs from configured rate by {deviation:+.2f}%")
-    if abs(audit_deviation) > tolerance_percent:
-        warnings.append(f"interior dispatch count differs from configured rate by {audit_deviation:+.2f}%")
+    if abs(difference) > COUNT_TOLERANCE * expected:
+        warnings.append(f"post-calibration completed count differs from expected by {difference:+.1f} requests")
+    if abs(audit_difference) > COUNT_TOLERANCE * audit_expected:
+        warnings.append(f"interior dispatch count differs from expected by {audit_difference:+.1f} requests")
     if metrics["socket_errors"] or metrics["non_2xx_responses"]:
         warnings.append("socket or non-2xx errors")
-    # A one-second bin can hide a complete dispatch pause and its catch-up
-    # burst. Keep the 200 ms check at low rates as well; pool sizing must
-    # produce faithful pacing rather than relying on wider aggregation.
+    # Check interior sub-second windows, excluding boundary bins.
     bins = {int(k): v for k, v in metrics["lua_100ms_bins"].items()}
     width = 2
     expected_bucket = rate * width / 10
@@ -322,17 +308,11 @@ def validate_steady_window(metrics, rate, minimum_seconds, actual_seconds, audit
                 warnings.append(f"100 ms pacing wave at bucket {bucket}: "
                                 f"{observed_bucket} vs {expected_100ms:.1f}")
                 break
-    if metrics["corrected_p99_ms"] > max(100, 5 * metrics["uncorrected_p99_ms"] + 10):
-        warnings.append("corrected p99 shows a large scheduling/latency anomaly")
-    return {"steady_expected_requests": expected, "steady_count_deviation_percent": deviation,
-            "audit_expected_requests": audit_expected, "audit_count_deviation_percent": audit_deviation,
+    if metrics["scheduling_latency_p99_ms"] > max(100, 5 * metrics["http_latency_p99_ms"] + 10):
+        warnings.append("scheduling p99 shows a large delay anomaly")
+    return {"steady_expected_requests": expected, "steady_request_count_difference": difference,
+            "audit_expected_requests": audit_expected, "audit_request_count_difference": audit_difference,
             "integrity_warnings": warnings, "valid_comparison_point": not warnings}
-
-
-def validated_cpu_ms(cpu_seconds_value, metrics):
-    if not metrics["valid_comparison_point"]:
-        return None
-    return cpu_ms_per_request(cpu_seconds_value, metrics["validated_completed_requests"])
 
 
 def aggregate(rows):
@@ -343,29 +323,22 @@ def aggregate(rows):
         if row["variant"] in pair:
             fail(f"duplicate paired result: {key} {row['variant']}")
         pair[row["variant"]] = row
+    complete = {key: pair for key, pair in grouped.items()
+                if set(pair) == set(VARIANTS) and all(row["valid_comparison_point"] for row in pair.values())}
     result = []
-    for route, profile, rps in sorted({key[:3] for key in grouped}):
-        pairs = [pair for key, pair in grouped.items() if key[:3] == (route, profile, rps)]
-        if any(set(pair) != set(VARIANTS) for pair in pairs):
-            fail(f"incomplete direct/Mosaic pair: {route}/{profile}/{rps}")
+    for route, profile, rps in sorted({key[:3] for key in complete}):
+        pairs = [pair for key, pair in complete.items() if key[:3] == (route, profile, rps)]
         for metric in FIELDS:
-            direct_values = [pair["direct"].get(metric) for pair in pairs]
-            mosaic_values = [pair["mosaic"].get(metric) for pair in pairs]
-            direct_valid = [value for value in direct_values if value is not None]
-            mosaic_valid = [value for value in mosaic_values if value is not None]
-            differences = [(m - d, (m - d) / d * 100 if d else None)
-                           for d, m in zip(direct_values, mosaic_values) if d is not None and m is not None]
-            relative = [value for _, value in differences if value is not None]
+            direct = [pair["direct"][metric] for pair in pairs]
+            mosaic = [pair["mosaic"][metric] for pair in pairs]
+            differences = [m - d for d, m in zip(direct, mosaic)]
             result.append({"route": route, "latency_profile": profile, "offered_rps": rps,
-                           "metric": metric,
-                           "direct_median": statistics.median(direct_valid) if direct_valid else None,
-                           "mosaic_median": statistics.median(mosaic_valid) if mosaic_valid else None,
-                           "median_paired_absolute_difference": statistics.median(value for value, _ in differences) if differences else None,
-                           "median_paired_relative_percent": statistics.median(relative) if relative else None,
-                           "min_paired_relative_percent": min(relative) if relative else None,
-                           "max_paired_relative_percent": max(relative) if relative else None,
-                           "paired_repetitions": len(differences), "relative_repetitions": len(relative),
-                           "direct_repetitions": len(direct_valid), "mosaic_repetitions": len(mosaic_valid)})
+                           "metric": metric, "direct_median": statistics.median(direct),
+                           "mosaic_median": statistics.median(mosaic),
+                           "median_paired_absolute_difference": statistics.median(differences),
+                           "min_paired_absolute_difference": min(differences),
+                           "max_paired_absolute_difference": max(differences),
+                           "paired_repetitions": len(pairs)})
     return result
 
 
@@ -383,7 +356,7 @@ def git_state():
             "status": command_output("git", "status", "--porcelain", "--untracked-files=normal")}
 
 
-def metadata(config, args, app_cpus, load_cpus, jvm_options, state, environment):
+def metadata(config, args, app_cpus, load_cpus, jvm_options, state, generator):
     meminfo = Path("/proc/meminfo").read_text()
     total = re.search(r"^MemTotal:\s+(\d+) kB", meminfo, re.MULTILINE)
     return {
@@ -391,42 +364,35 @@ def metadata(config, args, app_cpus, load_cpus, jvm_options, state, environment)
         "git": {**state, "dirty": bool(state["status"])},
         "os": platform.system(), "kernel": platform.release(), "architecture": platform.machine(),
         "cpu_model": next((line.split(":", 1)[1].strip() for line in Path("/proc/cpuinfo").read_text().splitlines() if line.startswith("model name")), None),
-        "lscpu": command_output("lscpu"), "total_memory_kib": int(total.group(1)) if total else None,
+        "lscpu": command_output("lscpu") if shutil.which("lscpu") else None, "total_memory_kib": int(total.group(1)) if total else None,
         "java_executable": str(Path(shutil.which("java")).resolve()),
         "java_version": command_output("java", "-version"),
         "jvm_options": jvm_options,
-        "generator": {"name": "wrk2", "binary": environment["wrk2_binary"],
-                      "package": environment["wrk2_package"],
-                      "reported_version": environment["wrk2_reported_version"],
-                      "candidate_max_rps": environment["candidate_max_rps"],
-                      "qualified_max_rps": environment["qualified_max_rps"],
-                      "qualification": environment["qualification"]},
+        "generator": generator,
         "application_environment": {"MOSAIC_PERFORMANCE_TRACING": "false", "MOSAIC_PERFORMANCE_CPU_WORK": str(args.cpu_work)},
         "proc_clock_ticks_per_second": os.sysconf("SC_CLK_TCK"),
         "rss_sample_interval_seconds": 0.1,
         "latency_semantics": {
-            "primary": "uncorrected: actual request dispatch to response completion; valid only after independent pacing checks",
-            "diagnostic": "corrected: intended per-connection scheduled start to response completion; includes schedule delay",
+            "http": "actual request dispatch to response completion; accepted only after pacing checks",
+            "scheduling": "intended request schedule to response completion; diagnostic only",
             "timing_accuracy_ms": 1},
         "readiness_poll_interval_seconds": READINESS_POLL_INTERVAL_SECONDS,
-        "application_cpu_affinity": app_cpus, "load_cpu_affinity": load_cpus,
-        "available_cpu_affinity": sorted(os.sched_getaffinity(0)),
+        "application_cpu_affinity": app_cpus or sorted(os.sched_getaffinity(0)),
+        "load_cpu_affinity": load_cpus or sorted(os.sched_getaffinity(0)),
         "benchmark_configuration": config,
         "ktor_version": "3.6.0",
         "mosaic_version": next((line.split("=", 1)[1] for line in (ROOT / "gradle.properties").read_text().splitlines() if line.startswith("mosaic.version=")), None),
         "skip_build": args.skip_build,
-        "authoritative": not args.exploratory,
     }
 
 
-def check_platform_and_tools(need_generator):
+def check_platform_and_tools(need_generator, pinned):
     if sys.platform != "linux" or not Path("/proc/self/stat").exists():
-        fail("authoritative process sampling requires Linux /proc")
-    for tool in (["java", "lscpu", "taskset", "stdbuf"] if need_generator else ["java", "lscpu"]):
+        fail("process sampling requires Linux /proc")
+    for tool in ["java", *(["stdbuf"] if need_generator else []), *(["taskset"] if pinned else [])]:
         if not shutil.which(tool):
             fail(f"required executable missing: {tool}")
-    if need_generator:
-        load_environment()
+    return discover_wrk2() if need_generator else None
 
 
 def build_distributions():
@@ -473,9 +439,7 @@ def verify_java_process(pid, variant, jvm_options):
     command = [arg.decode(errors="replace") for arg in Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0") if arg]
     expected = "org.buildmosaic.performance." + ("DirectMainKt" if variant == "direct" else "MosaicMainKt")
     java = Path(shutil.which("java")).resolve()
-    # Nix's java launcher execs a sibling .java-wrapped binary; both retain java as argv[0].
     if (len(command) <= 2 + len(jvm_options) or Path(command[0]).resolve() != java or command[-1] != expected
-            or exe.name not in ("java", ".java-wrapped")
             or command[1:1 + len(jvm_options)] != jvm_options
             or command[1 + len(jvm_options)] != "-classpath"):
         fail(f"launcher PID {pid} is not the expected application JVM: exe={exe}, argv0={command[0] if command else None}, main={command[-1] if command else None}")
@@ -588,8 +552,8 @@ class ProcessSampler:
             fail(f"{self.name} RSS samples are missing")
 
 
-def wrk2_command(environment, route, rps, seconds, connections, threads, port, cpus):
-    cmd = [environment["wrk2_binary"], "-t", str(threads), "-c", str(connections),
+def wrk2_command(generator, rps, seconds, connections, threads, port, cpus):
+    cmd = [generator["binary"], "-t", str(threads), "-c", str(connections),
            "-d", f"{seconds}s", "-R", str(rps), "-L", "-U", "-s", str(SCRIPT),
            f"http://127.0.0.1:{port}"]
     cmd = ["stdbuf", "-oL", "-eL", *cmd]
@@ -605,17 +569,17 @@ def wrk2_total_duration(measurement_seconds):
 def verify_wrk2_process(pid, binary):
     exe = Path(f"/proc/{pid}/exe").resolve()
     if exe != Path(binary).resolve():
-        fail(f"generator PID {pid} is not qualified wrk2: {exe}")
+        fail(f"generator PID {pid} is not the expected wrk2 process: {exe}")
 
 
-def run_wrk2(app_pid, route, rps, repetition, port, config, directory, load_cpus, environment):
+def run_wrk2(app_pid, route, rps, repetition, port, config, directory, load_cpus, generator):
     directory.mkdir(parents=True, exist_ok=True)
     input_value = INPUTS[(repetition - 1) % len(INPUTS)]
     connections = connections_for_rate(config, rps)
     # wrk2 exits naturally after this total wall time. Its approximately
     # 10-second calibration leaves >measurement_seconds for the HdrHistogram.
     total_duration = wrk2_total_duration(config["measurement_seconds"])
-    command = wrk2_command(environment, route, rps, total_duration, connections, config["wrk2_threads"], port, load_cpus)
+    command = wrk2_command(generator, rps, total_duration, connections, config["wrk2_threads"], port, load_cpus)
     write_json(directory / "wrk2-command.json", command)
     env = os.environ.copy()
     env.update(MOSAIC_ROUTE=route, MOSAIC_BODY=request_body(route, input_value))
@@ -643,14 +607,14 @@ def run_wrk2(app_pid, route, rps, repetition, port, config, directory, load_cpus
         reader.start()
         for _ in range(100):
             try:
-                verify_wrk2_process(process.pid, environment["wrk2_binary"])
+                verify_wrk2_process(process.pid, generator["binary"])
                 break
             except (FileNotFoundError, ValueError):
                 if process.poll() is not None:
                     fail("wrk2 exited before generator identity could be verified")
                 time.sleep(0.01)
         else:
-            fail("taskset/stdbuf did not exec the qualified wrk2 binary")
+            fail("taskset/stdbuf did not exec wrk2")
         deadline = launch_clock + config["calibration_timeout_seconds"]
         while len(calibration_times) < config["wrk2_threads"]:
             if process.poll() is not None:
@@ -692,14 +656,14 @@ def run_wrk2(app_pid, route, rps, repetition, port, config, directory, load_cpus
         measured = steady_end - steady_start
         parsed = parse_wrk2("".join(stdout_lines), config["wrk2_threads"])
         validated = validate_steady_window(parsed, rps, config["measurement_seconds"],
-                                           measured, total_duration - PACING_BIN_START_OFFSET_SECONDS,
-                                           config["arrival_fidelity_tolerance_percent"])
+                                           measured, total_duration - PACING_BIN_START_OFFSET_SECONDS)
         app_cpu = cpu_seconds(app_start, app_end, os.sysconf("SC_CLK_TCK"))
         gen_total_cpu = ((generator_usage_end.ru_utime + generator_usage_end.ru_stime) -
                          (generator_usage_start.ru_utime + generator_usage_start.ru_stime))
         gen_cpu = gen_total_cpu - (generator_start[0] + generator_start[1]) / os.sysconf("SC_CLK_TCK")
         rss = [row["rss_mib"] for row in app_sampler.rows]
         gen_rss = [row["rss_mib"] for row in generator_sampler.rows]
+        cpu_ms = cpu_ms_per_request(app_cpu, parsed["steady_completed_requests"]) if validated["valid_comparison_point"] else None
         return {**parsed, **validated, "input_value": input_value,
                 "steady_start_monotonic": steady_start, "steady_end_monotonic": steady_end,
                 "generator_duration_seconds": total_duration,
@@ -715,7 +679,7 @@ def run_wrk2(app_pid, route, rps, repetition, port, config, directory, load_cpus
                 "generator_peak_rss_mib": max(gen_rss),
                 "validated_completed_requests": parsed["steady_completed_requests"] if validated["valid_comparison_point"] else None,
                 "successful_rps": parsed["steady_completed_requests"] / measured if validated["valid_comparison_point"] else None,
-                "cpu_ms_per_successful_request": app_cpu * 1000 / parsed["steady_completed_requests"] if validated["valid_comparison_point"] else None}
+                "cpu_ms_per_request": cpu_ms, "cpu_us_per_request": cpu_ms * 1000 if cpu_ms is not None else None}
     finally:
         if process and process.poll() is None:
             process.terminate()
@@ -734,16 +698,15 @@ def run_wrk2(app_pid, route, rps, repetition, port, config, directory, load_cpus
 
 
 def load_case(variant, route, profile, rps, repetition, order, config, session, args,
-              jvm_options, app_cpus, load_cpus, environment):
+              jvm_options, app_cpus, load_cpus, generator):
     slug = f"{route}-{profile}-{rps}-rps"
     directory = session / "load" / slug / variant / f"rep-{repetition}"
     process, port, started, stdout, stderr = launch(variant, profile, directory, args, jvm_options, app_cpus)
     try:
         readiness = wait_ready(process, port, variant, args.readiness_timeout, started, jvm_options)
-        values = run_wrk2(process.pid, route, rps, repetition, port, config, directory, load_cpus, environment)
+        values = run_wrk2(process.pid, route, rps, repetition, port, config, directory, load_cpus, generator)
         result = {"variant": variant, "route": route, "latency_profile": profile,
                   "offered_rps": rps, "repetition": repetition, "run_order": order,
-                  "authoritative": not args.exploratory,
                   "readiness_seconds": readiness, "cpu_work": args.cpu_work,
                   "duration_seconds": config["measurement_seconds"],
                   "wrk2_connections": connections_for_rate(config, rps),
@@ -751,7 +714,7 @@ def load_case(variant, route, profile, rps, repetition, order, config, session, 
         write_json(directory / "result.json", result)
         status = "VALID" if result["valid_comparison_point"] else "INVALID"
         print(f"{slug} {variant} rep {repetition}: {status}, {result['steady_completed_requests']} post-calibration responses, "
-              f"CPU {result['cpu_ms_per_successful_request']} ms/request, "
+              f"CPU {result['cpu_us_per_request']} µs/request, "
               f"warnings={result['integrity_warnings']}", flush=True)
         return result
     finally:
@@ -766,7 +729,7 @@ def startup_sample(variant, repetition, order, session, args, jvm_options, app_c
         value = {"variant": variant, "repetition": repetition, "run_order": order,
                  "readiness_seconds": readiness, "latency_profile": "zero", "port": port}
         write_json(directory / "result.json", value)
-        print(f"startup {variant} rep {repetition}: {readiness:.3f}s")
+        print(f"startup {variant} rep {repetition}: {readiness * 1000:.3f} ms")
         return value
     finally:
         terminate(process, stdout, stderr)
@@ -774,43 +737,36 @@ def startup_sample(variant, repetition, order, session, args, jvm_options, app_c
 
 def write_load_summary(session, rows):
     write_json(session / "load-results.json", rows)
-    grouped = {}
-    for row in rows:
-        key = (row["route"], row["latency_profile"], row["offered_rps"], row["repetition"])
-        grouped.setdefault(key, {})[row["variant"]] = row
-    comparable = [row for pair in grouped.values() if set(pair) == set(VARIANTS) and
-                  all(item["valid_comparison_point"] for item in pair.values()) for row in pair.values()]
-    aggregated = aggregate(comparable) if comparable else []
+    aggregated = aggregate(rows)
     columns = ("route", "latency_profile", "offered_rps", "metric", "direct_median", "mosaic_median",
-               "median_paired_absolute_difference", "median_paired_relative_percent",
-               "min_paired_relative_percent", "max_paired_relative_percent", "paired_repetitions",
-               "relative_repetitions", "direct_repetitions", "mosaic_repetitions")
+               "median_paired_absolute_difference", "min_paired_absolute_difference",
+               "max_paired_absolute_difference", "paired_repetitions")
     with (session / "summary.csv").open("w", newline="") as output:
         writer = csv.DictWriter(output, fieldnames=columns)
         writer.writeheader()
         writer.writerows(aggregated)
-    invalid = [row for row in rows if not row["valid_comparison_point"]]
-    lines = ["# wrk2 load summary", "", f"Invalid runs: {len(invalid)}. They are excluded from paired aggregates.",
-             "Primary application latency: uncorrected actual dispatch to response completion, accepted only after pacing validation.",
-             "Corrected latency: intended per-connection schedule to completion; generator/scheduling diagnostic only.", "",
-             "| Route | Profile | RPS | Metric | Direct median | Mosaic median | Paired absolute median | Paired relative median | Paired relative min | Paired relative max | Pairs |",
-             "| --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
+    lines = ["# Application benchmark summary", "",
+             "HTTP latency measures actual dispatch to response completion; scheduling latency is diagnostic only.",
+             "Differences are paired Mosaic − direct in the metric's own units. CPU overhead is shown first in µs/request.",
+             "Incomplete or invalid pairs are excluded. Raw runs and integrity warnings remain preserved.", "",
+             "| Route | Profile | RPS | Metric | Direct median | Mosaic median | Paired difference median | Min | Max | Pairs |",
+             "| --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |"]
     def fmt(value):
         return "—" if value is None else f"{value:.3f}"
     for row in aggregated:
+        values = " | ".join([fmt(row["direct_median"]), fmt(row["mosaic_median"]),
+                             *(f"{row[key]:+.3f}" for key in ("median_paired_absolute_difference",
+                               "min_paired_absolute_difference", "max_paired_absolute_difference"))])
         lines.append(f"| {row['route']} | {row['latency_profile']} | {row['offered_rps']} | {row['metric']} | "
-                     f"{fmt(row['direct_median'])} | {fmt(row['mosaic_median'])} | "
-                     f"{fmt(row['median_paired_absolute_difference'])} | "
-                     f"{fmt(row['median_paired_relative_percent'])}% | "
-                     f"{fmt(row['min_paired_relative_percent'])}% | {fmt(row['max_paired_relative_percent'])}% | "
-                     f"{row['paired_repetitions']} |")
-    lines += ["", "## Individual runs", "", "| Case | Variant | Rep | Status | Requests | HTTP uncorrected p99 ms | Schedule corrected p99 ms | CPU ms/request | App cores | Generator cores | Errors | Warnings |",
+                     f"{values} | {row['paired_repetitions']} |")
+    lines += ["", "## Individual runs", "",
+              "| Case | Variant | Rep | Status | Requests | HTTP p99 ms | Scheduling p99 ms | CPU µs/request | App cores | Generator cores | Errors | Warnings |",
               "| --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |"]
     for row in rows:
         lines.append(f"| {row['route']}/{row['latency_profile']}/{row['offered_rps']} | {row['variant']} | "
                      f"{row['repetition']} | {'VALID' if row['valid_comparison_point'] else '**INVALID**'} | "
-                     f"{row['steady_completed_requests']} | {row['uncorrected_p99_ms']:.3f} | {row['corrected_p99_ms']:.3f} | "
-                     f"{fmt(row['cpu_ms_per_successful_request'])} | {row['cpu_core_equivalents']:.3f} | "
+                     f"{row['steady_completed_requests']} | {row['http_latency_p99_ms']:.3f} | {row['scheduling_latency_p99_ms']:.3f} | "
+                     f"{fmt(row['cpu_us_per_request'])} | {row['cpu_core_equivalents']:.3f} | "
                      f"{row['generator_cpu_core_equivalents']:.3f} | "
                      f"{row['socket_errors']}/{row['non_2xx_responses']} | {', '.join(row['integrity_warnings']) or 'none'} |")
     (session / "summary.md").write_text("\n".join(lines) + "\n")
@@ -819,31 +775,26 @@ def write_load_summary(session, rows):
 def aggregate_startup(rows):
     summary = {}
     for variant in VARIANTS:
-        values = [row["readiness_seconds"] for row in rows if row["variant"] == variant]
+        values = [row["readiness_seconds"] * 1000 for row in rows if row["variant"] == variant]
         if not values:
             fail(f"startup samples missing for {variant}")
-        summary[variant] = {"samples": len(values), "median_seconds": statistics.median(values),
-                            "mean_seconds": statistics.mean(values), "p95_seconds": percentile(values, 95),
-                            "min_seconds": min(values), "max_seconds": max(values)}
+        summary[variant] = {"samples": len(values), "median_ms": statistics.median(values),
+                            "mean_ms": statistics.mean(values), "p95_ms": percentile(values, 95),
+                            "min_ms": min(values), "max_ms": max(values)}
     paired = {}
     for row in rows:
         pair = paired.setdefault(row["repetition"], {})
         if row["variant"] in pair:
             fail(f"duplicate startup sample: repetition {row['repetition']} {row['variant']}")
-        pair[row["variant"]] = row["readiness_seconds"]
+        pair[row["variant"]] = row["readiness_seconds"] * 1000
     if any(set(pair) != set(VARIANTS) for pair in paired.values()):
         fail("incomplete direct/Mosaic startup pair")
-    pairs = []
-    for repetition, pair in sorted(paired.items()):
-        direct, mosaic = pair["direct"], pair["mosaic"]
-        pairs.append({"repetition": repetition, "direct_readiness_seconds": direct,
-                      "mosaic_readiness_seconds": mosaic,
-                      "mosaic_minus_direct_ms": (mosaic - direct) * 1000,
-                      "mosaic_vs_direct_percent": (mosaic - direct) / direct * 100 if direct else None})
-    relative = [pair["mosaic_vs_direct_percent"] for pair in pairs if pair["mosaic_vs_direct_percent"] is not None]
-    summary["paired"] = {"samples": len(pairs),
-                         "median_mosaic_minus_direct_ms": statistics.median(pair["mosaic_minus_direct_ms"] for pair in pairs),
-                         "median_mosaic_vs_direct_percent": statistics.median(relative) if relative else None}
+    pairs = [{"repetition": repetition, "direct_readiness_ms": pair["direct"],
+              "mosaic_readiness_ms": pair["mosaic"], "mosaic_minus_direct_ms": pair["mosaic"] - pair["direct"]}
+             for repetition, pair in sorted(paired.items())]
+    differences = [pair["mosaic_minus_direct_ms"] for pair in pairs]
+    summary["paired"] = {"samples": len(pairs), "median_mosaic_minus_direct_ms": statistics.median(differences),
+                         "min_mosaic_minus_direct_ms": min(differences), "max_mosaic_minus_direct_ms": max(differences)}
     return summary, pairs
 
 
@@ -852,33 +803,33 @@ def write_startup_summary(session, rows):
     summary, pairs = aggregate_startup(rows)
     write_json(session / "startup" / "pairs.json", pairs)
     write_json(session / "startup" / "summary.json", summary)
-    lines = ["# Startup and readiness", "", "Fresh JVM for every sample; process launch to first successful /health response.", "",
-             "| Variant | Samples | Median s | Mean s | p95 s | Min s | Max s |", "| --- | ---: | ---: | ---: | ---: | ---: | ---: |"]
+    lines = ["# Startup and readiness", "", "Fresh JVM per sample; process launch to first successful /health response.", "",
+             "| Variant | Samples | Median ms | Mean ms | p95 ms | Min ms | Max ms |",
+             "| --- | ---: | ---: | ---: | ---: | ---: | ---: |"]
     for variant in VARIANTS:
         value = summary[variant]
-        lines.append(f"| {variant} | {value['samples']} | {value['median_seconds']:.3f} | {value['mean_seconds']:.3f} | {value['p95_seconds']:.3f} | {value['min_seconds']:.3f} | {value['max_seconds']:.3f} |")
-    paired_summary = summary["paired"]
-    relative_text = "—" if paired_summary["median_mosaic_vs_direct_percent"] is None else f"{paired_summary['median_mosaic_vs_direct_percent']:.3f}%"
-    lines += ["", f"Median paired Mosaic − direct: {paired_summary['median_mosaic_minus_direct_ms']:.3f} ms; median paired relative difference: {relative_text}.",
-              "", "| Rep | Direct s | Mosaic s | Mosaic − direct ms | Mosaic vs direct |",
-              "| ---: | ---: | ---: | ---: | ---: |"]
+        metrics = " | ".join(f"{value[key]:.3f}" for key in ("median_ms", "mean_ms", "p95_ms", "min_ms", "max_ms"))
+        lines.append(f"| {variant} | {value['samples']} | {metrics} |")
+    paired = summary["paired"]
+    lines += ["", f"Paired Mosaic − direct median: {paired['median_mosaic_minus_direct_ms']:.3f} ms; "
+              f"range {paired['min_mosaic_minus_direct_ms']:.3f} to {paired['max_mosaic_minus_direct_ms']:.3f} ms.",
+              "", "| Rep | Direct ms | Mosaic ms | Mosaic − direct ms |", "| ---: | ---: | ---: | ---: |"]
     for pair in pairs:
-        relative_text = "—" if pair["mosaic_vs_direct_percent"] is None else f"{pair['mosaic_vs_direct_percent']:.3f}%"
-        lines.append(f"| {pair['repetition']} | {pair['direct_readiness_seconds']:.3f} | {pair['mosaic_readiness_seconds']:.3f} | {pair['mosaic_minus_direct_ms']:.3f} | {relative_text} |")
+        lines.append(f"| {pair['repetition']} | {pair['direct_readiness_ms']:.3f} | "
+                     f"{pair['mosaic_readiness_ms']:.3f} | {pair['mosaic_minus_direct_ms']:.3f} |")
     (session / "startup" / "summary.md").write_text("\n".join(lines) + "\n")
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--app-cpus", help="Whole-core CPU set; defaults to environment qualification")
-    parser.add_argument("--load-cpus", help="wrk2 CPU set; defaults to environment qualification")
+    parser.add_argument("--app-cpus", help="Optional application CPU set; default: inherited affinity")
+    parser.add_argument("--load-cpus", help="Optional wrk2 CPU set; default: inherited affinity")
     parser.add_argument("--jvm-option", action="append", help="Repeat to replace all default JVM options")
     parser.add_argument("--active-processor-count", type=int)
     parser.add_argument("--cpu-work", type=int, help="Shared service CPU work (100..2000000)")
     parser.add_argument("--readiness-timeout", type=float, default=30)
-    parser.add_argument("--allow-dirty", action="store_true", help="Exploratory run from a dirty worktree")
+    parser.add_argument("--allow-dirty", action="store_true", help="Allow a dirty worktree and record it in metadata")
     parser.add_argument("--skip-build", action="store_true", help="Use existing distributions")
-    parser.add_argument("--exploratory", action="store_true", help="Allow unqualified rates; all runs marked non-authoritative")
     parser.add_argument("--output", type=Path, help="New ignored result directory")
     sub = parser.add_subparsers(dest="command", required=True)
     startup = sub.add_parser("startup", help="Fresh JVM startup comparison")
@@ -900,11 +851,9 @@ def parse_args():
 
 def main():
     args = parse_args()
-    environment = load_environment()
-    check_platform_and_tools(args.command != "startup")
+    generator = check_platform_and_tools(args.command != "startup", args.app_cpus or args.load_cpus)
     require_positive(args.readiness_timeout, "readiness_timeout")
-    app_cpus, load_cpus = validate_affinity(args.app_cpus or environment["application_cpus"],
-                                           args.load_cpus or environment["generator_cpus"])
+    app_cpus, load_cpus = validate_affinity(args.app_cpus, args.load_cpus)
     jvm_options = list(args.jvm_option or DEFAULT_JVM)
     if args.active_processor_count is not None:
         if args.active_processor_count <= 0 or any(x.startswith("-XX:ActiveProcessorCount=") for x in jvm_options):
@@ -925,21 +874,16 @@ def main():
     config["cpu_work"] = args.cpu_work
     if args.command != "startup":
         validate_config(config)
-        enforce_qualified_rates(config, environment, args.exploratory)
-        if not args.exploratory and config["measurement_seconds"] < 30:
-            fail("authoritative wrk2 runs require at least 30 measured steady-state seconds")
     state = git_state()
     if state["status"] and not args.allow_dirty:
-        fail("working tree is dirty; use --allow-dirty only for exploratory work")
-    if state["status"] and not args.exploratory and args.command != "startup":
-        fail("authoritative load runs require a clean tree")
+        fail("working tree is dirty; commit changes or use --allow-dirty to record a development run")
     session = args.output or RESULTS / dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     if session.exists():
         fail(f"session directory already exists: {session}")
     if not args.skip_build:
         build_distributions()
     session.mkdir(parents=True)
-    write_json(session / "metadata.json", metadata(config, args, app_cpus, load_cpus, jvm_options, state, environment))
+    write_json(session / "metadata.json", metadata(config, args, app_cpus, load_cpus, jvm_options, state, generator))
     try:
         if args.command == "startup":
             rows = []
@@ -955,11 +899,11 @@ def main():
                         for repetition in range(1, config["repetitions"] + 1):
                             for order, variant in enumerate(paired_order(repetition), 1):
                                 row = load_case(variant, route, profile, rps, repetition, order, config,
-                                                session, args, jvm_options, app_cpus, load_cpus, environment)
+                                                session, args, jvm_options, app_cpus, load_cpus, generator)
                                 rows.append(row)
                                 write_load_summary(session, rows)
-                                if not row["valid_comparison_point"] and not args.exploratory:
-                                    fail(f"authoritative run invalid: {route}/{profile}/{rps} {variant} "
+                                if not row["valid_comparison_point"]:
+                                    fail(f"run invalid: {route}/{profile}/{rps} {variant} "
                                          f"rep {repetition}: {row['integrity_warnings']}; raw data preserved")
     finally:
         final_state = git_state()

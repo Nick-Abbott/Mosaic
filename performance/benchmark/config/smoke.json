@@ -1,5 +1,5 @@
 {
-  "label": "non-authoritative wrk2 smoke; validates calibration and normalized sampling",
+  "label": "Smoke: operational validation only",
   "cases": {"light": {"zero": [100]}},
   "repetitions": 1,
   "measurement_seconds": 10,
