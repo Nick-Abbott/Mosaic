@@ -69,6 +69,19 @@ private object MosaicGraph {
     batchingResponse(sections, values)
   }
 
+  private val coalescingSections = (0 until 6).map { section ->
+    singleTile {
+      val ids = coalescingSection(source(CatalogIdKey), section)
+      val values = compose(products, ids)
+      ProductSection("section-$section", ids.map { values.getValue(it) })
+    }
+  }
+  val coalescing = singleTile {
+    val pending = coalescingSections.map(::composeAsync)
+    val sections = pending.map { it.await() }
+    BatchingResponse(sections, sections.sumOf { it.products.sumOf(Product::value) })
+  }
+
   private val computeBranches = (0 until 6).map { branch ->
     singleTile { source<SimulatedServices>().cpu(source(ComputeSeedKey), branch) }
   }
@@ -93,6 +106,10 @@ class MosaicExecutor(services: SimulatedServices) : ScenarioExecutor {
   override suspend fun batching(input: BatchingInput): BatchingResponse =
     applicationCanvas.withLayer { single(CatalogIdKey) { input.catalogId } }
       .create().compose(graph.batching)
+
+  override suspend fun coalescing(input: BatchingInput): BatchingResponse =
+    applicationCanvas.withLayer { single(CatalogIdKey) { input.catalogId } }
+      .create().compose(graph.coalescing)
 
   override suspend fun compute(input: ComputeInput): ComputeResponse =
     applicationCanvas.withLayer { single(ComputeSeedKey) { input.seed } }

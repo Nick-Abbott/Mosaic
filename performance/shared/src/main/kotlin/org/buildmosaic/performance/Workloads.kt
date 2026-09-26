@@ -22,6 +22,7 @@ interface ScenarioExecutor {
   suspend fun light(input: LightInput): LightResponse
   suspend fun aggregate(input: AggregateInput): AggregateResponse
   suspend fun batching(input: BatchingInput): BatchingResponse
+  suspend fun coalescing(input: BatchingInput): BatchingResponse
   suspend fun compute(input: ComputeInput): ComputeResponse
 }
 
@@ -128,6 +129,15 @@ fun productSections(catalogId: Int): List<List<Int>> {
     List(24) { index -> ids[(index * 5 + section * 7) % 24] }
   }
 }
+
+/** Six independent consumers: 12 keys each, shifted by four, covering 24 distinct keys. */
+fun coalescingSection(catalogId: Int, section: Int): List<Int> {
+  require(section in 0 until 6)
+  return List(12) { index -> catalogId * 1000 + (section * 4 + index) % 24 }
+}
+
+fun coalescingSections(catalogId: Int): List<List<Int>> =
+  (0 until 6).map { coalescingSection(catalogId, it) }
 
 fun batchingResponse(sections: List<List<Int>>, products: Map<Int, Product>): BatchingResponse {
   val results = sections.mapIndexed { index, ids ->

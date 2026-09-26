@@ -47,7 +47,7 @@ class BenchmarkLogicTest(unittest.TestCase):
 
     def test_deterministic_request_body_and_input_rotation(self):
         for route, body in [('light', '{"customerId":7}'), ('aggregate', '{"customerId":7}'),
-                            ('batching', '{"catalogId":7}'), ('compute', '{"seed":7}')]:
+                            ('batching', '{"catalogId":7}'), ('coalescing', '{"catalogId":7}'), ('compute', '{"seed":7}')]:
             self.assertEqual(b.request_body(route, 7), body)
         self.assertEqual(b.INPUTS, (1, 7, 42, 99))
         with self.assertRaises(ValueError):

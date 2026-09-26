@@ -10,3 +10,9 @@ dependencies {
 
 kotlin { jvmToolchain(21) }
 tasks.withType<Test> { useJUnitPlatform() }
+
+tasks.register<JavaExec>("batchDiagnostic") {
+  dependsOn(tasks.named("testClasses"))
+  classpath = sourceSets.test.get().runtimeClasspath
+  mainClass = "org.buildmosaic.performance.BatchDiagnostic"
+}

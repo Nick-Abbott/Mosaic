@@ -84,7 +84,8 @@ and JSON, CSV, and Markdown summaries. Results belong in the ignored
 | --- | --- |
 | `light` | A small customer graph combining account and preference data. |
 | `aggregate` | A larger graph with shared dependencies, parallel fan-out, and multiple stages. |
-| `batching` | Catalog references with repeated products; both variants deduplicate and batch equivalent downstream work. |
+| `batching` | Already-optimal control: the root directly issues six requests for the same 24 products, obtaining one backend batch. |
+| `coalescing` | Six sibling Tiles independently discover overlapping 12-key sections (72 references, 24 distinct products). Direct Kotlin unions the sections into one batch; Mosaic delegates batching to the shared MultiTile. |
 | `compute` | Deterministic CPU work, using 20,000 iterations by default. |
 
 The `zero` profile adds no simulated service delay. The `service` profile adds
@@ -176,3 +177,30 @@ wrk2's timing accuracy is approximately ±1 ms; small latency differences may be
 below its resolution. Service delays can obscure response-time differences while
 CPU/request still exposes orchestration cost. Compare results only when both
 variants perform equivalent logical work, and report startup separately.
+
+## Coalescing diagnostics
+
+`coalescing` uses cyclic windows of 12 products with offsets 0, 4, 8, 12, 16,
+and 20 modulo 24, shifted by `catalogId * 1000`. Every reference contributes to
+its section and the response total. Six stable sibling Tiles read the catalog
+and request the same application-lifetime Products MultiTile independently;
+the root only launches and awaits sections. Tracing stays off in measurements.
+
+```bash
+./gradlew :comparison-tests:batchDiagnostic -p performance
+./gradlew :mosaic-benchmarks:coalescingDiagnostic
+./gradlew :mosaic-benchmarks:coalescingDiagnostic --args="--serial"
+./gradlew :mosaic-benchmarks:jmhJar
+java -jar mosaic-benchmarks/build/libs/mosaic-benchmarks-*-jmh.jar '.*CoalescingBenchmark.*'
+```
+
+The permanent JMH fixture varies sibling fan-out (2/4/8/16) and extra Tile
+dependencies separating later consumers from the first (0/1/2/5/10). Adjacent
+branches overlap one of three keys; the two-branch case is ABC + CDE.
+Diagnostics additionally cover external suspension. They verify every distinct
+key is fetched once and report invocation counts and keys per invocation;
+batch counts and deep-path coalescing are observations, not API guarantees.
+
+The diagnostic defaults to the same `Dispatchers.Default` as JMH. `--serial`
+uses one FIFO worker for reproducible discovery order; record the dispatcher
+with the evidence. Default-dispatcher batch partitions may vary with scheduling.

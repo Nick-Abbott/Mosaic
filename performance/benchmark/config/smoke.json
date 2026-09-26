@@ -1,6 +1,6 @@
 {
   "label": "Smoke: operational validation only",
-  "cases": {"light": {"zero": [100]}},
+  "cases": {"light": {"zero": [100]}, "coalescing": {"zero": [100]}},
   "repetitions": 1,
   "measurement_seconds": 10,
   "calibration_timeout_seconds": 15,
