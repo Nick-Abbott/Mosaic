@@ -11,75 +11,20 @@
 
 **Think from the response up, not the database down.**
 
-Mosaic is a Kotlin framework for backend orchestration through **composable tiles**. Build responses from small pieces that retrieve their own dependencies, share results within a Mosaic, and overlap independent work with coroutines.
+Mosaic is a Kotlin library for building backends one response at a time. A **Tile** is a
+reusable suspend computation that reads the data it needs and composes other
+Tiles. Callers ask for its result; Mosaic shares the work within each request.
 
 ## 🚀 **Why Mosaic?**
 
-- **📦 Response-First Design**: Start with the response and compose the data it needs
-- **🧩 Typed Composition**: Kotlin types connect tile inputs, dependencies, and results
-- **⚡ Shared Work**: Reuse the same Tile result or MultiTile key within one Mosaic
-- **🔄 Explicit Concurrency**: Start independent work with `composeAsync`, then await it
-- **🧪 Natural Testability**: Mock dependency tiles to test response logic in isolation
-- **🗺️ Architecture Tooling**: Generate dependency diagrams and check Canvas contracts with optional analysis
+- **🎯 Response first** — Start with what your endpoint returns.
+- **🧩 Self-contained Tiles** — Each piece knows how to get what it needs.
+- **⚡ Shared work** — Independent branches can reuse the same result.
+- **🗺️ Architecture you can see** — Turn composition code into dependency diagrams.
 
-## 🏁 **Get Started**
+## 🎯 **Start with the Response**
 
-Add Mosaic to an existing Kotlin/JVM project:
-
-```kotlin
-dependencies {
-  implementation("org.buildmosaic:mosaic-core:0.4.0")
-  testImplementation("org.buildmosaic:mosaic-test:0.4.0")
-  testImplementation(kotlin("test"))
-}
-```
-
-Mosaic uses ordinary library dependencies; Tile registration plugins and processors
-are not required. The optional [BOM](mosaic-bom/README.md) aligns the runtime
-libraries so you can omit their individual versions.
-
-Here is a complete first request, using a small in-memory service:
-
-```kotlin
-import org.buildmosaic.core.*
-import org.buildmosaic.core.injection.*
-
-data class Customer(val id: String, val name: String)
-class CustomerService {
-  fun getCustomer(id: String) = Customer(id, "Jane")
-}
-
-val CustomerIdKey = CanvasKey(String::class, "customerId")
-val CustomerTile = singleTile {
-  source<CustomerService>().getCustomer(source(CustomerIdKey))
-}
-
-suspend fun main() {
-  canvas { single<CustomerService> { CustomerService() } }.use { applicationCanvas ->
-    applicationCanvas.withLayer {
-      single(CustomerIdKey) { "customer-1" }
-    }.use { requestCanvas ->
-      val mosaic = requestCanvas.create()
-      val customer = mosaic.compose(CustomerTile)
-      println(customer.name) // Jane
-    }
-  }
-}
-```
-
-Canvas holds application services; a request layer adds input without passing it
-through every Tile. A Mosaic executes those Tiles and holds their shared results.
-Here `use` explicitly closes each concrete `MosaicCanvas`. Typed lookups do not
-prove that every required binding exists.
-
-The [core quick start](mosaic-core/README.md#-quick-start) covers runtime requirements
-and first use; the [Canvas guide](mosaic-core/README.md#-dependencies-with-canvas)
-explains providers, keys, layering, and resource ownership.
-
-## 🎯 **Response-First Design**
-
-Start with what an endpoint returns. Each Tile composes the pieces it needs;
-callers ask for a value without passing its dependencies down the graph:
+An order page needs a summary and shipping details. That's also how you write it:
 
 ```kotlin
 val OrderPageTile = singleTile {
@@ -88,7 +33,15 @@ val OrderPageTile = singleTile {
 
   OrderPage(summary.await(), logistics.await())
 }
+```
 
+`composeAsync` starts the work; `await` gets the result. Both branches can run
+concurrently. Use `compose` when you need a result before continuing.
+
+The endpoint stays small even when the data behind it doesn't. The summary Tile
+builds its own part of the response:
+
+```kotlin
 val OrderSummaryTile = singleTile {
   val order = composeAsync(OrderTile)
   val customer = composeAsync(CustomerTile)
@@ -98,119 +51,119 @@ val OrderSummaryTile = singleTile {
 }
 ```
 
-This excerpt uses the models and dependency tiles in the
-[runnable order examples](examples/tile-library/src/main/kotlin/org/buildmosaic/library).
-Their summary branch reaches several levels deep:
+`LineItemsTile` goes deeper, fetching products and prices. None of that wiring
+spills into the page Tile. [Follow the complete order example](examples/tile-library/src/main/kotlin/org/buildmosaic/library)
+or see [how the composition works](mosaic-core/README.md#-composition).
 
-```mermaid
-flowchart TD
-  Page["OrderPageTile"] --> Summary["OrderSummaryTile"]
-  Page --> Logistics["LogisticsTile"]
-  Summary --> Order["OrderTile"]
-  Summary --> Customer["CustomerTile"]
-  Summary --> Items["LineItemsTile"]
-  Customer --> Order
-  Items --> Order
-  Items --> Products["ProductsByIdTile · MultiTile"]
-  Items --> Pricing["PricingBySkuTile · MultiTile"]
-```
+## ⚡ **Ask Twice. Share the Work.**
 
-This compact view shows composition relationships, with the logistics branch
-collapsed. Each Tile owns its part of the graph. Start independent work with
-`composeAsync` before awaiting results; sequential `compose` calls remain
-sequential. The [core composition guide](mosaic-core/README.md#-composition)
-shows the product and pricing lookups behind `LineItemsTile`.
-
-## ⚡ **Share Work Across the Response**
-
-`OrderSummaryTile`, `CustomerTile`, and `LineItemsTile` each compose `OrderTile`
-independently. Within the same Mosaic, those branches share its in-flight work
-and cached result. The caller does not coordinate that reuse:
+The page needs line items. So does the order total:
 
 ```kotlin
-// In a suspending handler, using one request Mosaic and the example tiles:
+val OrderTotalTile = singleTile {
+  compose(LineItemsTile).sumOf { it.price.amount * it.quantity }
+}
+
+// In a suspending handler, using the same request Mosaic:
 val page = mosaic.composeAsync(OrderPageTile)
 val total = mosaic.composeAsync(OrderTotalTile)
-// Both paths reach the same LineItemsTile and OrderTile instances.
 println("${page.await().summary.order.id}: ${total.await()}")
 ```
 
-Deduplication uses the same Tile instance, or the same MultiTile instance and
-equal key. Keep reusable tiles in `val`s and create a Mosaic per request. A new
-Mosaic starts with a fresh cache, even when it uses the same Canvas. See
-[caching and identity](mosaic-core/README.md#-caching-and-identity) for details.
+Both branches reach `LineItemsTile`, but it runs once in this Mosaic. They share
+its in-flight work and result without coordinating with each other.
+Reuse is scoped to the **same Mosaic and Tile instance**; a new Mosaic starts
+fresh. [More on caching and identity →](mosaic-core/README.md#-caching-and-identity)
 
-## 🔧 **Batch Operations with MultiTile**
+## 🔧 **Fetch by Key with MultiTile**
 
-A MultiTile puts the bulk-fetch strategy behind the same small composition API.
-Using the order example's `ProductService` and `Product` model:
+Have a bulk API? Put it behind a MultiTile:
 
 ```kotlin
 val ProductsByIdTile = multiTile<String, Product> { ids ->
   ProductService.getProducts(ids.toList())
 }
 
-val OrderProductsTile = singleTile {
-  val order = compose(OrderTile)
-  compose(ProductsByIdTile, order.items.map { it.productId }) // Map<String, Product>
+// In the same request Mosaic:
+val first = mosaic.compose(ProductsByIdTile, listOf("product-1"))
+val next = mosaic.compose(ProductsByIdTile, listOf("product-1", "product-2"))
+// The second call only fetches product-2.
+```
+
+The same MultiTile and equal keys share work within a Mosaic. Choose `perKeyTile`
+for individual fetches or `chunkedMultiTile` for smaller batches; callers keep the
+same API. Separate calls aren't guaranteed to merge into one backend batch.
+
+[Choose a batching strategy →](mosaic-core/README.md#-multitile)
+
+## 🏁 **Try It**
+
+Add Mosaic to a Kotlin/JVM project:
+
+```kotlin
+dependencies {
+  implementation("org.buildmosaic:mosaic-core:0.4.0")
+  testImplementation("org.buildmosaic:mosaic-test:0.4.0")
+  testImplementation(kotlin("test"))
 }
 ```
 
-Within one request Mosaic, repeated equal keys for the same MultiTile share work;
-only uncached keys reach the fetcher. Separate calls are not guaranteed to merge
-into one batch. Swap in `perKeyTile` for individual fetches or `chunkedMultiTile`
-for bounded batch sizes without changing consumers or asking them to coordinate
-the fetch strategy.
+No registration plugin or processor is needed. The optional
+[BOM](mosaic-bom/README.md) aligns the runtime library versions.
 
-For async batches, `composeAsync(tile, keys)` returns `Map<K, Deferred<V>>`:
-await each entry you need. See [MultiTile return shapes and strategies](mosaic-core/README.md#-multitile).
+A **Canvas** holds application services and request data. A **Mosaic** runs Tiles
+and keeps their results. A Tile can read an input and call an ordinary service:
 
-## 🗺️ **See and Verify Your Architecture**
+```kotlin
+val OrderKey = CanvasKey(String::class, "orderKey")
+val OrderTile = singleTile {
+  OrderService.getOrder(source(OrderKey))
+}
+```
 
-Your composition model can also become architecture documentation. With the
-optional analysis plugin installed in a supported project, run:
+Bind that input at the request boundary, then ask for the page:
+
+```kotlin
+suspend fun orderPage(applicationCanvas: Canvas, orderId: String): OrderPage =
+  applicationCanvas.withLayer {
+    single(OrderKey) { orderId }
+  }.use { requestCanvas ->
+    requestCanvas.create().compose(OrderPageTile)
+  }
+```
+
+Here `use` closes the request Canvas. The [complete quick start](mosaic-core/README.md#-quick-start)
+covers application setup, resource ownership, and runtime requirements.
+
+## 🗺️ **Your Code, Your Architecture**
+
+Your Tile graph is already an architecture model. The optional analysis plugin
+can turn it into documentation—there's no separate graph to keep in sync by hand.
 
 ```bash
 ./gradlew mosaicGraph
 ```
 
-It writes **`build/reports/mosaic-analysis/graph.md`**: Markdown with Mermaid
-diagrams of Tiles, MultiTiles, composition relationships, Canvas bindings and
-requirements, and relevant selected dependency contracts.
+<img src=".github/images/order-architecture.png" width="660" alt="OrderPageTile composes summary and logistics. The summary reaches customer, order, line items, products, and pricing; three branches share OrderTile.">
 
-Here is a small excerpt from a report generated from the order example's sources
-(labels shortened). It connects composition to a Canvas requirement and makes an
-unresolved boundary visible:
+*Tile-only excerpt rendered from the generated order graph. Labels are shortened
+and composition steps collapsed; only the summary branch is expanded.*
 
-```mermaid
-flowchart LR
-  Summary["Tile: OrderSummaryTile"] -->|compose| Call["Compose: COMPOSE_ASYNC"]
-  Call -->|Tile| Order["Tile: OrderTile"]
-  Order -->|requires| Key["REQUIRED lookup: String [orderKey]"]
-  Order -->|unknown| Unknown["Unsupported control flow with Mosaic capabilities"]
-```
+Open `build/reports/mosaic-analysis/graph.md` for the full Markdown and Mermaid
+graph, including what each Tile needs from Canvas and where it's bound. The plugin
+can discover application entry points when safe and follow Tile dependencies
+across modules.
 
-The full report includes application-root views, findings, and uncertainty; the
-order example has unverifiable paths, not a blanket verification pass. These are
-static relationships, not runtime ordering, call counts, latency, or exact batch
-sizes.
+It checks Canvas bindings and distinguishes **confirmed missing dependencies**
+from paths it can't verify. This optional tooling supports **Kotlin/JVM 2.2.10
+only**; runtime composition doesn't depend on it. The graph shows static
+relationships, not runtime traces.
 
-The optional analyzer can **discover application roots automatically when safe**,
-follow selected local and dependency contracts, and detect **proven missing
-Canvas bindings**. Unverifiable paths remain visible: `STANDARD` warns, while
-`STRICT` also fails them during verification. Root-specific findings feed the
-graph report, so a diagram can help locate a missing requirement or an unknown
-boundary.
+[Set up architecture reports and verification →](mosaic-gradle-plugin/README.md)
 
-Runtime composition does not depend on this tooling. Analysis has conservative
-boundaries and currently supports **Kotlin/JVM 2.2.10 only**. See the
-[analysis Gradle plugin guide](mosaic-gradle-plugin/README.md) for installation,
-root selection, enforcement, and limitations.
+## 🧪 **Test the Composition, Skip the Services**
 
-## 🧪 **Test Response Logic in Isolation**
-
-Replace dependency tiles while exercising the real composition. For example,
-using the order example's `OrderPageTile` and fixture values:
+Tests can swap out dependency Tiles while leaving the page's composition untouched:
 
 ```kotlin
 @Test
@@ -224,35 +177,40 @@ fun `order page combines summary and logistics`() = runTest {
 }
 ```
 
-The [testing guide](mosaic-test/README.md) has a complete first test, Canvas input
-setup, failure assertions, and simulated delays using coroutine virtual time.
+`mockSummary` and `mockLogistics` are fixture values; the real `OrderPageTile` puts
+them together. The [testing guide](mosaic-test/README.md) covers setup, Canvas
+inputs, failures, and delays simulated with coroutine virtual time.
 
-## 📈 **Performance**
+## 📈 **Measured Against Handwritten Kotlin**
 
-Mosaic is measured against equivalent optimized handwritten Kotlin, using paired
-application runs with the same logical downstream work. The measured additional
-CPU cost was **11–31 µs/request** for light and batching workloads, **48–101 µs/request** for a complex aggregate graph, and **1–12 µs/request** for the CPU-heavy workload.
-In the service-backed aggregate benchmark, Mosaic added about **101 µs of CPU per request**, while median HTTP latency was 21.44 ms for direct Kotlin and 21.45 ms for Mosaic—a difference below the benchmark's approximately 1 ms timing accuracy.
-Absolute timings depend on hardware and JVM; the published results are paired
-direct/Mosaic comparisons under identical conditions.
-See [application results and methodology](performance/README.md) for workload
-scope and measurement limits.
+Mosaic has a cost. Paired application benchmarks compare it with equivalent
+optimized Kotlin doing the same downstream work:
 
-## 🌐 **Framework Integration**
+| Workload | Additional Mosaic CPU/request |
+| --- | ---: |
+| Light and batching | **11–31 µs** |
+| Complex aggregate graph | **48–101 µs** |
+| CPU-heavy | **1–12 µs** |
 
-Use Mosaic behind your existing HTTP framework. Runnable applications share the
-same order tiles:
+In the service-backed aggregate case, Mosaic added about **101 µs of CPU/request**.
+Median HTTP latency was **21.44 ms direct vs 21.45 ms Mosaic**—a difference below
+the benchmark's approximately 1 ms timing accuracy.
 
-- **[Spring Boot](examples/spring-example)**: Controllers and application Canvas configuration
-- **[Ktor](examples/ktor-example)**: Coroutine route handlers
-- **[Micronaut](examples/micronaut-example)**: Controllers and dependency injection
+Absolute timings depend on hardware and JVM; each direct/Mosaic pair ran under
+identical conditions. [Results, workloads, and methodology →](performance/README.md)
 
-See the [core guide](mosaic-core/README.md#-framework-integration) for commands to
-run them.
+## 🌐 **Bring Your HTTP Framework**
+
+The same order Tiles run behind three example applications:
+
+- **[Spring Boot](examples/spring-example)** — Controllers and application Canvas configuration
+- **[Ktor](examples/ktor-example)** — Coroutine route handlers
+- **[Micronaut](examples/micronaut-example)** — Controllers and dependency injection
+
+[Run an example →](mosaic-core/README.md#-framework-integration)
 
 ## 📄 **License**
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
-See the [Changelog](CHANGELOG.md) for user-facing release history.
+Licensed under [Apache 2.0](LICENSE). See the [Changelog](CHANGELOG.md) for release history.
 
 Copyright 2025 Nicholas Abbott

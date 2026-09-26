@@ -78,6 +78,12 @@ Mosaic's existing terms (Canvas, Mosaic, Tile, MultiTile). Lead with user value.
 Avoid generic AI prose, unsupported adjectives, repeated explanations, and raw
 benchmark, test, or tool-output dumps.
 
+Explain developer value directly before discussing where an example came from or
+how it was validated; avoid provenance and meta-documentation as landing-page copy.
+When showcasing generated tooling, choose representative output that makes its
+benefit visible. Keep error-heavy or pathological diagnostics in deeper docs unless
+the limitation itself is central to adoption.
+
 ## Evidence and audience boundaries
 
 Keep measured fact, interpretation, and marketing summary distinguishable;
