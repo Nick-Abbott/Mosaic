@@ -191,7 +191,8 @@ the root only launches and awaits sections. Tracing stays off in measurements.
 ./gradlew :mosaic-benchmarks:coalescingDiagnostic
 ./gradlew :mosaic-benchmarks:coalescingDiagnostic --args="--serial"
 ./gradlew :mosaic-benchmarks:jmhJar
-java -jar mosaic-benchmarks/build/libs/mosaic-benchmarks-*-jmh.jar '.*CoalescingBenchmark.*'
+java -jar mosaic-benchmarks/build/libs/mosaic-benchmarks-*-jmh.jar '.*CoalescingBenchmark.*' \
+  -bm avgt -tu us -wi 3 -i 5 -w 1s -r 1s -f 2
 ```
 
 The permanent JMH fixture varies sibling fan-out (2/4/8/16) and extra Tile

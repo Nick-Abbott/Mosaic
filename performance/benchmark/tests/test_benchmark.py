@@ -221,6 +221,7 @@ class BenchmarkLogicTest(unittest.TestCase):
                'measurement_seconds': 30, 'calibration_timeout_seconds': 15,
                'tail_seconds': 10, 'wrk2_threads': 4, 'wrk2_connections': 128}
         self.assertIs(b.validate_config(cfg), cfg)
+        b.validate_config({**cfg, 'cases': {'coalescing': {'zero': [800], 'service': [400]}}})
         for change in ({'wrk2_connections': 130}, {'measurement_seconds': 1.5},
                        {'calibration_timeout_seconds': 10}, {'cases': {'compute': {'service': [100]}}}):
             with self.subTest(change=change), self.assertRaises(ValueError):

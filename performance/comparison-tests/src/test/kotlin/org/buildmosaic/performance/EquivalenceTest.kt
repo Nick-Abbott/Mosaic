@@ -142,8 +142,12 @@ class EquivalenceTest {
     val mosaicServices = SimulatedServices(config)
     val direct = DirectExecutor(directServices)
     val mosaic = MosaicExecutor(mosaicServices)
-    val expected = ids.map { direct.coalescing(BatchingInput(it)) }
-    val actual = ids.map { id -> async { mosaic.coalescing(BatchingInput(id)) } }.awaitAll()
+    val directPending = ids.map { id -> async { direct.coalescing(BatchingInput(id)) } }
+    val mosaicPending = ids.map { id -> async { mosaic.coalescing(BatchingInput(id)) } }
+    val expected = directPending.awaitAll()
+    val actual = mosaicPending.awaitAll()
+    val reference = DirectExecutor(SimulatedServices(config.copy(tracing = false)))
+    assertEquals(ids.map { reference.coalescing(BatchingInput(it)) }, expected)
     assertEquals(expected, actual)
     assertEquals(ids.size, directServices.trace().size)
     assertEquals(directServices.trace().flatMap(Call::keys).sorted(),

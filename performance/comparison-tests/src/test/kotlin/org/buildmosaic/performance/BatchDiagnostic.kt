@@ -15,7 +15,7 @@ object BatchDiagnostic {
               else executor.coalescing(BatchingInput(7))
             val calls = services.trace()
             check(calls.flatMap(Call::keys).sorted() == (7000 until 7024).map(Int::toString).sorted())
-            println("$variant/$route/${profile.name.lowercase()} rep=$repetition invocations=${calls.size} sizes=${calls.map { it.keys.size }} distinct=${response.sections.flatMap { it.products }.map(Product::id).distinct().sorted()}")
+            println("$variant/$route/${profile.name.lowercase()} rep=$repetition invocations=${calls.size} sizes=${calls.map { it.keys.size }} keys=${calls.map(Call::keys)} distinct=${response.sections.flatMap { it.products }.map(Product::id).distinct().sorted()}")
           }
         }
       }
