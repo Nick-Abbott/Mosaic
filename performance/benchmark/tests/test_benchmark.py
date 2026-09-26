@@ -27,7 +27,7 @@ class BenchmarkLogicTest(unittest.TestCase):
         self.assertEqual(b.cpu_seconds((100, 50, 9), (350, 200, 9), 100), 4.0)
         self.assertEqual(b.cpu_ms_per_request(4.0, 200), 20.0)
         self.assertIsNone(b.cpu_ms_per_request(4.0, 0))
-        good = {'valid_comparison_point': True, 'validated_scheduled_requests': 200}
+        good = {'valid_comparison_point': True, 'validated_completed_requests': 200}
         self.assertEqual(b.validated_cpu_ms(4.0, good), 20.0)
         good['valid_comparison_point'] = False
         self.assertIsNone(b.validated_cpu_ms(4.0, good))
@@ -43,6 +43,8 @@ class BenchmarkLogicTest(unittest.TestCase):
         self.assertIn('-U', command)
         self.assertEqual(command[command.index('-R') + 1], '800')
         self.assertEqual(command[command.index('-d') + 1], '52s')
+        self.assertEqual(b.wrk2_total_duration(30), 41)
+        self.assertEqual(b.wrk2_total_duration(7), 18)
 
     def test_deterministic_request_body_and_input_rotation(self):
         for route, body in [('light', '{"customerId":7}'), ('aggregate', '{"customerId":7}'),
@@ -73,29 +75,31 @@ class BenchmarkLogicTest(unittest.TestCase):
         text += '\nSocket errors: connect 1, read 2, write 0, timeout 4\n'
         result = b.parse_wrk2(text, 2)
         self.assertEqual((result['socket_errors'], result['non_2xx_responses']), (7, 3))
-        checked = b.validate_steady_window(result, 100, 7, 8, 1)
+        checked = b.validate_steady_window(result, 100, 7, 8, 8, 1)
         self.assertFalse(checked['valid_comparison_point'])
         self.assertIn('socket or non-2xx errors', checked['integrity_warnings'])
 
     def test_steady_window_rate_and_pacing(self):
-        metric = {**b.parse_wrk2(FIXTURE.read_text(), 2), 'lua_window_requests': 700}
-        good = b.validate_steady_window(metric, 100, 7, 7.01, 1)
+        metric = b.parse_wrk2(FIXTURE.read_text(), 2)
+        good = b.validate_steady_window(metric, 100, 7, 8.01, 8, 1)
         self.assertTrue(good['valid_comparison_point'])
-        self.assertAlmostEqual(good['steady_expected_requests'], 700)
-        short = b.validate_steady_window({**metric, 'lua_window_requests': 650}, 100, 7, 7, 1)
+        self.assertAlmostEqual(good['steady_expected_requests'], 801)
+        short = b.validate_steady_window(metric, 100, 7, 7, 8, 1)
         self.assertFalse(short['valid_comparison_point'])
-        self.assertIn('steady count differs', short['integrity_warnings'][0])
-        self.assertFalse(b.validate_steady_window(metric, 100, 7, 8, 1)['valid_comparison_point'])
+        self.assertIn('completed count differs', short['integrity_warnings'][0])
+        self.assertFalse(b.validate_steady_window(metric, 100, 7, 10, 8, 1)['valid_comparison_point'])
+        self.assertFalse(b.validate_steady_window({**metric, 'lua_window_requests': 650},
+                                                100, 7, 8, 8, 1)['valid_comparison_point'])
         wave = dict(metric)
         wave['lua_100ms_bins'] = {**metric['lua_100ms_bins'], **{i: 0 for i in range(10, 20)}}
-        self.assertFalse(b.validate_steady_window(wave, 100, 7, 7, 1)['valid_comparison_point'])
-        high = {**metric, 'lua_window_requests': 25600,
-                'lua_100ms_bins': {i: 320 for i in range(10, 80)}}
-        self.assertTrue(b.validate_steady_window(high, 3200, 8, 8, 1)['valid_comparison_point'])
+        self.assertFalse(b.validate_steady_window(wave, 100, 7, 8, 8, 1)['valid_comparison_point'])
+        high = {**metric, 'steady_completed_requests': 25600, 'lua_window_requests': 24000,
+                'lua_100ms_bins': {i: 320 for i in range(75)}}
+        self.assertTrue(b.validate_steady_window(high, 3200, 7, 8, 7.5, 1)['valid_comparison_point'])
         high['lua_100ms_bins'][20] = 0
         high['lua_100ms_bins'][21] = 640
         self.assertIn('100 ms pacing wave', ' '.join(
-            b.validate_steady_window(high, 3200, 8, 8, 1)['integrity_warnings']))
+            b.validate_steady_window(high, 3200, 7, 8, 7.5, 1)['integrity_warnings']))
 
     def test_qualified_ceiling_and_exploratory_override(self):
         cfg = {'cases': {'light': {'zero': [3200]}}}
@@ -120,7 +124,7 @@ class BenchmarkLogicTest(unittest.TestCase):
 
     def test_invalid_pair_excluded_from_aggregation(self):
         base = {'route': 'light', 'latency_profile': 'zero', 'offered_rps': 100,
-                'repetition': 1, 'lua_window_requests': 800, 'corrected_p99_ms': 1,
+                'repetition': 1, 'steady_completed_requests': 800, 'corrected_p99_ms': 1,
                 'cpu_ms_per_successful_request': 0.1, 'cpu_core_equivalents': 0.1,
                 'generator_cpu_core_equivalents': 0.1, 'socket_errors': 0,
                 'non_2xx_responses': 0, 'integrity_warnings': []}

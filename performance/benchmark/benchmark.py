@@ -10,8 +10,8 @@ import os
 import platform
 import queue
 import re
+import resource
 import shutil
-import signal
 import socket
 import statistics
 import subprocess
@@ -38,7 +38,7 @@ PACING_BIN_START_OFFSET_SECONDS = 10.5
 INPUTS = (1, 7, 42, 99)
 READINESS_POLL_INTERVAL_SECONDS = 0.005
 FIELDS = (
-    "validated_scheduled_requests", "successful_rps", "corrected_mean_ms",
+    "validated_completed_requests", "successful_rps", "corrected_mean_ms",
     "corrected_p50_ms", "corrected_p95_ms", "corrected_p99_ms",
     "uncorrected_p50_ms", "uncorrected_p95_ms", "uncorrected_p99_ms",
     "process_cpu_seconds", "cpu_core_equivalents", "cpu_ms_per_successful_request",
@@ -279,27 +279,32 @@ def parse_wrk2(output, threads):
             "lua_window_requests": window_count, "lua_100ms_bins": bins}
 
 
-def validate_steady_window(metrics, rate, seconds, actual_seconds, tolerance_percent):
-    # Lua counts requests dispatched inside the fixed /proc sampling window.
-    # wrk2's corrected histogram spans the whole post-calibration run, which
-    # can extend beyond that window while SIGINT is handled.
-    expected = rate * seconds
-    observed = metrics["lua_window_requests"]
-    if expected <= 0:
+def validate_steady_window(metrics, rate, minimum_seconds, actual_seconds, audit_seconds, tolerance_percent):
+    # Natural wrk2 exit keeps its post-calibration HdrHistogram count aligned
+    # with /proc CPU/RSS sampling. Lua independently audits an interior window
+    # whose fixed boundaries avoid calibration and process-exit transitions.
+    expected = rate * actual_seconds
+    observed = metrics["steady_completed_requests"]
+    audit_expected = rate * audit_seconds
+    audit_observed = metrics["lua_window_requests"]
+    if expected <= 0 or audit_expected <= 0:
         fail("invalid steady-state window")
     deviation = (observed - expected) / expected * 100
+    audit_deviation = (audit_observed - audit_expected) / audit_expected * 100
     warnings = []
-    if abs(actual_seconds - seconds) > 0.05:
-        warnings.append(f"/proc measurement window differs from configured duration by {actual_seconds - seconds:+.3f}s")
+    if actual_seconds < minimum_seconds or actual_seconds > minimum_seconds + 2:
+        warnings.append(f"post-calibration measurement lasted {actual_seconds:.3f}s, expected {minimum_seconds}..{minimum_seconds + 2}s")
     if abs(deviation) > tolerance_percent:
-        warnings.append(f"steady count differs from configured rate by {deviation:+.2f}%")
+        warnings.append(f"post-calibration completed count differs from configured rate by {deviation:+.2f}%")
+    if abs(audit_deviation) > tolerance_percent:
+        warnings.append(f"interior dispatch count differs from configured rate by {audit_deviation:+.2f}%")
     if metrics["socket_errors"] or metrics["non_2xx_responses"]:
         warnings.append("socket or non-2xx errors")
     # wrk2 dispatches in per-connection batches. Use wider bins at low rates.
     bins = {int(k): v for k, v in metrics["lua_100ms_bins"].items()}
     width = 2 if rate >= 800 else 10
     expected_bucket = rate * width / 10
-    for bucket in range(10, int((seconds - 1) * 10), width):
+    for bucket in range(10, int((audit_seconds - 1) * 10), width):
         observed_bucket = sum(bins.get(i, 0) for i in range(bucket, bucket + width))
         if not 0.65 * expected_bucket <= observed_bucket <= 1.35 * expected_bucket:
             warnings.append(f"{width * 100} ms pacing wave at bucket {bucket}: "
@@ -307,7 +312,7 @@ def validate_steady_window(metrics, rate, seconds, actual_seconds, tolerance_per
             break
     if rate >= 3200:
         expected_100ms = rate / 10
-        for bucket in range(10, int((seconds - 1) * 10)):
+        for bucket in range(10, int((audit_seconds - 1) * 10)):
             observed_bucket = bins.get(bucket, 0)
             if not 0.75 * expected_100ms <= observed_bucket <= 1.25 * expected_100ms:
                 warnings.append(f"100 ms pacing wave at bucket {bucket}: "
@@ -316,13 +321,14 @@ def validate_steady_window(metrics, rate, seconds, actual_seconds, tolerance_per
     if metrics["corrected_p99_ms"] > max(100, 5 * metrics["uncorrected_p99_ms"] + 10):
         warnings.append("corrected p99 shows a large scheduling/latency anomaly")
     return {"steady_expected_requests": expected, "steady_count_deviation_percent": deviation,
+            "audit_expected_requests": audit_expected, "audit_count_deviation_percent": audit_deviation,
             "integrity_warnings": warnings, "valid_comparison_point": not warnings}
 
 
 def validated_cpu_ms(cpu_seconds_value, metrics):
     if not metrics["valid_comparison_point"]:
         return None
-    return cpu_ms_per_request(cpu_seconds_value, metrics["validated_scheduled_requests"])
+    return cpu_ms_per_request(cpu_seconds_value, metrics["validated_completed_requests"])
 
 
 def aggregate(rows):
@@ -583,6 +589,10 @@ def wrk2_command(environment, route, rps, seconds, connections, threads, port, c
     return cmd
 
 
+def wrk2_total_duration(measurement_seconds):
+    return math.ceil(PACING_BIN_START_OFFSET_SECONDS + measurement_seconds + 0.5)
+
+
 def verify_wrk2_process(pid, binary):
     exe = Path(f"/proc/{pid}/exe").resolve()
     if exe != Path(binary).resolve():
@@ -593,7 +603,9 @@ def run_wrk2(app_pid, route, rps, repetition, port, config, directory, load_cpus
     directory.mkdir(parents=True, exist_ok=True)
     input_value = INPUTS[(repetition - 1) % len(INPUTS)]
     connections = connections_for_rate(config, rps)
-    total_duration = math.ceil(config["calibration_timeout_seconds"] + config["measurement_seconds"] + config["tail_seconds"])
+    # wrk2 exits naturally after this total wall time. Its approximately
+    # 10-second calibration leaves >measurement_seconds for the HdrHistogram.
+    total_duration = wrk2_total_duration(config["measurement_seconds"])
     command = wrk2_command(environment, route, rps, total_duration, connections, config["wrk2_threads"], port, load_cpus)
     write_json(directory / "wrk2-command.json", command)
     env = os.environ.copy()
@@ -609,7 +621,7 @@ def run_wrk2(app_pid, route, rps, repetition, port, config, directory, load_cpus
         # The Lua bins use a conservative estimated start only for the pacing sanity gate.
         launch_clock = time.monotonic()
         window_start = launch_clock + PACING_BIN_START_OFFSET_SECONDS
-        window_end = window_start + config["measurement_seconds"]
+        window_end = launch_clock + total_duration
         env["MOSAIC_WINDOW_START"] = str(window_start)
         env["MOSAIC_WINDOW_END"] = str(window_end)
         process = subprocess.Popen(command, cwd=ROOT, env=env, stdout=subprocess.PIPE,
@@ -647,27 +659,23 @@ def run_wrk2(app_pid, route, rps, repetition, port, config, directory, load_cpus
             fail(f"wrk2 worker calibration spread {spread:.3f}s exceeds 0.1s")
         if time.monotonic() > window_start:
             fail("wrk2 calibration completed after Lua pacing-window start; rerun this point")
-        time.sleep(max(0, window_start - time.monotonic()))
         app_start = read_stat(app_pid)
         generator_start = read_stat(process.pid)
+        generator_usage_start = resource.getrusage(resource.RUSAGE_CHILDREN)
         app_sampler = ProcessSampler(app_pid, directory / "process-samples.csv")
         generator_sampler = ProcessSampler(process.pid, directory / "generator-samples.csv", "generator")
         app_sampler.start()
         generator_sampler.start()
         steady_start = time.monotonic()
-        time.sleep(max(0, window_end - time.monotonic()))
-        if process.poll() is not None:
-            fail(f"wrk2 exited during steady-state measurement (status {process.returncode})")
-        app_end = read_stat(app_pid)
-        generator_end = read_stat(process.pid)
+        try:
+            returncode = process.wait(timeout=total_duration - (steady_start - launch_clock) + config["tail_seconds"])
+        except subprocess.TimeoutExpired:
+            fail("wrk2 did not finish naturally before the configured grace timeout")
         steady_end = time.monotonic()
+        app_end = read_stat(app_pid)
+        generator_usage_end = resource.getrusage(resource.RUSAGE_CHILDREN)
         app_sampler.stop()
         generator_sampler.stop()
-        process.send_signal(signal.SIGINT)
-        try:
-            returncode = process.wait(timeout=config["tail_seconds"])
-        except subprocess.TimeoutExpired:
-            fail("wrk2 did not finish cleanly after SIGINT")
         reader.join(timeout=2)
         (directory / "wrk2-stdout.log").write_text("".join(stdout_lines))
         if returncode:
@@ -675,13 +683,19 @@ def run_wrk2(app_pid, route, rps, repetition, port, config, directory, load_cpus
         measured = steady_end - steady_start
         parsed = parse_wrk2("".join(stdout_lines), config["wrk2_threads"])
         validated = validate_steady_window(parsed, rps, config["measurement_seconds"],
-                                           measured, config["arrival_fidelity_tolerance_percent"])
+                                           measured, total_duration - PACING_BIN_START_OFFSET_SECONDS,
+                                           config["arrival_fidelity_tolerance_percent"])
         app_cpu = cpu_seconds(app_start, app_end, os.sysconf("SC_CLK_TCK"))
-        gen_cpu = cpu_seconds(generator_start, generator_end, os.sysconf("SC_CLK_TCK"))
+        gen_total_cpu = ((generator_usage_end.ru_utime + generator_usage_end.ru_stime) -
+                         (generator_usage_start.ru_utime + generator_usage_start.ru_stime))
+        gen_cpu = gen_total_cpu - (generator_start[0] + generator_start[1]) / os.sysconf("SC_CLK_TCK")
         rss = [row["rss_mib"] for row in app_sampler.rows]
         gen_rss = [row["rss_mib"] for row in generator_sampler.rows]
         return {**parsed, **validated, "input_value": input_value,
                 "steady_start_monotonic": steady_start, "steady_end_monotonic": steady_end,
+                "generator_duration_seconds": total_duration,
+                "pacing_audit_start_monotonic": window_start, "pacing_audit_end_monotonic": window_end,
+                "pacing_audit_seconds": total_duration - PACING_BIN_START_OFFSET_SECONDS,
                 "measurement_wall_seconds": measured, "calibration_completed_seconds": calibration_times[-1] - launch_clock,
                 "calibration_spread_seconds": spread, "generator_pid": process.pid,
                 "process_cpu_seconds": app_cpu, "cpu_core_equivalents": app_cpu / measured,
@@ -690,9 +704,9 @@ def run_wrk2(app_pid, route, rps, repetition, port, config, directory, load_cpus
                 "vmhwm_mib": app_sampler.rows[-1]["vmhwm_mib"],
                 "generator_average_rss_mib": statistics.mean(gen_rss),
                 "generator_peak_rss_mib": max(gen_rss),
-                "validated_scheduled_requests": parsed["lua_window_requests"] if validated["valid_comparison_point"] else None,
-                "successful_rps": parsed["lua_window_requests"] / measured if validated["valid_comparison_point"] else None,
-                "cpu_ms_per_successful_request": app_cpu * 1000 / parsed["lua_window_requests"] if validated["valid_comparison_point"] else None}
+                "validated_completed_requests": parsed["steady_completed_requests"] if validated["valid_comparison_point"] else None,
+                "successful_rps": parsed["steady_completed_requests"] / measured if validated["valid_comparison_point"] else None,
+                "cpu_ms_per_successful_request": app_cpu * 1000 / parsed["steady_completed_requests"] if validated["valid_comparison_point"] else None}
     finally:
         if process and process.poll() is None:
             process.terminate()
@@ -727,7 +741,7 @@ def load_case(variant, route, profile, rps, repetition, order, config, session, 
                   "wrk2_threads": config["wrk2_threads"], **values}
         write_json(directory / "result.json", result)
         status = "VALID" if result["valid_comparison_point"] else "INVALID"
-        print(f"{slug} {variant} rep {repetition}: {status}, {result['lua_window_requests']} window requests, "
+        print(f"{slug} {variant} rep {repetition}: {status}, {result['steady_completed_requests']} post-calibration responses, "
               f"CPU {result['cpu_ms_per_successful_request']} ms/request, "
               f"warnings={result['integrity_warnings']}", flush=True)
         return result
@@ -785,7 +799,7 @@ def write_load_summary(session, rows):
     for row in rows:
         lines.append(f"| {row['route']}/{row['latency_profile']}/{row['offered_rps']} | {row['variant']} | "
                      f"{row['repetition']} | {'VALID' if row['valid_comparison_point'] else '**INVALID**'} | "
-                     f"{row['lua_window_requests']} | {row['corrected_p99_ms']:.3f} | "
+                     f"{row['steady_completed_requests']} | {row['corrected_p99_ms']:.3f} | "
                      f"{fmt(row['cpu_ms_per_successful_request'])} | {row['cpu_core_equivalents']:.3f} | "
                      f"{row['generator_cpu_core_equivalents']:.3f} | "
                      f"{row['socket_errors']}/{row['non_2xx_responses']} | {', '.join(row['integrity_warnings']) or 'none'} |")

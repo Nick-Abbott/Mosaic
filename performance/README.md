@@ -108,22 +108,24 @@ one line-buffered `Thread calibration:` message per configured worker. It fails
 if a worker does not report completion before the configured timeout, if the
 worker completion times differ by more than 100 ms, or if completion comes
 after the start of the Lua pacing audit. Application and generator `/proc`
-sampling begins at a fixed monotonic-clock boundary 10.5 seconds after wrk2
-launch, after all calibration messages have arrived. There is no blind sleep
-substituted for calibration detection. The Lua dispatch counter and `/proc`
-CPU/RSS sampling use the same fixed interval, ending after the configured
-steady duration. The runner then sends SIGINT and lets wrk2 exit cleanly.
-wrk2's corrected histogram covers all post-calibration responses, including
-the short interval between the CPU/RSS window and wrk2 shutdown; its exact
-count is retained separately. Authoritative CPU/RSS windows last at least 30
-seconds. The window start, end, and elapsed time are recorded.
+sampling begins after the last calibration message and ends when wrk2 exits
+**naturally**. There is no blind sleep substituted for calibration detection,
+and no SIGINT cutoff: SIGINT can leave a variable request/shutdown interval
+that disagrees with histogram accounting. Total wrk2 duration is the requested
+steady duration plus 11 seconds (`-d41s` for a 30-second minimum). Calibration
+normally completes near 10.1 seconds, leaving about 30.9 seconds of measured
+steady state. The runner rejects a measured interval outside 30–32 seconds
+for that configuration, and validates the post-calibration histogram count
+against offered rate × actual sampled wall time. CPU/RSS and corrected latency
+therefore cover the same post-calibration run, within the recorded worker
+calibration spread and brief final report overhead. The exact window start,
+end, elapsed time, and calibration spread are recorded.
 
 The corrected HdrHistogram (`Recorded Latency`) is the **primary** response
 latency metric. Its count is wrk2's measured post-calibration response count.
-The full-run request count includes calibration. Neither count is used as the
-CPU/request denominator: the Lua script directly counts requests dispatched
-within the fixed CPU/RSS window, subject to rate, pacing, socket-error, and
-HTTP-status gates. Mean and p50/p95/p99 corrected latency, plus
+The full-run request count includes calibration and is never the CPU/request
+denominator. The corrected histogram's completed count is used only after
+rate, pacing, socket-error, and HTTP-status gates pass. Mean and p50/p95/p99 corrected latency, plus
 p50/p95/p99 uncorrected latency, are preserved. wrk2 reports roughly ±1 ms
 latency timing accuracy; differences smaller than that require caution.
 
@@ -131,7 +133,8 @@ The Lua script constructs one static request per worker run. Input values
 `1, 7, 42, 99` rotate across repetitions; direct and Mosaic receive the same
 input within a pair. This replaces k6's per-request input rotation without
 adding request-body construction to the hot path. The script counts non-2xx
-responses over the complete run and records 100 ms request-dispatch bins. Its
+responses over the complete run and records 100 ms request-dispatch bins in a
+fixed interior audit from launch + 10.5 seconds to the configured natural end. Its
 clock read is a lightweight in-process sanity check, not a network proxy or
 packet capture. The first and last second of bins are excluded from the
 pacing check to avoid boundary effects. At lower rates, one-second bins absorb
@@ -144,11 +147,10 @@ qualification remains the stricter machine/rate temporal gate. Ordinary app
 runs do not do per-request network capture.
 
 `cpu_ms_per_successful_request` is application CPU seconds × 1000 divided by
-the validated **same-window Lua dispatch count**, named
-`validated_scheduled_requests`. With zero socket/HTTP errors and a passing
-pacing gate, this is the scheduled successful-request denominator; it is null
-for an invalid run. CPU core equivalents divide process CPU by the recorded
-fixed-window wall time. Mean and peak RSS are 100 ms `/proc` samples over that interval.
+the validated **post-calibration completed-response count**, named
+`validated_completed_requests`. It is null for an invalid run. CPU core
+equivalents divide process CPU by the recorded post-calibration wall time.
+Mean and peak RSS are 100 ms `/proc` samples over that interval.
 `VmHWM` is recorded separately because it covers the JVM lifetime, including
 startup and wrk2 calibration. Generator CPU and RSS are diagnostics and never
 part of the application score.

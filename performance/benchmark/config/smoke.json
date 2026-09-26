@@ -2,9 +2,9 @@
   "label": "non-authoritative wrk2 smoke; validates calibration and normalized sampling",
   "cases": {"light": {"zero": [100]}},
   "repetitions": 1,
-  "measurement_seconds": 7,
+  "measurement_seconds": 10,
   "calibration_timeout_seconds": 15,
   "tail_seconds": 5,
-  "wrk2_connections": 32,
+  "wrk2_connections": 8,
   "wrk2_threads": 2
 }
