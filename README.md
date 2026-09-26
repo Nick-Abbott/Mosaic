@@ -585,6 +585,12 @@ class OrderController(private val canvas: Canvas) {
 
 Mosaic transforms backend development by making data composition as natural as function composition, with enterprise-grade performance and reliability.
 
+## 📈 **Performance**
+
+Mosaic is not free, but its measured runtime cost is small. Equivalent application benchmarks measured **11–31 µs/request** of additional CPU for light and batching workloads, **48–101 µs/request** for a complex aggregate graph, and **1–12 µs/request** for the CPU-heavy workload.
+In the service-backed aggregate benchmark, Mosaic added about **101 µs of CPU per request**, while median HTTP latency was 21.44 ms for direct Kotlin and 21.45 ms for Mosaic—a difference below the benchmark's approximately 1 ms timing accuracy.
+See [Performance](performance/README.md) for results, workloads, and methodology.
+
 ## 🔗 **Related Modules**
 
 - **[mosaic-core](mosaic-core/README.md)**: The core framework for composable backend orchestration

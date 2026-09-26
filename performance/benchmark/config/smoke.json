@@ -1,14 +1,10 @@
 {
-  "label": "non-authoritative smoke; verifies harness operation only",
-  "cases": {
-    "light": { "zero": [20] },
-    "aggregate": { "service": [10] }
-  },
+  "label": "Smoke: operational validation only",
+  "cases": {"light": {"zero": [100]}},
   "repetitions": 1,
-  "warmup_seconds": 2,
-  "settle_seconds": 1,
-  "measurement_seconds": 3,
-  "graceful_stop_seconds": 5,
-  "preallocated_vus": 20,
-  "max_vus": 20
+  "measurement_seconds": 10,
+  "calibration_timeout_seconds": 15,
+  "tail_seconds": 5,
+  "wrk2_connections": 8,
+  "wrk2_threads": 2
 }

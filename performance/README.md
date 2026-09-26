@@ -1,304 +1,178 @@
-# Application comparison workloads
+# Performance
 
-This separate Gradle build supplies equivalent Ktor applications for a
-Mosaic versus handwritten Kotlin comparison. `shared` owns the models, deterministic services, Ktor routing,
-serialization, configuration, and response assembly. `direct-app` contains only
-endpoint-specific structured concurrency and explicit distinct-key batching;
-`mosaic-app` contains Tiles and MultiTile. `comparison-tests` may depend on both.
-The root build does not include these applications. The composite build substitutes
-current Mosaic source for the Mosaic dependency without Maven Local publishing.
+The performance suite measures Mosaic's runtime cost against equivalent optimized
+Kotlin implementations. Both variants use the same Ktor server, models,
+serialization, simulated services, and logical downstream work. The direct
+implementation uses ordinary structured concurrency and explicit batching and
+request-scoped deduplication where appropriate.
 
-The Mosaic Tile and MultiTile graph is defined once for the application lifetime.
-Its application Canvas binds the shared simulator; each request supplies its
-customer ID, catalog ID, or compute seed in a child Canvas layer. Request-layer
-construction, Mosaic request creation, Canvas lookups, and composition are
-intentionally part of the measured request cost. Reusable graph-definition
-allocation is outside that cost.
+The goal is to quantify the cost of Mosaic's composition and dependency handling.
+The direct implementation is intended to be a useful, efficient baseline.
 
-Both distributions use the same Netty engine, Kotlin/JVM 21, routes, JSON
-configuration, and simulator. No request logging or tracing is enabled by default.
-The direct runtime classpath is checked by `:direct-app:assertNoMosaicRuntime`
-as part of `check`.
+## Results
+
+Across the validated application benchmarks, Mosaic adds a small but measurable
+CPU cost compared with equivalent optimized Kotlin:
+
+| Workload | Observed Mosaic CPU overhead |
+| --- | ---: |
+| Light | +11–20 µs/request |
+| Batching | +17–31 µs/request |
+| Aggregate | +48–101 µs/request |
+| Compute | +1–12 µs/request |
+
+These ranges summarize rounded paired median differences. The largest aggregate overhead
+is about one tenth of a millisecond of CPU per request.
+
+At 1,200 RPS in `aggregate/service`, direct Kotlin used approximately 0.085 ms
+CPU/request and Mosaic 0.187 ms/request, with a paired overhead of 0.101 ms
+(101 µs). Median HTTP latency was approximately 21.44 ms versus 21.45 ms:
+the intentional service delays dominate response time. For service-backed
+workloads, median response-latency differences were below wrk2's approximately
+±1 ms timing accuracy. This does not establish zero latency overhead.
+
+Mosaic generally used several additional MiB of process memory, with median RSS
+differences reaching roughly 20 MiB. Startup was effectively similar across
+20 pairs: medians were approximately 345 ms for direct Kotlin and 349 ms for
+Mosaic, with a median paired difference of about +5 ms. Individual startup
+paired differences varied in both directions.
+
+The table reports variant medians; CPU overhead is the median of four paired
+Mosaic − direct differences, which can differ from subtracting variant medians.
+Latency values are descriptive; sub-millisecond differences are below the stated
+timing accuracy.
+
+| Workload/profile | RPS | Direct CPU µs/request | Mosaic CPU µs/request | Mosaic overhead µs/request | Direct p50 ms | Mosaic p50 ms | Direct avg RSS MiB | Mosaic avg RSS MiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| light/zero | 800 | 55.117 | 75.182 | +20.466 | 0.058 | 0.060 | 187.8 | 201.7 |
+| light/zero | 1600 | 32.917 | 46.936 | +14.133 | 0.046 | 0.049 | 193.1 | 195.8 |
+| light/service | 400 | 139.696 | 158.269 | +18.572 | 3.130 | 3.120 | 190.4 | 196.4 |
+| light/service | 800 | 56.941 | 69.504 | +12.157 | 3.120 | 3.110 | 193.8 | 204.3 |
+| light/service | 1000 | 52.333 | 63.351 | +11.017 | 3.110 | 3.110 | 196.8 | 203.4 |
+| batching/zero | 800 | 69.909 | 95.034 | +29.589 | 0.071 | 0.084 | 190.9 | 202.6 |
+| batching/zero | 1600 | 46.630 | 68.146 | +21.538 | 0.059 | 0.073 | 188.9 | 208.0 |
+| batching/service | 400 | 140.908 | 174.073 | +30.737 | 3.140 | 3.150 | 191.4 | 198.6 |
+| batching/service | 800 | 73.966 | 89.159 | +17.185 | 3.130 | 3.130 | 199.2 | 199.8 |
+| batching/service | 1600 | 49.663 | 72.820 | +23.664 | 3.115 | 3.125 | 205.2 | 201.0 |
+| aggregate/zero | 400 | 144.138 | 216.812 | +73.078 | 0.084 | 0.089 | 195.2 | 199.9 |
+| aggregate/zero | 800 | 68.693 | 131.307 | +62.578 | 0.072 | 0.076 | 192.1 | 206.6 |
+| aggregate/zero | 1600 | 45.208 | 92.547 | +47.847 | 0.060 | 0.067 | 197.4 | 199.0 |
+| aggregate/service | 1200 | 85.217 | 186.660 | +101.322 | 21.440 | 21.450 | 190.9 | 207.7 |
+| compute/zero | 800 | 396.964 | 393.522 | +1.012 | 0.116 | 0.118 | 194.3 | 203.4 |
+| compute/zero | 1600 | 362.687 | 374.980 | +11.774 | 0.118 | 0.121 | 196.7 | 201.1 |
+
+Results come from paired fresh-JVM runs of equivalent applications performing
+the same logical downstream work. Invalid pacing runs are rejected. Full generated
+benchmark sessions are intentionally not committed. These benchmarks measure
+framework overhead, not maximum server capacity.
+
+## What we measure
+
+Application benchmarks compare process CPU cost per request, HTTP response
+latency, and memory use under a specified offered request rate. A separate startup
+benchmark measures process launch to the first successful readiness response.
+JMH benchmarks also cover individual Mosaic operations.
+
+Generated sessions contain the Git revision, JVM options, resolved generator
+binary and version, CPU affinity, request configuration, process samples, logs,
+and JSON, CSV, and Markdown summaries. Results belong in the ignored
+`performance/results/` directory.
 
 ## Workloads
 
-| Route | Topology | Direct implementation |
-| --- | --- | --- |
-| `POST /light` | Customer and preferences in parallel, then a small response | Two `async` calls |
-| `POST /aggregate` | Customer fans out to account and preferences; account leads to authorization; six independent sections each have four sequential service stages. Shared dependencies are reused across sections: 28 service calls and up to seven levels. | Shares customer/account/preferences/authorization values; six section coroutines run concurrently. |
-| `POST /batching` | Six sections reference 144 products in different orders, with 24 distinct IDs. | Collects distinct IDs and issues one batch. Mosaic uses one request-scoped MultiTile; all sections request their keys. |
-| `POST /compute` | Six independent input-dependent CPU mixes feed one digest. | Six `Dispatchers.Default` coroutines call the same shared function. |
+| Workload | Equivalent application behavior |
+| --- | --- |
+| `light` | A small customer graph combining account and preference data. |
+| `aggregate` | A larger graph with shared dependencies, parallel fan-out, and multiple stages. |
+| `batching` | Catalog references with repeated products; both variants deduplicate and batch equivalent downstream work. |
+| `compute` | Deterministic CPU work, using 20,000 iterations by default. |
 
-`GET /health` is shared too. Each input affects its service keys or CPU result,
-and all service results reach the response. The service profile uses deterministic
-3 ms suspending delays. `zero` has no intentional delay. There is no random jitter,
-downstream HTTP, or blocking sleep.
+The `zero` profile adds no simulated service delay. The `service` profile adds
+3 ms to simulated service calls so orchestration runs alongside asynchronous I/O.
+`compute` has no simulated service delay, so only `compute/zero` is measured.
 
-## Build and run
+## Methodology
 
-From the repository root:
+Each measured variant runs in a fresh JVM. Only one application runs at a time.
+Pairs alternate order: direct then Mosaic, followed by Mosaic then direct.
+Both variants receive the same JVM configuration and deterministic request input.
+One request body is prebuilt per run; inputs 1, 7, 42, and 99 rotate between
+repetitions and remain identical within each pair.
+
+wrk2 generates constant-rate POST traffic. The harness waits for every worker's
+calibration-completion message before sampling application CPU and RSS from Linux
+`/proc`. Measurement continues until wrk2 exits naturally. The default requests
+30 seconds of measurement; the total generator duration includes its approximately
+10-second calibration plus one second of margin. The actual post-calibration
+window is recorded and must be between the requested duration and two seconds
+longer. Startup and calibration CPU are excluded.
+
+CPU/request uses the post-calibration completed-request count corresponding to
+that measurement window, rather than the cumulative full-run count. A lightweight
+Lua callback independently records dispatch counts and 100 ms bins in an interior
+window starting 10.5 seconds after generator launch. Count fidelity, sub-second
+pacing, socket errors, HTTP errors, and scheduling-latency anomalies are checked.
+Invalid runs stop the suite and remain in the raw output; incomplete or invalid
+pairs are excluded from comparisons.
+
+Primary **HTTP latency** measures actual request dispatch to response completion
+(wrk2's uncorrected histogram). It is accepted only when the independent pacing
+checks pass. **Scheduling latency** measures intended request schedule to response
+completion (wrk2's corrected histogram) and is retained as a generator diagnostic.
+It is not presented as application response latency.
+
+Choose offered rates and connection counts appropriate to the workload and host.
+Estimate concurrency from requests/second × response time in seconds, and leave
+connection headroom. Passing pacing checks does not establish maximum application
+capacity. CPU affinity is optional; by default processes inherit the caller's
+affinity. Advanced options are documented by `--help`.
+
+## Running the benchmarks
+
+Requirements: Linux, Java 21, Python 3, and `wrk2` on PATH. The Linux utilities
+`stdbuf` and, when requesting CPU affinity, `taskset` must also be available.
+Run from a clean checkout. Application distributions are built by the harness.
 
 ```bash
 ./gradlew clean build -p performance
-./gradlew :direct-app:run -p performance
-MOSAIC_PERFORMANCE_PORT=8081 ./gradlew :mosaic-app:run -p performance
-./gradlew :comparison-tests:test -p performance
-./gradlew :direct-app:assertNoMosaicRuntime -p performance
-```
 
-For independently runnable distributions:
+# Four pairs for one workload at a chosen offered rate.
+python3 performance/benchmark/benchmark.py case \
+  --route aggregate --profile service --rps 800 --repetitions 4
 
-```bash
-./gradlew :direct-app:installDist :mosaic-app:installDist -p performance
-performance/direct-app/build/install/direct-app/bin/direct-app
-MOSAIC_PERFORMANCE_PORT=8081 performance/mosaic-app/build/install/mosaic-app/bin/mosaic-app
-```
+# Operational smoke validation, not a performance result.
+python3 performance/benchmark/benchmark.py suite \
+  --config performance/benchmark/config/smoke.json
 
-Set `MOSAIC_PERFORMANCE_LATENCY=service` on either app for the service profile,
-or `zero` for overhead exploration. Set `MOSAIC_PERFORMANCE_CPU_WORK` to an
-integer from 100 to 2,000,000 (default 20,000) and
-`MOSAIC_PERFORMANCE_TRACING=true` only for debugging. Equivalent system
-properties use the `mosaic.performance.` prefix, for example
-`-Dmosaic.performance.latency=service`. The default port is 8080; run the
-applications on different ports to compare them simultaneously.
-
-Example request:
-
-```bash
-curl -sS localhost:8080/aggregate -H 'Content-Type: application/json' -d '{"customerId":7}'
-```
-
-The comparison tests use multiple inputs and both latency profiles. They compare
-domain outputs, normalized concurrent call traces, batch counts and keys,
-repeated requests, concurrent request isolation, and representative HTTP status,
-JSON, and content type. Tracing is disabled for performance runs.
-
-`mosaic-benchmarks` in the root build is a JMH runtime micro/milli benchmark
-suite. This build is an application-level comparison workload suite. There are
-**no checked-in performance claims or regression thresholds**. The committed
-smoke configuration proves the harness runs; it is not a Mosaic performance
-benchmark. A later phase will calibrate offered rates on a dedicated machine,
-measure JMH variance, choose a stable PR smoke subset, establish baseline
-history, and consider Mosaic-only regression detection and a scheduled macro
-workload. No CI performance gate is installed here.
-
-## Measurement harness
-
-`benchmark/benchmark.py` is a Python 3 standard-library Linux orchestrator.
-It builds `:direct-app:installDist` and `:mosaic-app:installDist` before a session,
-then launches the installed distributions directly. Gradle is never invoked
-during timed measurements. The shared `benchmark/k6/scenario.js` sends one POST
-per constant-arrival-rate iteration, with deterministic inputs 1, 7, 42, 99
-chosen by global scenario iteration index. It selects the correct field for
-each route. k6 checks 2xx status and records successful requests, HTTP failures,
-successful-response latency, iteration duration, completed iterations, and dropped iterations. It discards response bodies
-after status validation; the equivalence tests validate body semantics.
-
-Open-loop constant arrival rate keeps the offered rate independent of response
-time. A slow application can therefore show longer latency, lower completed
-throughput, errors, or dropped iterations at a particular offered load. A drop
-means k6 could not start an iteration, for example because it lacked a free VU;
-it is **not** automatically an application failure. HTTP failures and completed
-requests are reported separately. `preallocated_vus` and `max_vus` are both
-recorded and must be equal, so k6 does not grow its VU pool differently across
-variants. Use several offered RPS values per route and profile to examine a
-load curve. The example smoke rates are deliberately low and not universal
-thresholds.
-
-The harness checks the one-request-per-iteration contract: `iterations ==
-http_reqs` and `successful_requests + http_failures == http_reqs`. It computes
-`expected_arrivals = offered_rps × measurement_seconds` from integer RPS and
-whole-second publication durations. A **dropped iteration** is scheduled work
-that k6 could not start; it still counts toward offered-load accounting. An
-**unaccounted arrival** is in the nominal schedule but appears in neither
-`iterations` nor `dropped_iterations`. The latter indicates generator or
-scheduler integrity trouble, not application throughput. The signed difference
-is retained, so over-accounting is visible too. Reference k6 2.2.0 produced
-one extra iteration at a 3-second smoke boundary; the same tiny allowance
-therefore applies to either sign of the difference.
-
-By default, at most `max(1, 0.1% of expected_arrivals)` unaccounted arrivals
-are allowed. This is a count comparison: since counts are integers, a
-fractional allowance effectively rounds down. Over-accounting beyond the
-allowance fails.
-`--arrival-fidelity-tolerance-percent` can set another small percent (0 through
-1); the one-arrival floor remains. Invalid points keep raw k6 output and a
-marked `result.json`, but abort an authoritative session and never enter its
-paired comparison. `--exploratory-arrivals` continues a calibration session
-with a loud warning and excludes invalid pairs from comparisons. It does not
-replace configured RPS with achieved RPS.
-
-For every route/profile/rate/repetition/variant, the runner launches a **fresh
-JVM**, waits for successful `GET /health` using an external monotonic clock,
-warms the target route with k6, waits for a quiet period, samples the process
-while a separate k6 invocation measures, then terminates the JVM. Defaults for
-a `case` are 15 seconds warmup, 3 seconds quiet, and 30 seconds measurement.
-The scenario permits up to 30 seconds of graceful completion after arrivals
-stop; healthy runs exit as soon as in-flight iterations finish. This is an
-explicit `GRACEFUL_STOP` input to k6, not a force-cancel at the arrival
-boundary. The smoke config uses a 5 second grace for its tiny requests. Set
-`graceful_stop_seconds` in a suite JSON or use the global
-`--graceful-stop-seconds` flag; the value must be positive.
-`duration_seconds` is the configured offered-arrival interval, while
-`measurement_wall_seconds` is the actual sampled interval, including k6 setup
-and graceful completion. Completed and successful RPS divide requests
-completed from scheduled arrivals by `duration_seconds`. CPU and RSS sampling
-continues until k6 exits after in-flight work completes.
-Warmup defaults to the measured offered rate and has its own preserved k6
-summary; it never contributes to load metrics. A `suite` reads a JSON
-route × profile → offered RPS list. Each repetition runs a direct/Mosaic pair
-serially and alternates order: direct first on odd repetitions, Mosaic first
-on even ones. There is no simultaneous application comparison.
-
-The separate `startup` command uses a fresh JVM per sample and measures
-process launch to the first successful `/health` response. It alternates order
-the same way and defaults to 20 samples per variant. Startup always uses zero
-latency and is summarized separately with median, mean, p95, min, and max.
-The external HTTP readiness probe sleeps 5 ms between attempts; this polling
-interval is recorded in session metadata. The startup summary also reports
-each direct/Mosaic pair's difference in milliseconds and percent, plus their
-medians. Raw individual samples and pairs remain available.
-Readiness time is also recorded for each load run as context, but it is not
-part of its latency or CPU metrics.
-
-Linux `/proc/<pid>/stat` user + system ticks, divided by `SC_CLK_TCK`, give
-application CPU seconds over the measurement interval. CPU core equivalents
-are CPU seconds divided by elapsed measurement wall time and may exceed one.
-CPU milliseconds per successful request divide CPU seconds by successful
-responses only; this excludes warmup CPU. `/proc/<pid>/status` `VmRSS` is
-sampled about every 100 ms during that same interval. The arithmetic sample
-mean and sampled peak are reported in MiB. `VmHWM` is recorded separately:
-it covers the process lifetime, including warmup, so it is **not** the
-measurement-window peak. No forced GC is used. The runner verifies that the
-launcher PID has become the expected Java application process; it fails if it
-cannot identify the process reliably.
-The measured k6 invocation is sampled separately after verifying that its PID
-is the k6 process (including through `taskset`, which execs in place). Linux
-child-process usage gives generator CPU seconds and core equivalents, while
-`/proc` samples give generator mean and peak RSS. Warmup k6 usage is excluded.
-These are generator diagnostics, never part of the Mosaic/direct score.
-
-The same fixed JVM options apply to both variants: `-Xms64m -Xmx512m
--XX:+UseG1GC`. Repeat `--jvm-option` to replace the full list; optionally
-use `--active-processor-count N`. The effective list is recorded. `AlwaysPreTouch`
-and app configuration overrides in JVM options are rejected. Tracing is
-explicitly set false. `--cpu-work` sets the same work count for both variants;
-it defaults to 20,000 and accepts integers from 100 through 2,000,000. A suite
-JSON may set `cpu_work`; the CLI flag takes precedence. The effective value
-appears in session, launch, and normalized load metadata. `/health` does not
-depend on it. Optional `--app-cpus` and `--load-cpus` accept Linux
-CPU lists such as `0-3,6`; if both are supplied they must be disjoint and
-available to the runner. The runner does not infer physical-core topology.
-Unpinned runs remain possible. Session metadata includes `lscpu` output so a
-later publication can describe actual topology.
-
-## Running it
-
-Requirements: Linux with `/proc`, Java 21, Python 3, `lscpu`, and k6 on `PATH`
-for load runs. Authoritative, publishable benchmark sessions should use this
-documented reference environment, with k6 **v2.2.0** from the pinned Nix
-environment. Other k6 versions may work for exploratory runs. The runner
-builds installed distributions automatically before each session. To build
-them explicitly:
-
-```bash
-./gradlew :direct-app:installDist :mosaic-app:installDist -p performance
-```
-
-The committed smoke suite passed with reference k6 **v2.2.0**; the same harness
-was also validated with k6 **v2.3.0**. Their observed `--summary-export` JSON
-has metric values directly under each metric and may
-omit zero-event counters; the parser also accepts the older nested `values`
-form. A missing required count, malformed metric, unreconciled request count,
-or iteration/request mismatch fails explicitly. Human console output is never parsed.
-
-From the repository root, use a clean committed tree for an authoritative
-session. A dirty tree requires `--allow-dirty` and is marked in metadata.
-`--skip-build` uses existing distributions for exploratory runs. Global flags
-go before the command:
-
-```bash
 python3 performance/benchmark/benchmark.py startup --samples 20
-python3 performance/benchmark/benchmark.py case --route aggregate --profile service --rps 100 --repetitions 3
-python3 performance/benchmark/benchmark.py suite --config performance/benchmark/config/smoke.json
-python3 performance/benchmark/benchmark.py --exploratory-arrivals case --route aggregate --profile service --rps 800
 python3 -m unittest discover -s performance/benchmark/tests -v
 ```
 
-The `case` command supports `--warmup-seconds`, `--settle-seconds`,
-`--measurement-seconds`, `--warmup-rps`, `--preallocated-vus`, and `--max-vus`.
-Global `--graceful-stop-seconds` and `--cpu-work` controls go before `case` or
-`suite`. For example, `--cpu-work 50000 suite --config ...` overrides a suite's
-`cpu_work` field for one experiment without creating another workload matrix.
-The committed smoke suite uses one repetition and short intervals only to
-check that applications, readiness, warmup, k6 output, and `/proc` sampling
-work. It cannot establish a performance difference. For a publication-oriented
-run, provide a machine-calibrated configuration with multiple rates and at
-least three repetitions, controlled background load, and adequate generator
-capacity. Review individual repetitions; no outlier is automatically removed.
-Smaller medians alone do not establish statistical significance.
+For a larger matrix, copy the smoke JSON to an ignored file under
+`performance/results/`, choose route/profile/rate lists, and set repetitions and
+measurement duration. Use at least 30 seconds of measurement for performance
+comparisons. Keep JVM settings, connection counts, and CPU work identical between
+variants. Preserve whole physical cores when assigning separate affinities.
 
-Each session writes an ignored, self-contained directory:
+## Interpreting results
 
-```text
-performance/results/<UTC session>/
-  metadata.json
-  startup/{direct,mosaic}/rep-N/{result.json,launch.json,stdout.log,stderr.log}
-  startup/{samples.json,pairs.json,summary.json,summary.md}
-  load/<route>-<profile>-<rps>-rps/{direct,mosaic}/rep-N/
-    result.json, launch.json, k6-command.json,
-    k6-summary.json, process-samples.csv, generator-samples.csv,
-    stdout.log, stderr.log, k6-stdout.log, k6-stderr.log
-    warmup/{k6-command.json,k6-summary.json}
-  load-results.json
-  summary.csv
-  summary.md
-```
+CPU cost is reported in milliseconds and microseconds per request. The primary
+framework-cost measure is the paired Mosaic − direct overhead in **µs/request**.
+HTTP and scheduling latency are in milliseconds, memory is in MiB, and startup
+is in milliseconds. Peak RSS covers the measured window; `VmHWM` separately
+records the process lifetime high-water mark.
 
-Each load `result.json` records variant, route, latency profile, offered RPS,
-arrival duration, actual measurement wall time, graceful-stop maximum, CPU work,
-repetition, pair order, success/failure/drop counts, completed and
-successful RPS, mean/p50/p95/p99 successful-response latency, process CPU,
-CPU core equivalents, CPU per successful request, RSS mean/peak, VmHWM, and
-readiness time. It also records expected, started, accounted, and unaccounted
-arrivals, fidelity percent, iteration-duration mean/p50/p95/p99, generator CPU
-and RSS, k6's `vus_max` available-VU ceiling, and a comparison-validity flag.
-The `vus_max` summary does not report peak active VUs. The human summary lists every run's
-arrival accounting and both CPU core counts; invalid runs are prominent and
-excluded from paired deltas. The raw k6 end summary and per-sample process CSV remain
-available to audit normalization. `--raw-k6` additionally writes large k6
-time-series JSON files. CSV and Markdown summaries show each variant's
-independent median and the median of within-repetition Mosaic-minus-direct
-absolute and relative differences. The paired relative median is the primary
-A/B comparison value. A zero direct baseline has no relative percentage.
-Every run's failure and drop counts remain visible; no significance test or
-outlier removal is performed.
-Metadata records UTC time, git state before and after, OS/kernel/architecture,
-CPU model and `lscpu`, total memory, Java executable and version, JVM options,
-k6 version actually used for the session, CPU affinities, workload config,
-and Ktor/Mosaic versions. This keeps exploratory runs with other k6 versions
-auditable.
+Summaries show direct and Mosaic medians plus the median, minimum, and maximum
+paired difference in the metric's own units. A positive difference means Mosaic
+uses more CPU or memory, or has higher latency. For throughput, a positive
+difference means more completed requests per second. Inspect individual pairs
+and integrity warnings before interpreting a difference as repeatable.
 
-The load interval begins just before the measured k6 process starts and ends
-when it exits, so application CPU and RSS include the generator's setup,
-graceful completion, and teardown time around the configured arrival interval.
-The reported completed RPS uses the configured arrival duration, while CPU core equivalents use the
-actual process-sampling wall time. Longer intervals reduce this boundary
-effect. RSS is a 100 ms sampled estimate and can miss a shorter peak; VmHWM
-has a different lifetime scope. The harness measures one JVM process, not
-machine-wide CPU or downstream services. Background work, shared cache state,
-SMT siblings, thermal conditions, and generator capacity can all affect a
-run. Pin CPUs and document topology for publication, and inspect k6 drops
-before attributing a throughput difference to an application.
+Relative percentages can be misleading when the direct implementation itself uses
+only a few hundredths of a millisecond of CPU. Public results therefore emphasize
+absolute overhead per request.
 
-## Diagnostic profiling
-
-JFR and async-profiler are **not** enabled during authoritative runs. Once a
-difference needs investigation, run the relevant installed distribution as a
-separate diagnostic session. For JFR, add
-`-XX:StartFlightRecording=filename=diagnostic.jfr,settings=profile` to its
-`JAVA_OPTS`, set the same `MOSAIC_PERFORMANCE_LATENCY` and workload input,
-and drive the route with k6. Or attach an independently installed
-async-profiler to the Java PID following its own documentation. Keep these
-recordings separate from authoritative results; profiler overhead changes
-CPU and latency. This suite does not parse JFR recordings or flamegraphs.
+wrk2's timing accuracy is approximately ±1 ms; small latency differences may be
+below its resolution. Service delays can obscure response-time differences while
+CPU/request still exposes orchestration cost. Compare results only when both
+variants perform equivalent logical work, and report startup separately.

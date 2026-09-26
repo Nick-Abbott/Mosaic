@@ -1,0 +1,30 @@
+# Synthetic parser fixture; not benchmark evidence.
+Running 18s test @ http://127.0.0.1:8080
+  2 threads and 8 connections
+  Thread calibration: mean lat.: 1.000ms, rate sampling interval: 10ms
+  Thread calibration: mean lat.: 1.000ms, rate sampling interval: 10ms
+
+  Latency Distribution (HdrHistogram - Recorded Latency)
+ 50.000%    0.95ms
+ 99.000%    1.94ms
+  Detailed Percentile spectrum:
+       Value   Percentile   TotalCount 1/(1-Percentile)
+       1.703     0.950000          760        20.00
+#[Mean    =        0.960, StdDeviation   =        0.428]
+#[Max     =        2.298, Total count    =          800]
+----------------------------------------------------------
+
+  Latency Distribution (HdrHistogram - Uncorrected Latency (measured without taking delayed starts into account))
+ 50.000%  184.00us
+ 99.000%  532.00us
+  Detailed Percentile spectrum:
+       Value   Percentile   TotalCount 1/(1-Percentile)
+       0.330     0.950000          760        20.00
+#[Mean    =        0.202, StdDeviation   =        0.082]
+#[Max     =        0.946, Total count    =          800]
+----------------------------------------------------------
+  1824 requests in 18.08s, 493.41KB read
+MOSAIC_WINDOW thread=1 count=400 bins=0:200,1:200
+MOSAIC_NON2XX thread=1 count=0
+MOSAIC_WINDOW thread=2 count=400 bins=0:200,2:200
+MOSAIC_NON2XX thread=2 count=0
