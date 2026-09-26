@@ -110,7 +110,9 @@ The [JMH runtime benchmark guide](../docs/performance.md) covers measurements
 of individual Mosaic operations.
 
 Generated sessions contain the Git revision, JVM options, resolved generator
-binary and version, CPU affinity, request configuration, process samples, logs,
+binary/version/hash, CPU affinity, kernel command line, clocksource, CPU topology,
+scaling driver/governor and energy preference, microcode, idle driver, NixOS
+version where available, request configuration, process samples, logs,
 and JSON, CSV, and Markdown summaries. Results belong in the ignored
 `performance/results/` directory.
 
@@ -133,8 +135,16 @@ The `zero` profile adds no simulated service delay. The `service` profile adds
 Each measured variant runs in a fresh JVM. Only one application runs at a time.
 Pairs alternate order: direct then Mosaic, followed by Mosaic then direct.
 Both variants receive the same JVM configuration and deterministic request input.
+The authoritative JDK 21 configuration uses G1, `-Xms512m -Xmx512m`, and
+`-XX:ActiveProcessorCount=12`, matching the twelve logical application CPUs.
 One request body is prebuilt per run; inputs 1, 7, 42, and 99 rotate between
 repetitions and remain identical within each pair.
+
+Before measurement, a separate wrk2 run warms the same application JVM for
+15 seconds using the same route, profile, offered rate, connections, and input.
+Warmup must finish without HTTP/socket errors before the measured generator
+starts calibration. Warmup CPU and requests are excluded from measurement.
+`warmup_seconds` is recorded in configuration; use `--warmup-seconds` for a case.
 
 wrk2 generates constant-rate POST traffic. The harness waits for every worker's
 calibration-completion message before sampling application CPU and RSS from Linux
@@ -150,7 +160,14 @@ Lua callback independently records dispatch counts and 100 ms bins in an interio
 window starting 10.5 seconds after generator launch. Count fidelity, sub-second
 pacing, socket errors, HTTP errors, and scheduling-latency anomalies are checked.
 Invalid runs stop the suite and remain in the raw output; incomplete or invalid
-pairs are excluded from comparisons.
+pairs are excluded from comparisons. Each pair attempt is checkpointed durably.
+Resume the same session with `--resume --output <existing-directory>` and the
+original command/configuration. Completed valid pairs are retained; an invalid or
+incomplete attempt reruns both variants in the original alternating order, in a
+new attempt directory. No result is overwritten. Configuration, source, JDK, JVM,
+generator, affinities, and host fingerprint must match before resuming. The first
+complete valid attempt for each repetition supplies the summary; all attempts and
+selected execution paths remain recorded in `pair-attempts.json`.
 
 Primary **HTTP latency** measures actual request dispatch to response completion
 (wrk2's uncorrected histogram). It is accepted only when the independent pacing
@@ -173,9 +190,9 @@ Run from a clean checkout. Application distributions are built by the harness.
 ```bash
 ./gradlew clean build -p performance
 
-# Four pairs for one workload at a chosen offered rate.
+# Six pairs for one workload at a chosen offered rate.
 python3 performance/benchmark/benchmark.py case \
-  --route aggregate --profile service --rps 800 --repetitions 4
+  --route aggregate --profile service --rps 800 --repetitions 6
 
 # Operational smoke validation, not a performance result.
 python3 performance/benchmark/benchmark.py suite \
@@ -183,6 +200,18 @@ python3 performance/benchmark/benchmark.py suite \
 
 python3 performance/benchmark/benchmark.py startup --samples 20
 python3 -m unittest discover -s performance/benchmark/tests -v
+```
+
+The checked-in `benchmark/config/authoritative.json` defines the publication
+matrix: six pairs per point, 15s warmup, 30s measurement, four wrk2 threads, and
+128 connections. Assign the application and generator affinities explicitly:
+
+```bash
+python3 performance/benchmark/benchmark.py --app-cpus 0-5,12-17 \
+  --load-cpus 6-9,18-21 --output performance/results/authoritative suite \
+  --config performance/benchmark/config/authoritative.json
+# If interrupted/invalid: inspect raw evidence, then rerun the same command
+# with --resume before the suite subcommand. Only incomplete/invalid pairs rerun.
 ```
 
 For a larger matrix, copy the smoke JSON to an ignored file under
@@ -199,8 +228,8 @@ HTTP and scheduling latency are in milliseconds, memory is in MiB, and startup
 is in milliseconds. Peak RSS covers the measured window; `VmHWM` separately
 records the process lifetime high-water mark.
 
-Summaries show direct and Mosaic medians plus the median, minimum, and maximum
-paired difference in the metric's own units. A positive difference means Mosaic
+Summaries show direct and Mosaic medians plus the median, minimum, maximum, and interquartile range of the
+paired differences in the metric's own units. A positive difference means Mosaic
 uses more CPU or memory, or has higher latency. For throughput, a positive
 difference means more completed requests per second. Inspect individual pairs
 and integrity warnings before interpreting a difference as repeatable.

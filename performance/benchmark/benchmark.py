@@ -4,6 +4,7 @@
 import argparse
 import csv
 import datetime as dt
+import hashlib
 import json
 import math
 import os
@@ -30,7 +31,8 @@ RESULTS = PERFORMANCE / "results"
 VARIANTS = ("direct", "mosaic")
 ROUTES = ("light", "aggregate", "batching", "coalescing", "compute")
 PROFILES = ("zero", "service")
-DEFAULT_JVM = ("-Xms64m", "-Xmx512m", "-XX:+UseG1GC")
+DEFAULT_JVM = ("-Xms512m", "-Xmx512m", "-XX:+UseG1GC", "-XX:ActiveProcessorCount=12")
+DEFAULT_WARMUP_SECONDS = 15
 DEFAULT_CPU_WORK = 20_000
 COUNT_TOLERANCE = 0.01
 PACING_BIN_START_OFFSET_SECONDS = 10.5
@@ -72,6 +74,9 @@ def validate_config(config):
         fail("calibration timeout must exceed wrk2's nominal 10 seconds")
     if int(config["measurement_seconds"]) != config["measurement_seconds"]:
         fail("measurement_seconds must be a whole number of seconds for exact scheduled arrivals")
+    warmup = config.setdefault("warmup_seconds", DEFAULT_WARMUP_SECONDS)
+    if isinstance(warmup, bool) or not isinstance(warmup, int) or warmup < 0:
+        fail("warmup_seconds must be a nonnegative integer")
     if "cpu_work" in config:
         validate_cpu_work(config["cpu_work"])
     cases = config["cases"]
@@ -106,7 +111,8 @@ def discover_wrk2():
     banner = re.search(r"^wrk \d+[^\n]*", version.stdout + version.stderr, re.MULTILINE)
     if not banner:
         fail("wrk2 did not report its version")
-    return {"name": "wrk2", "binary": binary, "reported_version": banner.group(0)}
+    return {"name": "wrk2", "binary": binary, "reported_version": banner.group(0),
+            "sha256": hashlib.sha256(Path(binary).read_bytes()).hexdigest()}
 
 
 def connections_for_rate(config, rate):
@@ -318,13 +324,17 @@ def validate_steady_window(metrics, rate, minimum_seconds, actual_seconds, audit
 def aggregate(rows):
     grouped = {}
     for row in rows:
-        key = (row["route"], row["latency_profile"], row["offered_rps"], row["repetition"])
+        key = (row["route"], row["latency_profile"], row["offered_rps"], row["repetition"], row.get("attempt", 1))
         pair = grouped.setdefault(key, {})
         if row["variant"] in pair:
             fail(f"duplicate paired result: {key} {row['variant']}")
         pair[row["variant"]] = row
     complete = {key: pair for key, pair in grouped.items()
-                if set(pair) == set(VARIANTS) and all(row["valid_comparison_point"] for row in pair.values())}
+                if set(pair) == set(VARIANTS) and all(row["valid_comparison_point"] and row.get("pair_valid", True) for row in pair.values())}
+    selected = {}
+    for key, pair in sorted(complete.items()):
+        selected.setdefault(key[:4], pair)
+    complete = selected
     result = []
     for route, profile, rps in sorted({key[:3] for key in complete}):
         pairs = [pair for key, pair in complete.items() if key[:3] == (route, profile, rps)]
@@ -338,13 +348,16 @@ def aggregate(rows):
                            "median_paired_absolute_difference": statistics.median(differences),
                            "min_paired_absolute_difference": min(differences),
                            "max_paired_absolute_difference": max(differences),
+                           "paired_difference_iqr": percentile(differences, 75) - percentile(differences, 25),
                            "paired_repetitions": len(pairs)})
     return result
 
 
 def write_json(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
+    temporary.replace(path)
 
 
 def command_output(*args):
@@ -356,12 +369,48 @@ def git_state():
             "status": command_output("git", "status", "--porcelain", "--untracked-files=normal")}
 
 
+def optional_text(path):
+    try:
+        return Path(path).read_text().strip()
+    except (OSError, UnicodeError):
+        return None
+
+
+def host_fingerprint():
+    cpu_root = Path("/sys/devices/system/cpu")
+    topology = {}
+    for cpu in sorted(cpu_root.glob("cpu[0-9]*")):
+        topology[cpu.name] = {name: optional_text(cpu / "topology" / name) for name in
+                              ("physical_package_id", "core_id", "thread_siblings_list")}
+    policies = {}
+    for policy in sorted((cpu_root / "cpufreq").glob("policy*")):
+        policies[policy.name] = {name: optional_text(policy / name) for name in
+                                ("affected_cpus", "scaling_driver", "scaling_governor", "energy_performance_preference")}
+    cpuinfo = optional_text("/proc/cpuinfo") or ""
+    nixos = None
+    if shutil.which("nixos-version"):
+        try:
+            nixos = command_output("nixos-version")
+        except (OSError, subprocess.CalledProcessError):
+            pass
+    return {"kernel_cmdline": optional_text("/proc/cmdline"),
+            "clocksource": optional_text("/sys/devices/system/clocksource/clocksource0/current_clocksource"),
+            "available_clocksources": optional_text("/sys/devices/system/clocksource/clocksource0/available_clocksource"),
+            "idle_driver": optional_text(cpu_root / "cpuidle/current_driver"),
+            "microcode_revisions": sorted(set(re.findall(r"^microcode\s*:\s*(.+)$", cpuinfo, re.MULTILINE))),
+            "cpu_topology": topology, "scaling_policies": policies, "nixos_version": nixos}
+
+
 def metadata(config, args, app_cpus, load_cpus, jvm_options, state, generator):
     meminfo = Path("/proc/meminfo").read_text()
     total = re.search(r"^MemTotal:\s+(\d+) kB", meminfo, re.MULTILINE)
     return {
         "utc_timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
         "git": {**state, "dirty": bool(state["status"])},
+        "host_fingerprint": host_fingerprint(),
+        "application_artifacts": {variant: {jar.name: hashlib.sha256(jar.read_bytes()).hexdigest()
+                                   for jar in sorted((distribution(variant).parents[1] / "lib").glob("*.jar"))}
+                                  for variant in VARIANTS},
         "os": platform.system(), "kernel": platform.release(), "architecture": platform.machine(),
         "cpu_model": next((line.split(":", 1)[1].strip() for line in Path("/proc/cpuinfo").read_text().splitlines() if line.startswith("model name")), None),
         "lscpu": command_output("lscpu") if shutil.which("lscpu") else None, "total_memory_kib": int(total.group(1)) if total else None,
@@ -697,6 +746,41 @@ def run_wrk2(app_pid, route, rps, repetition, port, config, directory, load_cpus
             (directory / "wrk2-stdout.log").write_text("".join(stdout_lines))
 
 
+def warm_application(route, rps, repetition, port, config, directory, load_cpus, generator):
+    seconds = config["warmup_seconds"]
+    if seconds == 0:
+        return {"duration_seconds": 0, "skipped": True}
+    warmup_dir = directory / "warmup"
+    warmup_dir.mkdir(parents=True)
+    command = wrk2_command(generator, rps, seconds, connections_for_rate(config, rps),
+                           config["wrk2_threads"], port, load_cpus)
+    env = os.environ.copy()
+    env.update(MOSAIC_ROUTE=route, MOSAIC_BODY=request_body(route, INPUTS[(repetition - 1) % len(INPUTS)]),
+               MOSAIC_WINDOW_START="0", MOSAIC_WINDOW_END="0")
+    write_json(warmup_dir / "command.json", command)
+    started = time.monotonic()
+    with (warmup_dir / "stdout.log").open("w") as stdout, (warmup_dir / "stderr.log").open("w") as stderr:
+        try:
+            completed = subprocess.run(command, cwd=ROOT, env=env, stdout=stdout, stderr=stderr,
+                                       timeout=seconds + config["tail_seconds"])
+        except subprocess.TimeoutExpired as exc:
+            raise ValueError("application warmup generator timed out") from exc
+    output = (warmup_dir / "stdout.log").read_text()
+    socket_match = re.search(r"Socket errors: connect ([0-9]+), read ([0-9]+), write ([0-9]+), timeout ([0-9]+)", output)
+    socket_errors = sum(map(int, socket_match.groups())) if socket_match else 0
+    statuses = re.findall(r"^MOSAIC_NON2XX thread=([0-9]+) count=([0-9]+)$", output, re.MULTILINE)
+    requests = re.search(r"^\s*([0-9]+) requests in ", output, re.MULTILINE)
+    result = {"duration_seconds": seconds, "wall_seconds": time.monotonic() - started,
+              "socket_errors": socket_errors, "non_2xx_responses": sum(int(n) for _, n in statuses),
+              "completed_requests": int(requests.group(1)) if requests else 0,
+              "returncode": completed.returncode}
+    write_json(warmup_dir / "result.json", result)
+    if (completed.returncode or socket_errors or result["non_2xx_responses"] or not result["completed_requests"]
+            or len(statuses) != config["wrk2_threads"]):
+        fail(f"application warmup failed: {result}; inspect warmup logs")
+    return result
+
+
 def load_case(variant, route, profile, rps, repetition, order, config, session, args,
               jvm_options, app_cpus, load_cpus, generator):
     slug = f"{route}-{profile}-{rps}-rps"
@@ -704,10 +788,13 @@ def load_case(variant, route, profile, rps, repetition, order, config, session, 
     process, port, started, stdout, stderr = launch(variant, profile, directory, args, jvm_options, app_cpus)
     try:
         readiness = wait_ready(process, port, variant, args.readiness_timeout, started, jvm_options)
+        warmup = warm_application(route, rps, repetition, port, config, directory, load_cpus, generator)
+        # Same application PID: take CPU/RSS baselines only after warmup and measured calibration.
+        verify_java_process(process.pid, variant, jvm_options)
         values = run_wrk2(process.pid, route, rps, repetition, port, config, directory, load_cpus, generator)
         result = {"variant": variant, "route": route, "latency_profile": profile,
                   "offered_rps": rps, "repetition": repetition, "run_order": order,
-                  "readiness_seconds": readiness, "cpu_work": args.cpu_work,
+                  "readiness_seconds": readiness, "application_pid": process.pid, "warmup": warmup, "cpu_work": args.cpu_work,
                   "duration_seconds": config["measurement_seconds"],
                   "wrk2_connections": connections_for_rate(config, rps),
                   "wrk2_threads": config["wrk2_threads"], **values}
@@ -740,7 +827,7 @@ def write_load_summary(session, rows):
     aggregated = aggregate(rows)
     columns = ("route", "latency_profile", "offered_rps", "metric", "direct_median", "mosaic_median",
                "median_paired_absolute_difference", "min_paired_absolute_difference",
-               "max_paired_absolute_difference", "paired_repetitions")
+               "max_paired_absolute_difference", "paired_difference_iqr", "paired_repetitions")
     with (session / "summary.csv").open("w", newline="") as output:
         writer = csv.DictWriter(output, fieldnames=columns)
         writer.writeheader()
@@ -749,22 +836,22 @@ def write_load_summary(session, rows):
              "HTTP latency measures actual dispatch to response completion; scheduling latency is diagnostic only.",
              "Differences are paired Mosaic − direct in the metric's own units. CPU overhead is shown first in µs/request.",
              "Incomplete or invalid pairs are excluded. Raw runs and integrity warnings remain preserved.", "",
-             "| Route | Profile | RPS | Metric | Direct median | Mosaic median | Paired difference median | Min | Max | Pairs |",
-             "| --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |"]
+             "| Route | Profile | RPS | Metric | Direct median | Mosaic median | Paired difference median | Min | Max | Paired IQR | Pairs |",
+             "| --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
     def fmt(value):
         return "—" if value is None else f"{value:.3f}"
     for row in aggregated:
         values = " | ".join([fmt(row["direct_median"]), fmt(row["mosaic_median"]),
                              *(f"{row[key]:+.3f}" for key in ("median_paired_absolute_difference",
-                               "min_paired_absolute_difference", "max_paired_absolute_difference"))])
+                               "min_paired_absolute_difference", "max_paired_absolute_difference", "paired_difference_iqr"))])
         lines.append(f"| {row['route']} | {row['latency_profile']} | {row['offered_rps']} | {row['metric']} | "
                      f"{values} | {row['paired_repetitions']} |")
     lines += ["", "## Individual runs", "",
-              "| Case | Variant | Rep | Status | Requests | HTTP p99 ms | Scheduling p99 ms | CPU µs/request | App cores | Generator cores | Errors | Warnings |",
-              "| --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |"]
+              "| Case | Variant | Rep/attempt | Status | Requests | HTTP p99 ms | Scheduling p99 ms | CPU µs/request | App cores | Generator cores | Errors | Warnings |",
+              "| --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |"]
     for row in rows:
         lines.append(f"| {row['route']}/{row['latency_profile']}/{row['offered_rps']} | {row['variant']} | "
-                     f"{row['repetition']} | {'VALID' if row['valid_comparison_point'] else '**INVALID**'} | "
+                     f"{row['repetition']}/{row.get('attempt', 1)} | {'VALID' if row['valid_comparison_point'] else '**INVALID**'} | "
                      f"{row['steady_completed_requests']} | {row['http_latency_p99_ms']:.3f} | {row['scheduling_latency_p99_ms']:.3f} | "
                      f"{fmt(row['cpu_us_per_request'])} | {row['cpu_core_equivalents']:.3f} | "
                      f"{row['generator_cpu_core_equivalents']:.3f} | "
@@ -820,6 +907,60 @@ def write_startup_summary(session, rows):
     (session / "startup" / "summary.md").write_text("\n".join(lines) + "\n")
 
 
+def run_load_suite(config, session, args, jvm_options, app_cpus, load_cpus, generator):
+    ledger_path = session / "pair-attempts.json"
+    attempts = json.loads(ledger_path.read_text()) if ledger_path.exists() else []
+    rows = [row for attempt in attempts for row in attempt["rows"]]
+    for route, profiles in config["cases"].items():
+        for profile, rates in profiles.items():
+            for rps in rates:
+                for repetition in range(1, config["repetitions"] + 1):
+                    key = [route, profile, rps, repetition]
+                    previous = [a for a in attempts if a["pair"] == key]
+                    if any(a["status"] == "VALID" for a in previous):
+                        continue
+                    number = len(previous) + 1
+                    directory = session / "pairs" / f"{route}-{profile}-{rps}" / f"rep-{repetition}" / f"attempt-{number}"
+                    attempt = {"pair": key, "attempt": number, "status": "RUNNING", "rows": [],
+                               "directory": str(directory.relative_to(session))}
+                    attempts.append(attempt)
+                    write_json(ledger_path, attempts)
+                    try:
+                        for order, variant in enumerate(paired_order(repetition), 1):
+                            row = load_case(variant, route, profile, rps, repetition, order, config,
+                                            directory, args, jvm_options, app_cpus, load_cpus, generator)
+                            row.update(attempt=number, execution_directory=attempt["directory"], pair_valid=False)
+                            rows.append(row)
+                            attempt["rows"].append(row)
+                            write_json(ledger_path, attempts)
+                            write_load_summary(session, rows)
+                            if not row["valid_comparison_point"]:
+                                fail(f"run invalid: {key} {variant}: {row['integrity_warnings']}; resume reruns the complete pair")
+                        attempt["status"] = "VALID"
+                        for row in attempt["rows"]:
+                            row["pair_valid"] = True
+                        write_load_summary(session, rows)
+                    except BaseException as exc:
+                        attempt["status"] = "INVALID"
+                        attempt["error"] = str(exc)
+                        raise
+                    finally:
+                        write_json(ledger_path, attempts)
+    write_load_summary(session, rows)
+
+
+def verify_resume(recorded, current):
+    # Resume must preserve methodology, source, runtime, generator and host. Timestamps can differ.
+    keys = ("git", "kernel", "architecture", "cpu_model", "java_executable", "java_version", "jvm_options",
+            "generator", "application_environment", "application_cpu_affinity", "load_cpu_affinity",
+            "benchmark_configuration", "host_fingerprint", "application_artifacts")
+    changed = [key for key in keys if recorded.get(key) != current.get(key)]
+    if recorded.get("git_after", {k: recorded["git"].get(k) for k in ("commit", "status")}) != {k: recorded["git"].get(k) for k in ("commit", "status")}:
+        changed.append("git_after")
+    if changed:
+        fail(f"resume metadata mismatch: {changed}")
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--app-cpus", help="Optional application CPU set; default: inherited affinity")
@@ -830,6 +971,7 @@ def parse_args():
     parser.add_argument("--readiness-timeout", type=float, default=30)
     parser.add_argument("--allow-dirty", action="store_true", help="Allow a dirty worktree and record it in metadata")
     parser.add_argument("--skip-build", action="store_true", help="Use existing distributions")
+    parser.add_argument("--resume", action="store_true", help="Resume the same session; keep valid pairs and rerun incomplete/invalid pairs")
     parser.add_argument("--output", type=Path, help="New ignored result directory")
     sub = parser.add_subparsers(dest="command", required=True)
     startup = sub.add_parser("startup", help="Fresh JVM startup comparison")
@@ -840,7 +982,8 @@ def parse_args():
     case.add_argument("--rps", type=int, required=True)
     case.add_argument("--repetitions", type=int, default=1)
     case.add_argument("--measurement-seconds", type=int, default=30)
-    case.add_argument("--connections", type=int, default=100)
+    case.add_argument("--warmup-seconds", type=int, default=DEFAULT_WARMUP_SECONDS)
+    case.add_argument("--connections", type=int, default=128)
     case.add_argument("--threads", type=int, default=4)
     case.add_argument("--calibration-timeout-seconds", type=float, default=15)
     case.add_argument("--tail-seconds", type=int, default=10)
@@ -856,6 +999,8 @@ def main():
     app_cpus, load_cpus = validate_affinity(args.app_cpus, args.load_cpus)
     jvm_options = list(args.jvm_option or DEFAULT_JVM)
     if args.active_processor_count is not None:
+        if not args.jvm_option:
+            jvm_options = [x for x in jvm_options if not x.startswith("-XX:ActiveProcessorCount=")]
         if args.active_processor_count <= 0 or any(x.startswith("-XX:ActiveProcessorCount=") for x in jvm_options):
             fail("invalid or duplicate ActiveProcessorCount")
         jvm_options.append(f"-XX:ActiveProcessorCount={args.active_processor_count}")
@@ -869,7 +1014,7 @@ def main():
         config = {"cases": {args.route: {args.profile: [args.rps]}}, "repetitions": args.repetitions,
                   "measurement_seconds": args.measurement_seconds, "wrk2_connections": args.connections,
                   "wrk2_threads": args.threads, "calibration_timeout_seconds": args.calibration_timeout_seconds,
-                  "tail_seconds": args.tail_seconds}
+                  "tail_seconds": args.tail_seconds, "warmup_seconds": args.warmup_seconds}
     args.cpu_work = effective_cpu_work(args.cpu_work, config)
     config["cpu_work"] = args.cpu_work
     if args.command != "startup":
@@ -878,12 +1023,21 @@ def main():
     if state["status"] and not args.allow_dirty:
         fail("working tree is dirty; commit changes or use --allow-dirty to record a development run")
     session = args.output or RESULTS / dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    if session.exists():
+    if args.resume and (args.command == "startup" or args.output is None or not session.is_dir()):
+        fail("resume requires an existing explicit load-session output directory")
+    if session.exists() and not args.resume:
         fail(f"session directory already exists: {session}")
     if not args.skip_build:
         build_distributions()
-    session.mkdir(parents=True)
-    write_json(session / "metadata.json", metadata(config, args, app_cpus, load_cpus, jvm_options, state, generator))
+    current_metadata = metadata(config, args, app_cpus, load_cpus, jvm_options, state, generator)
+    if args.resume:
+        recorded = json.loads((session / "metadata.json").read_text())
+        verify_resume(recorded, current_metadata)
+        recorded.setdefault("resumes", []).append(current_metadata["utc_timestamp"])
+        write_json(session / "metadata.json", recorded)
+    else:
+        session.mkdir(parents=True)
+        write_json(session / "metadata.json", current_metadata)
     try:
         if args.command == "startup":
             rows = []
@@ -892,19 +1046,7 @@ def main():
                     rows.append(startup_sample(variant, repetition, order, session, args, jvm_options, app_cpus))
             write_startup_summary(session, rows)
         else:
-            rows = []
-            for route, profiles in config["cases"].items():
-                for profile, rates in profiles.items():
-                    for rps in rates:
-                        for repetition in range(1, config["repetitions"] + 1):
-                            for order, variant in enumerate(paired_order(repetition), 1):
-                                row = load_case(variant, route, profile, rps, repetition, order, config,
-                                                session, args, jvm_options, app_cpus, load_cpus, generator)
-                                rows.append(row)
-                                write_load_summary(session, rows)
-                                if not row["valid_comparison_point"]:
-                                    fail(f"run invalid: {route}/{profile}/{rps} {variant} "
-                                         f"rep {repetition}: {row['integrity_warnings']}; raw data preserved")
+            run_load_suite(config, session, args, jvm_options, app_cpus, load_cpus, generator)
     finally:
         final_state = git_state()
         metadata_path = session / "metadata.json"

@@ -146,7 +146,8 @@ class BenchmarkLogicTest(unittest.TestCase):
     def test_generator_discovery_and_metadata(self):
         version = SimpleNamespace(stdout='wrk 4.0.0\nUsage: wrk <options> <url>\n', stderr='', returncode=1)
         with patch.object(b.shutil, 'which', return_value='/usr/local/bin/wrk2'), \
-                patch.object(b.subprocess, 'run', return_value=version) as run:
+                patch.object(b.subprocess, 'run', return_value=version) as run, \
+                patch.object(b.Path, 'read_bytes', return_value=b'wrk2 test'):
             generator = b.discover_wrk2()
         self.assertEqual(generator['binary'], '/usr/local/bin/wrk2')
         self.assertEqual(generator['reported_version'], 'wrk 4.0.0')
@@ -208,6 +209,7 @@ class BenchmarkLogicTest(unittest.TestCase):
         self.assertEqual(result['median_paired_absolute_difference'], 2.5)
         self.assertEqual(result['min_paired_absolute_difference'], -10)
         self.assertEqual(result['max_paired_absolute_difference'], 40)
+        self.assertEqual(result['paired_difference_iqr'], 14.75)
         micros = next(x for x in results if x['metric'] == 'cpu_us_per_request')
         self.assertEqual(micros['median_paired_absolute_difference'], 2500)
         self.assertNotIn('percent', json.dumps(results))
@@ -244,6 +246,84 @@ class BenchmarkLogicTest(unittest.TestCase):
             sampler.stop()
             self.assertTrue(sampler.rows)
             self.assertGreater(sampler.rows[0]['rss_mib'], 0)
+
+    def test_explicit_warmup_same_jvm_precedes_measurement(self):
+        events = []
+        process = SimpleNamespace(pid=123)
+        values = dict.fromkeys(b.FIELDS, 0)
+        values.update(steady_completed_requests=800, valid_comparison_point=True, integrity_warnings=[])
+        args = SimpleNamespace(readiness_timeout=30, cpu_work=20000)
+        config = dict(measurement_seconds=7, wrk2_connections=8, wrk2_threads=2)
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(b, 'launch', return_value=(process, 8080, 0, None, None)) as launch, \
+                patch.object(b, 'wait_ready', return_value=0.1), \
+                patch.object(b, 'warm_application', side_effect=lambda *a: events.append(('warm', a[3])) or {'duration_seconds': 15}), \
+                patch.object(b, 'verify_java_process', side_effect=lambda pid, *a: events.append(('verify', pid))), \
+                patch.object(b, 'run_wrk2', side_effect=lambda pid, *a: events.append(('measure', pid)) or values), \
+                patch.object(b, 'terminate'):
+            row = b.load_case('direct', 'light', 'zero', 100, 1, 1, config, Path(tmp), args, [], None, None, {})
+        launch.assert_called_once()
+        self.assertEqual(events, [('warm', 8080), ('verify', 123), ('measure', 123)])
+        self.assertEqual(row['application_pid'], 123)
+        self.assertEqual(row['warmup']['duration_seconds'], 15)
+
+    def test_warmup_http_errors_fail_before_measurement(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            def run(command, **kw):
+                kw['stdout'].write('100 requests in 3.00s\nMOSAIC_NON2XX thread=1 count=1\n')
+                return SimpleNamespace(returncode=0)
+            config = dict(warmup_seconds=3, wrk2_connections=8, wrk2_threads=1, tail_seconds=5)
+            with patch.object(b.subprocess, 'run', side_effect=run), self.assertRaisesRegex(ValueError, 'warmup failed'):
+                b.warm_application('light', 100, 1, 8080, config, Path(tmp), None, {'binary': '/wrk2'})
+            self.assertEqual(json.loads((Path(tmp)/'warmup/result.json').read_text())['non_2xx_responses'], 1)
+
+    def test_resume_retains_valid_pairs_and_retries_whole_failed_pair(self):
+        base = {**dict.fromkeys(b.FIELDS, 0), 'route':'light', 'latency_profile':'zero', 'offered_rps':100,
+                'steady_completed_requests':800, 'socket_errors':0, 'non_2xx_responses':0,
+                'generator_cpu_core_equivalents':0, 'integrity_warnings':[]}
+        config = dict(cases={'light':{'zero':[100]}}, repetitions=2)
+        calls = []
+        def first(variant, route, profile, rps, repetition, *args):
+            calls.append((repetition, variant))
+            return {**base, 'variant':variant, 'repetition':repetition, 'valid_comparison_point':repetition==1}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)
+            with patch.object(b, 'load_case', side_effect=first), self.assertRaisesRegex(ValueError, 'run invalid'):
+                b.run_load_suite(config, path, None, [], None, None, {})
+            ledger = json.loads((path/'pair-attempts.json').read_text())
+            self.assertEqual([a['status'] for a in ledger], ['VALID','INVALID'])
+            self.assertEqual(len(b.aggregate(json.loads((path/'load-results.json').read_text()))), len(b.FIELDS))
+            self.assertEqual(calls, [(1,'direct'),(1,'mosaic'),(2,'mosaic')])
+            calls.clear()
+            def second(variant, route, profile, rps, repetition, *args):
+                calls.append((repetition,variant))
+                return {**base,'variant':variant,'repetition':repetition,'valid_comparison_point':True}
+            with patch.object(b, 'load_case', side_effect=second):
+                b.run_load_suite(config, path, None, [], None, None, {})
+            self.assertEqual(calls, [(2,'mosaic'),(2,'direct')])
+            ledger = json.loads((path/'pair-attempts.json').read_text())
+            self.assertEqual([a['status'] for a in ledger], ['VALID','INVALID','VALID'])
+            rows = json.loads((path/'load-results.json').read_text())
+            self.assertEqual(b.aggregate(rows)[0]['paired_repetitions'], 2)
+            self.assertEqual(rows[-1]['attempt'], 2)
+            with patch.object(b, 'load_case') as load:
+                b.run_load_suite(config, path, None, [], None, None, {})
+            load.assert_not_called()
+
+    def test_resume_rejects_source_or_configuration_change(self):
+        meta = {'git': {'commit':'abc','status':'','dirty':False}, 'jvm_options':list(b.DEFAULT_JVM),
+                'benchmark_configuration':{'warmup_seconds':15}}
+        b.verify_resume(meta,meta)
+        for change in [{'jvm_options':['-Xmx64m']}, {'git':{'commit':'def'}},
+                       {'benchmark_configuration':{'warmup_seconds':0}}, {'git_after':{'commit':'abc','status':'dirty'}}]:
+            with self.assertRaisesRegex(ValueError, 'resume metadata mismatch'):
+                b.verify_resume({**meta,**change},meta)
+
+    def test_missing_optional_host_fingerprint_is_safe(self):
+        with patch.object(b, 'optional_text', return_value=None), patch.object(b.shutil,'which',return_value=None):
+            fingerprint = b.host_fingerprint()
+        self.assertIsNone(fingerprint['clocksource'])
+        self.assertEqual(fingerprint['microcode_revisions'], [])
 
     def test_startup_aggregation(self):
         rows = [{'variant': 'direct', 'repetition': 1, 'readiness_seconds': 0.1},

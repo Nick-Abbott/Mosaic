@@ -41,6 +41,24 @@ java -jar mosaic-benchmarks/build/libs/mosaic-benchmarks-*-jmh.jar \
   -tu us -rf json -rff mosaic-benchmarks/build/single-tile.json
 ```
 
+## Authoritative timing profile
+
+Keep the short defaults for developer iteration. Publication runs use one JMH
+thread, average µs/op, 10 × 1s warmup, 10 × 1s measurement, and two forks:
+
+```bash
+./gradlew :mosaic-benchmarks:jmhJar
+taskset -c 0-5,12-17 java -jar mosaic-benchmarks/build/libs/mosaic-benchmarks-*-jmh.jar \
+  -bm avgt -tu us -t 1 -wi 10 -i 10 -w 1s -r 1s -f 2 -foe true \
+  -jvmArgs '-Xms512m -Xmx512m -XX:+UseG1GC -XX:ActiveProcessorCount=12' \
+  -rf json -rff performance/results/jmh-timing.json
+```
+
+Use a new ignored output path. Record the exact jar/source revision, JDK, JVM
+options, affinity, host fingerprint, and command alongside JSON. Inspect fork
+and iteration variance as well as JMH's confidence interval. Do not profile the
+canonical timing run; collect allocation evidence in a separate execution.
+
 JMH's GC profiler reports allocation as `gc.alloc.rate.norm` in bytes per
 operation:
 
