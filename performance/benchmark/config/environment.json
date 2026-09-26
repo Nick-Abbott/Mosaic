@@ -1,0 +1,11 @@
+{
+  "machine": "AMD Ryzen 9 9900X",
+  "application_cpus": "0-5,12-17",
+  "generator_cpus": "6-9,18-21",
+  "background_cpus": "10-11,22-23",
+  "wrk2_binary": "/nix/store/rzcw1k6nnr853cmkjx27fslm7m39hrv5-wrk2-4.0.0-e0109df/bin/wrk2",
+  "wrk2_package": "wrk2-4.0.0-e0109df",
+  "wrk2_reported_version": "wrk 4.0.0",
+  "qualified_max_rps": 3200,
+  "qualification": "Independent loopback-arrival audit: 3200 RPS passed 5/5 steady-state repetitions; 6400 RPS failed 1/5 due to a 100 ms rate wave."
+}
