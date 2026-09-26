@@ -64,14 +64,17 @@ timing accuracy.
 Results come from paired fresh-JVM runs of equivalent applications performing
 the same logical downstream work. Invalid pacing runs are rejected. Full generated
 benchmark sessions are intentionally not committed. These benchmarks measure
-framework overhead, not maximum server capacity.
+framework overhead, not maximum server capacity. Absolute timings depend on
+hardware and JVM; the published results compare paired direct/Mosaic runs under
+identical conditions.
 
 ## What we measure
 
 Application benchmarks compare process CPU cost per request, HTTP response
 latency, and memory use under a specified offered request rate. A separate startup
 benchmark measures process launch to the first successful readiness response.
-JMH benchmarks also cover individual Mosaic operations.
+The [JMH runtime benchmark guide](../docs/performance.md) covers measurements
+of individual Mosaic operations.
 
 Generated sessions contain the Git revision, JVM options, resolved generator
 binary and version, CPU affinity, request configuration, process samples, logs,
@@ -82,7 +85,7 @@ and JSON, CSV, and Markdown summaries. Results belong in the ignored
 
 | Workload | Equivalent application behavior |
 | --- | --- |
-| `light` | A small customer graph combining account and preference data. |
+| `light` | A small customer graph combining customer and preference data. |
 | `aggregate` | A larger graph with shared dependencies, parallel fan-out, and multiple stages. |
 | `batching` | Catalog references with repeated products; both variants deduplicate and batch equivalent downstream work. |
 | `compute` | Deterministic CPU work, using 20,000 iterations by default. |

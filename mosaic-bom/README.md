@@ -1,6 +1,6 @@
 # Mosaic BOM (Bill of Materials)
 
-This module provides a Bill of Materials (BOM) for Mosaic, making it easier to manage versions of Mosaic dependencies.
+This module provides a Bill of Materials (BOM) for Mosaic, making it easier to align versions of Mosaic runtime dependencies.
 
 ## Usage
 
@@ -66,10 +66,10 @@ dependencies {
 
 ## Benefits of Using the BOM
 
-1. **Simplified Dependency Management**: Single source of truth for all Mosaic dependencies
-2. **Version Alignment**: Ensures all Mosaic components are compatible with each other
-3. **Easier Upgrades**: Update all Mosaic dependencies by changing a single version number
-4. **Reduced Configuration**: No need to specify versions for individual Mosaic dependencies
+1. **Simplified Dependency Management**: One version for the included Mosaic runtime libraries
+2. **Version Alignment**: Aligns `mosaic-core` and `mosaic-test` versions
+3. **Easier Upgrades**: Update the included runtime libraries by changing one BOM version
+4. **Reduced Configuration**: No need to specify versions for the included runtime dependencies
 
 ## Included Dependencies
 
