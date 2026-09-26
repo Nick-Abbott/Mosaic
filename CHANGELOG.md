@@ -5,6 +5,12 @@ predate this maintained changelog; their release history is not reconstructed he
 
 ## [Unreleased]
 
+### Changed
+
+- MultiTile opportunistically combines newly pending uncached keys for the same
+  MultiTile within a request Mosaic before scheduled execution begins. Ready work
+  is not intentionally delayed; exact batch boundaries depend on scheduling.
+
 ## [0.4.0] - 2026-09-24
 
 ### Added

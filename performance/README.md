@@ -68,6 +68,39 @@ framework overhead, not maximum server capacity. Absolute timings depend on
 hardware and JVM; the published results compare paired direct/Mosaic runs under
 identical conditions.
 
+## MultiTile cost and batching
+
+Focused JMH measurements on a Ryzen 9 9900X with Zulu 21.0.8 used average µs/op,
+one thread, 3 × 1s warmup, 5 × 1s measurement, and two forks:
+
+| MultiTile operation | Measured time |
+| --- | ---: |
+| Cold, 1 key | ~3.28 µs/op |
+| Cold, 16 keys | ~5.04 µs/op |
+| Fully cached, 1 key | ~0.070 µs/op |
+| Fully cached, 16 keys | ~0.438 µs/op |
+
+In paired application measurements, the coalescing workload added about
+55 µs CPU/request at `zero/1600 RPS` and 80 µs at `service/800 RPS`.
+These CPU measurements do not establish a latency improvement.
+
+Untimed diagnostics show how independent key discovery combines into batches:
+
+| Mosaic workload | Observed backend invocations |
+| --- | --- |
+| `batching` | One 24-key invocation in all 40 samples |
+| `coalescing` | One invocation in 22 samples; two in 18 samples |
+
+Each workload had 20 samples per profile (`zero` and `service`). Every distinct
+product was fetched exactly once. In `coalescing`, six sibling Tiles independently
+discover overlapping keys referencing 24 distinct products. Pending keys may
+combine without caller coordination or an intentional wait. Exact boundaries
+depend on scheduling; deeper or externally delayed consumers can form later batches.
+
+Measurement provenance: application table and startup dataset revision
+`f334a8661247eb219c21f8707b1af7b0c2f2a05a`; MultiTile measurements and coalescing
+diagnostics revision `866ae0a9c90aec6f44864e8a9e47077d3bf33758`.
+
 ## What we measure
 
 Application benchmarks compare process CPU cost per request, HTTP response

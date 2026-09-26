@@ -90,9 +90,11 @@ val next = mosaic.compose(ProductsByIdTile, listOf("product-1", "product-2"))
 // The second call only fetches product-2.
 ```
 
-The same MultiTile and equal keys share work within a Mosaic. Choose `perKeyTile`
-for individual fetches or `chunkedMultiTile` for smaller batches; callers keep the
-same API. Separate calls aren't guaranteed to merge into one backend batch.
+The same MultiTile and equal keys share work within a Mosaic. When new keys from
+several calls are pending before execution begins, Mosaic can combine them into
+one invocation. It does not intentionally wait for more keys, so exact batch
+boundaries depend on scheduling. Choose `perKeyTile` for individual fetches or
+`chunkedMultiTile` for smaller batches; callers keep the same API.
 
 [Choose a batching strategy →](mosaic-core/README.md#-multitile)
 
@@ -180,8 +182,8 @@ inputs, failures, and delays simulated with coroutine virtual time.
 
 ## 📈 **Measured Against Handwritten Kotlin**
 
-Mosaic has a cost. Paired application benchmarks compare it with equivalent
-optimized Kotlin doing the same downstream work:
+Paired application benchmarks against equivalent optimized Kotlin measure the
+additional CPU Mosaic uses for the same downstream work:
 
 | Workload | Additional Mosaic CPU/request |
 | --- | ---: |
@@ -192,6 +194,9 @@ optimized Kotlin doing the same downstream work:
 In the service-backed aggregate case, Mosaic added about **101 µs of CPU/request**.
 Median HTTP latency was **21.44 ms direct vs 21.45 ms Mosaic**—a difference below
 the benchmark's approximately 1 ms timing accuracy.
+
+In the coalescing workload, six sibling Tiles referenced 24 distinct products;
+Mosaic fetched every key once in one or two backend batches across 40 samples.
 
 Absolute timings depend on hardware and JVM; each direct/Mosaic pair ran under
 identical conditions. [Results, workloads, and methodology →](performance/README.md)
