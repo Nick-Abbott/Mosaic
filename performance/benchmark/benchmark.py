@@ -38,9 +38,9 @@ PACING_BIN_START_OFFSET_SECONDS = 10.5
 INPUTS = (1, 7, 42, 99)
 READINESS_POLL_INTERVAL_SECONDS = 0.005
 FIELDS = (
-    "validated_completed_requests", "successful_rps", "corrected_mean_ms",
-    "corrected_p50_ms", "corrected_p95_ms", "corrected_p99_ms",
+    "validated_completed_requests", "successful_rps",
     "uncorrected_p50_ms", "uncorrected_p95_ms", "uncorrected_p99_ms",
+    "corrected_mean_ms", "corrected_p50_ms", "corrected_p95_ms", "corrected_p99_ms",
     "process_cpu_seconds", "cpu_core_equivalents", "cpu_ms_per_successful_request",
     "average_rss_mib", "peak_rss_mib", "vmhwm_mib",
 )
@@ -398,11 +398,16 @@ def metadata(config, args, app_cpus, load_cpus, jvm_options, state, environment)
         "generator": {"name": "wrk2", "binary": environment["wrk2_binary"],
                       "package": environment["wrk2_package"],
                       "reported_version": environment["wrk2_reported_version"],
+                      "candidate_max_rps": environment["candidate_max_rps"],
                       "qualified_max_rps": environment["qualified_max_rps"],
                       "qualification": environment["qualification"]},
         "application_environment": {"MOSAIC_PERFORMANCE_TRACING": "false", "MOSAIC_PERFORMANCE_CPU_WORK": str(args.cpu_work)},
         "proc_clock_ticks_per_second": os.sysconf("SC_CLK_TCK"),
         "rss_sample_interval_seconds": 0.1,
+        "latency_semantics": {
+            "primary": "uncorrected: actual request dispatch to response completion; valid only after independent pacing checks",
+            "diagnostic": "corrected: intended per-connection scheduled start to response completion; includes schedule delay",
+            "timing_accuracy_ms": 1},
         "readiness_poll_interval_seconds": READINESS_POLL_INTERVAL_SECONDS,
         "application_cpu_affinity": app_cpus, "load_cpu_affinity": load_cpus,
         "available_cpu_affinity": sorted(os.sched_getaffinity(0)),
@@ -786,7 +791,8 @@ def write_load_summary(session, rows):
         writer.writerows(aggregated)
     invalid = [row for row in rows if not row["valid_comparison_point"]]
     lines = ["# wrk2 load summary", "", f"Invalid runs: {len(invalid)}. They are excluded from paired aggregates.",
-             "Corrected latency is primary; uncorrected latency remains in raw results.", "",
+             "Primary application latency: uncorrected actual dispatch to response completion, accepted only after pacing validation.",
+             "Corrected latency: intended per-connection schedule to completion; generator/scheduling diagnostic only.", "",
              "| Route | Profile | RPS | Metric | Direct median | Mosaic median | Paired absolute median | Paired relative median | Paired relative min | Paired relative max | Pairs |",
              "| --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
     def fmt(value):
@@ -798,12 +804,12 @@ def write_load_summary(session, rows):
                      f"{fmt(row['median_paired_relative_percent'])}% | "
                      f"{fmt(row['min_paired_relative_percent'])}% | {fmt(row['max_paired_relative_percent'])}% | "
                      f"{row['paired_repetitions']} |")
-    lines += ["", "## Individual runs", "", "| Case | Variant | Rep | Status | Requests | Corrected p99 ms | CPU ms/request | App cores | Generator cores | Errors | Warnings |",
-              "| --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |"]
+    lines += ["", "## Individual runs", "", "| Case | Variant | Rep | Status | Requests | HTTP uncorrected p99 ms | Schedule corrected p99 ms | CPU ms/request | App cores | Generator cores | Errors | Warnings |",
+              "| --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |"]
     for row in rows:
         lines.append(f"| {row['route']}/{row['latency_profile']}/{row['offered_rps']} | {row['variant']} | "
                      f"{row['repetition']} | {'VALID' if row['valid_comparison_point'] else '**INVALID**'} | "
-                     f"{row['steady_completed_requests']} | {row['corrected_p99_ms']:.3f} | "
+                     f"{row['steady_completed_requests']} | {row['uncorrected_p99_ms']:.3f} | {row['corrected_p99_ms']:.3f} | "
                      f"{fmt(row['cpu_ms_per_successful_request'])} | {row['cpu_core_equivalents']:.3f} | "
                      f"{row['generator_cpu_core_equivalents']:.3f} | "
                      f"{row['socket_errors']}/{row['non_2xx_responses']} | {', '.join(row['integrity_warnings']) or 'none'} |")
@@ -883,7 +889,7 @@ def parse_args():
     case.add_argument("--rps", type=int, required=True)
     case.add_argument("--repetitions", type=int, default=1)
     case.add_argument("--measurement-seconds", type=int, default=30)
-    case.add_argument("--connections", type=int, default=128)
+    case.add_argument("--connections", type=int, default=100)
     case.add_argument("--threads", type=int, default=4)
     case.add_argument("--calibration-timeout-seconds", type=float, default=15)
     case.add_argument("--tail-seconds", type=int, default=10)

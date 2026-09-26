@@ -102,6 +102,17 @@ class BenchmarkLogicTest(unittest.TestCase):
                 self.assertFalse(checked['valid_comparison_point'])
                 self.assertIn('200 ms pacing wave', ' '.join(checked['integrity_warnings']))
 
+    def test_schedule_tail_anomaly_despite_smooth_dispatch(self):
+        metric = b.parse_wrk2(FIXTURE.read_text(), 2)
+        metric.update(steady_completed_requests=25600, lua_window_requests=25600,
+                      lua_100ms_bins={i: 320 for i in range(80)},
+                      corrected_p99_ms=1200, uncorrected_p99_ms=0.2)
+        checked = b.validate_steady_window(metric, 3200, 7, 8, 8, 1)
+        self.assertFalse(checked['valid_comparison_point'])
+        self.assertEqual(checked['integrity_warnings'],
+                         ['corrected p99 shows a large scheduling/latency anomaly'])
+        self.assertEqual(metric['uncorrected_p99_ms'], 0.2)
+
     def test_steady_window_rate_and_pacing(self):
         metric = b.parse_wrk2(FIXTURE.read_text(), 2)
         # This historical fixture used an oversized low-rate pool and its
@@ -136,6 +147,13 @@ class BenchmarkLogicTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'qualified ceiling'):
             b.enforce_qualified_rates(cfg, env, False)
         self.assertFalse(b.enforce_qualified_rates(cfg, env, True))
+        # A successful health candidate does not override failed representative
+        # POST qualification on the current machine.
+        cfg['cases']['light']['zero'] = [3200]
+        env = {'qualified_max_rps': 1600, 'candidate_max_rps': 3200}
+        with self.assertRaisesRegex(ValueError, 'qualified ceiling'):
+            b.enforce_qualified_rates(cfg, env, False)
+        self.assertFalse(b.enforce_qualified_rates(cfg, env, True))
 
     def test_environment_version_identity(self):
         # Unit tests run on CI without the machine-specific Nix store binary.
@@ -152,17 +170,23 @@ class BenchmarkLogicTest(unittest.TestCase):
             b.load_environment()
         self.assertEqual(env['wrk2_package'], 'wrk2-4.0.0-e0109df')
         self.assertEqual(env['wrk2_reported_version'], 'wrk 4.0.0')
-        self.assertEqual(env['qualified_max_rps'], 3200)
+        self.assertEqual(env['candidate_max_rps'], 3200)
+        self.assertEqual(env['qualified_max_rps'], 1600)
         args = SimpleNamespace(cpu_work=20000, skip_build=True, exploratory=True)
         with patch.object(b, 'command_output', return_value='test'):
             metadata = b.metadata({}, args, None, None, list(b.DEFAULT_JVM),
                                   {'commit': 'abc', 'status': ''}, env)
         self.assertEqual(metadata['generator']['package'], env['wrk2_package'])
         self.assertEqual(metadata['generator']['reported_version'], 'wrk 4.0.0')
+        self.assertEqual(metadata['generator']['candidate_max_rps'], 3200)
+        self.assertEqual(metadata['generator']['qualified_max_rps'], 1600)
+        self.assertIn('uncorrected', metadata['latency_semantics']['primary'])
+        self.assertIn('schedule delay', metadata['latency_semantics']['diagnostic'])
 
     def test_invalid_pair_excluded_from_aggregation(self):
         base = {'route': 'light', 'latency_profile': 'zero', 'offered_rps': 100,
                 'repetition': 1, 'steady_completed_requests': 800, 'corrected_p99_ms': 1,
+                'uncorrected_p99_ms': 0.5,
                 'cpu_ms_per_successful_request': 0.1, 'cpu_core_equivalents': 0.1,
                 'generator_cpu_core_equivalents': 0.1, 'socket_errors': 0,
                 'non_2xx_responses': 0, 'integrity_warnings': []}
@@ -171,7 +195,11 @@ class BenchmarkLogicTest(unittest.TestCase):
                     {**base, 'variant': 'mosaic', 'valid_comparison_point': False}]
             b.write_load_summary(Path(temporary), rows)
             self.assertEqual(len((Path(temporary) / 'summary.csv').read_text().splitlines()), 1)
-            self.assertIn('**INVALID**', (Path(temporary) / 'summary.md').read_text())
+            summary = (Path(temporary) / 'summary.md').read_text()
+            self.assertIn('**INVALID**', summary)
+            self.assertIn('HTTP uncorrected p99 ms', summary)
+            self.assertIn('Schedule corrected p99 ms', summary)
+            self.assertIn('generator/scheduling diagnostic only', summary)
 
     def test_paired_aggregation_median_and_range(self):
         rows = []

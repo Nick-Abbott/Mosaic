@@ -6,6 +6,7 @@
   "wrk2_binary": "/nix/store/rzcw1k6nnr853cmkjx27fslm7m39hrv5-wrk2-4.0.0-e0109df/bin/wrk2",
   "wrk2_package": "wrk2-4.0.0-e0109df",
   "wrk2_reported_version": "wrk 4.0.0",
-  "qualified_max_rps": 3200,
-  "qualification": "Independent loopback-arrival audit: GET /health; 4 workers, 100 connections, 60-second run, 5-second socket timeout, arrivals audited from 15 to 55 seconds. 3200 RPS passed 5/5 steady-state repetitions; 6400 RPS failed 1/5 due to a material 100 ms rate wave. Application connection pools are sized separately and every application run must pass its integrity gate."
+  "qualified_max_rps": 1600,
+  "qualification": "Independent GET /health arrival audit passed 5/5 at 3200 RPS; 6400 RPS did not pass repeatably and remains outside the authoritative candidate range. Representative POST /aggregate service qualification passed 5/5 each at 800 and 1600 RPS with four workers and 100 connections. At 3200, both 100- and 200-connection configurations have recorded temporal failures. Until representative qualification passes, authoritative application configurations are capped at 1600; 3200 remains the machine-specific maximum candidate, not application saturation. Every individual application run must also pass count, 200 ms pacing, errors, and schedule-anomaly checks; 3200 exploratory runs additionally require 100 ms checks.",
+  "candidate_max_rps": 3200
 }

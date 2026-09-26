@@ -90,16 +90,37 @@ fresh JVM for every direct or Mosaic run. Gradle does not run during a timed
 measurement. Pairs run serially and alternate order: direct/Mosaic on odd
 repetitions and Mosaic/direct on even repetitions.
 
-The qualified generator on the current Ryzen 9 9900X machine is the Nix package
+The candidate generator on the current Ryzen 9 9900X machine is the Nix package
 `wrk2-4.0.0-e0109df`, whose binary prints `wrk 4.0.0`. Its exact Nix store path,
 CPU affinities, and rate qualification live in
 `benchmark/config/environment.json` and are copied into session metadata.
 This is machine-specific configuration, not a universal wrk2 capacity limit.
-The present qualification ceiling is **3,200 offered RPS**: five of five
+The provisional machine-specific maximum candidate rate is **3,200 offered RPS**: five of five
 independent `/health` steady-state repetitions passed temporal validation.
 At 6,400 RPS, one of five repetitions had a material pacing wave, so 6,400 is
-not qualified. An authoritative suite above 3,200 RPS is rejected;
-`--exploratory` permits a clearly non-authoritative diagnostic run.
+not qualified. Neither rate establishes application saturation.
+
+Representative `POST /aggregate` with simulated service delay passed five of
+five independent 60-second repetitions at **800 and 1,600 RPS**, using four
+workers and 100 connections. At 3,200 RPS, both the 100- and 200-connection
+configurations have temporal failures. Consequently `candidate_max_rps` is
+3,200, while the current default **authoritative application ceiling is 1,600**
+(`qualified_max_rps`). A candidate is not automatically qualified. Configurations
+above the qualified rate are rejected; `--exploratory` allows a clearly
+non-authoritative diagnostic. No additional 6,400-RPS qualification is planned.
+
+| Representative POST RPS | Connections / workers | Temporal passes | Decision |
+|---:|---:|---:|---|
+| 800 | 100 / 4 | 5/5 | qualified |
+| 1,600 | 100 / 4 | 5/5 | qualified |
+| 3,200 | 100 / 4 | 2/5 | not qualified |
+| 3,200 | 200 / 4 | 1/5 | not qualified |
+
+These decisions include every planned repetition; failing runs are not replaced.
+Steady counts were close to exact even in failed runs, which is why sub-second
+validation remains necessary. All qualification runs had zero socket and HTTP
+errors. The stopped paired experiment is not resumed after the failed
+representative 3,200-RPS qualification; profiling waits for a complete matrix.
 
 The independent qualification used four workers, 100 connections, `-d60s`,
 `--timeout 5s`, and `GET /health`. An independent loopback-arrival audit ran
@@ -109,6 +130,31 @@ for latency headroom and may differ from that reference pool. The ceiling is
 a qualification decision for this environment, not a promise that every run
 or connection configuration below it will pace correctly. Every application
 run must still pass the count, temporal-bin, error, and latency-anomaly checks.
+
+### Representative connection configuration
+
+Use **four workers and 100 connections through 1,600 RPS** for new application
+cases. At 1,600 RPS and approximately 22 ms HTTP latency, nominal concurrency
+is 35, so 100 connections provide about 2.9 times the expected concurrency.
+This is the smallest tested four-worker pool with five passing representative
+repetitions at both lower rates. A one-repeat sensitivity probe also passed
+with 200 connections at each rate. Exact 50-connection probes used two workers
+because wrk2 floors connections per worker: `-c50 -t4` opens only 48. They
+passed at the lower rates but also vary worker count and have less headroom.
+
+At 3,200 RPS, 50 connections delivered about 2,327 RPS, consistent with the
+connection bound of 50 / 21.5 ms. Its uncorrected p99 was about 21.7 ms while
+corrected p99 reached 16.3 seconds: schedule debt is not HTTP response latency.
+The 100- and 200-connection failures at this rate prevent selecting an
+authoritative representative configuration. Do not loosen the pacing gate
+or discard those repetitions. Hold the chosen pool fixed within every pair.
+
+Existing measurements may use other documented pools. They need not be thrown
+away when preserved raw dispatch bins and both histograms can be reparsed and
+every repetition passes the current gate. Keep their original configuration,
+provenance, and validation history; a later qualification failure does not
+erase measurements, and those measurements do not override the failed
+representative qualification or complete a stopped experiment.
 
 ### Timing and request accounting
 
@@ -125,18 +171,35 @@ steady duration plus 11 seconds (`-d41s` for a 30-second minimum). Calibration
 normally completes near 10.1 seconds, leaving about 30.9 seconds of measured
 steady state. The runner rejects a measured interval outside 30–32 seconds
 for that configuration, and validates the post-calibration histogram count
-against offered rate × actual sampled wall time. CPU/RSS and corrected latency
+against offered rate × actual sampled wall time. CPU/RSS and both latency histograms
 therefore cover the same post-calibration run, within the recorded worker
 calibration spread and brief final report overhead. The exact window start,
 end, elapsed time, and calibration spread are recorded.
 
-The corrected HdrHistogram (`Recorded Latency`) is the **primary** response
-latency metric. Its count is wrk2's measured post-calibration response count.
-The full-run request count includes calibration and is never the CPU/request
-denominator. The corrected histogram's completed count is used only after
-rate, pacing, socket-error, and HTTP-status gates pass. Mean and p50/p95/p99 corrected latency, plus
-p50/p95/p99 uncorrected latency, are preserved. wrk2 reports roughly ±1 ms
-latency timing accuracy; differences smaller than that require caution.
+### Application latency versus scheduling latency
+
+**Primary application HTTP latency is uncorrected p50/p95/p99** from the
+`Uncorrected Latency` histogram: actual request dispatch (socket-write start)
+to response completion. Accept it only when independent temporal validation
+shows that the offered traffic was delivered faithfully. This prevents
+accepting omitted or late traffic merely because completed requests look fast.
+
+**Corrected p50/p95/p99 are scheduling diagnostics**, not application HTTP
+latency. `Recorded Latency` starts at the intended per-connection schedule,
+so it includes connection-level schedule delay before actual dispatch.
+Smooth aggregate arrivals can coexist with a large corrected tail. Investigate
+large corrected/uncorrected divergence; the anomaly gate remains in force.
+The cached Nix wrk2 source sets `actual_latency_start` at socket-write start
+and computes corrected latency from `thread_start` and the connection's
+completed-request schedule.
+
+The two histograms cover the same post-calibration interval and have identical
+completed-response counts. The validated count is the CPU/request denominator;
+full-run counts including calibration never are. Corrected mean is retained
+as a diagnostic too. wrk2 timing accuracy is roughly ±1 ms; differences below
+that require caution. Historical result files may label corrected latency
+primary; reanalysis must use the preserved uncorrected fields and identify
+corrected values as schedule diagnostics without overwriting the raw files.
 
 The Lua script constructs one static request per worker run. Input values
 `1, 7, 42, 99` rotate across repetitions; direct and Mosaic receive the same
@@ -153,8 +216,9 @@ Connection pools must produce faithful pacing at low rates too. At 3,200 RPS,
 individual 100 ms bins are also checked (25% tolerance). A rate/count mismatch over 1%, substantial bin wave, socket or
 HTTP error, or large corrected-tail anomaly marks a run invalid. Invalid runs
 remain on disk and are excluded from paired aggregates; authoritative execution
-stops with an error so the whole case can be rerun. The independent `/health`
-qualification remains the stricter machine/rate temporal gate. Ordinary app
+stops with an error so the whole four-pair case can be rerun. Independent
+`/health` and representative POST arrival audits establish machine/rate
+qualification separately from ordinary per-run sanity validation. Ordinary app
 runs do not do per-request network capture.
 
 `cpu_ms_per_successful_request` is application CPU seconds × 1000 divided by
@@ -212,8 +276,8 @@ on this host.
 
 A brief host scheduler investigation initially found `rtla` unavailable.
 After temporary provisioning, both `timerlat` and `osnoise` rejected execution
-because root permission was unavailable. Host scheduling remains **diagnosis
-unavailable/inconclusive**; no governor, interrupt, realtime, boot-isolation,
+because root permission was unavailable. Host scheduling diagnosis remains
+**inconclusive**; no governor, interrupt, realtime, boot-isolation,
 or kernel setting was changed. Earlier k6, Vegeta, and oha investigations
 showed intermittent generator/host pacing disturbances. The 6,400-RPS wrk2
 qualification failure remains unresolved. Maximum-saturation testing above
