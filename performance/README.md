@@ -9,6 +9,63 @@ request-scoped deduplication where appropriate.
 The goal is to quantify the cost of Mosaic's composition and dependency handling.
 The direct implementation is intended to be a useful, efficient baseline.
 
+## Results
+
+Across the validated application benchmarks, Mosaic adds a small but measurable
+CPU cost compared with equivalent optimized Kotlin:
+
+| Workload | Observed Mosaic CPU overhead |
+| --- | ---: |
+| Light | +11–20 µs/request |
+| Batching | +17–31 µs/request |
+| Aggregate | +48–101 µs/request |
+| Compute | +1–12 µs/request |
+
+These ranges summarize rounded paired median differences. The largest aggregate overhead
+is about one tenth of a millisecond of CPU per request.
+
+At 1,200 RPS in `aggregate/service`, direct Kotlin used approximately 0.085 ms
+CPU/request and Mosaic 0.187 ms/request, with a paired overhead of 0.101 ms
+(101 µs). Median HTTP latency was approximately 21.44 ms versus 21.45 ms:
+the intentional service delays dominate response time. For service-backed
+workloads, median response-latency differences were below wrk2's approximately
+±1 ms timing accuracy. This does not establish zero latency overhead.
+
+Mosaic generally used several additional MiB of process memory, with median RSS
+differences reaching roughly 20 MiB. Startup was effectively similar across
+20 pairs: medians were approximately 345 ms for direct Kotlin and 349 ms for
+Mosaic, with a median paired difference of about +5 ms. Individual startup
+paired differences varied in both directions.
+
+The table reports variant medians; CPU overhead is the median of four paired
+Mosaic − direct differences, which can differ from subtracting variant medians.
+Latency values are descriptive; sub-millisecond differences are below the stated
+timing accuracy.
+
+| Workload/profile | RPS | Direct CPU µs/request | Mosaic CPU µs/request | Mosaic overhead µs/request | Direct p50 ms | Mosaic p50 ms | Direct avg RSS MiB | Mosaic avg RSS MiB |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| light/zero | 800 | 55.117 | 75.182 | +20.466 | 0.058 | 0.060 | 187.8 | 201.7 |
+| light/zero | 1600 | 32.917 | 46.936 | +14.133 | 0.046 | 0.049 | 193.1 | 195.8 |
+| light/service | 400 | 139.696 | 158.269 | +18.572 | 3.130 | 3.120 | 190.4 | 196.4 |
+| light/service | 800 | 56.941 | 69.504 | +12.157 | 3.120 | 3.110 | 193.8 | 204.3 |
+| light/service | 1000 | 52.333 | 63.351 | +11.017 | 3.110 | 3.110 | 196.8 | 203.4 |
+| batching/zero | 800 | 69.909 | 95.034 | +29.589 | 0.071 | 0.084 | 190.9 | 202.6 |
+| batching/zero | 1600 | 46.630 | 68.146 | +21.538 | 0.059 | 0.073 | 188.9 | 208.0 |
+| batching/service | 400 | 140.908 | 174.073 | +30.737 | 3.140 | 3.150 | 191.4 | 198.6 |
+| batching/service | 800 | 73.966 | 89.159 | +17.185 | 3.130 | 3.130 | 199.2 | 199.8 |
+| batching/service | 1600 | 49.663 | 72.820 | +23.664 | 3.115 | 3.125 | 205.2 | 201.0 |
+| aggregate/zero | 400 | 144.138 | 216.812 | +73.078 | 0.084 | 0.089 | 195.2 | 199.9 |
+| aggregate/zero | 800 | 68.693 | 131.307 | +62.578 | 0.072 | 0.076 | 192.1 | 206.6 |
+| aggregate/zero | 1600 | 45.208 | 92.547 | +47.847 | 0.060 | 0.067 | 197.4 | 199.0 |
+| aggregate/service | 1200 | 85.217 | 186.660 | +101.322 | 21.440 | 21.450 | 190.9 | 207.7 |
+| compute/zero | 800 | 396.964 | 393.522 | +1.012 | 0.116 | 0.118 | 194.3 | 203.4 |
+| compute/zero | 1600 | 362.687 | 374.980 | +11.774 | 0.118 | 0.121 | 196.7 | 201.1 |
+
+Results come from paired fresh-JVM runs of equivalent applications performing
+the same logical downstream work. Invalid pacing runs are rejected. Full generated
+benchmark sessions are intentionally not committed. These benchmarks measure
+framework overhead, not maximum server capacity.
+
 ## What we measure
 
 Application benchmarks compare process CPU cost per request, HTTP response
@@ -119,7 +176,3 @@ wrk2's timing accuracy is approximately ±1 ms; small latency differences may be
 below its resolution. Service delays can obscure response-time differences while
 CPU/request still exposes orchestration cost. Compare results only when both
 variants perform equivalent logical work, and report startup separately.
-
-A future results section can summarize absolute CPU overhead by workload, with
-HTTP latency, memory, and startup differences alongside it once a complete,
-validated experiment is available.

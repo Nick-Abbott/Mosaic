@@ -209,6 +209,18 @@ val tax = mosaic.compose(TaxCalculatorTile)      // Uses cached LineItemsTile
 // LineItemsTile was only fetched ONCE!
 ```
 
+## Performance
+
+Equivalent application benchmarks measured a small but measurable Mosaic CPU
+cost: roughly **11–31 µs/request** for light and batching workloads,
+**48–101 µs/request** for a complex aggregate graph, and **1–12 µs/request**
+for the CPU-heavy workload. In the service-backed aggregate benchmark, Mosaic
+added about **101 µs of CPU per request**, while median HTTP latency was
+approximately 21.44 ms for direct Kotlin and 21.45 ms for Mosaic. The median
+latency difference is below the benchmark's approximately 1 ms timing accuracy.
+
+See [Performance](performance/README.md) for results, workloads, and methodology.
+
 ## 🏗️ **Dependency Injection with Canvas**
 
 Canvas provides hierarchical dependency injection that separates application-level dependencies from request-specific data. This enables clean separation of concerns and efficient resource management.

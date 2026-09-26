@@ -65,8 +65,14 @@ class BenchmarkLogicTest(unittest.TestCase):
         self.assertEqual(result['socket_errors'], 0)
         self.assertEqual(result['non_2xx_responses'], 0)
         self.assertEqual(sum(result['lua_100ms_bins'].values()), result['lua_window_requests'])
+        self.assertEqual(result['lua_100ms_bins'], {0: 400, 1: 200, 2: 200})
         with self.assertRaisesRegex(ValueError, 'calibrations'):
             b.parse_wrk2(text.replace('Thread calibration:', 'Calibration:', 1), 2)
+        with self.assertRaisesRegex(ValueError, 'histogram counts disagree'):
+            b.parse_wrk2(text.replace('Total count    =          800',
+                                     'Total count    =          801', 1), 2)
+        with self.assertRaisesRegex(ValueError, 'p95, mean, or count'):
+            b.parse_wrk2(text.replace('1.703     0.950000', '1.703     0.960000'), 2)
 
     def test_wrk2_socket_and_http_error_parsing(self):
         text = FIXTURE.read_text().replace('MOSAIC_NON2XX thread=1 count=0',
