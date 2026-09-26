@@ -7,5 +7,5 @@
   "wrk2_package": "wrk2-4.0.0-e0109df",
   "wrk2_reported_version": "wrk 4.0.0",
   "qualified_max_rps": 3200,
-  "qualification": "Independent loopback-arrival audit: 3200 RPS passed 5/5 steady-state repetitions; 6400 RPS failed 1/5 due to a 100 ms rate wave."
+  "qualification": "Independent loopback-arrival audit: GET /health; 4 workers, 100 connections, 60-second run, 5-second socket timeout, arrivals audited from 15 to 55 seconds. 3200 RPS passed 5/5 steady-state repetitions; 6400 RPS failed 1/5 due to a material 100 ms rate wave. Application connection pools are sized separately and every application run must pass its integrity gate."
 }

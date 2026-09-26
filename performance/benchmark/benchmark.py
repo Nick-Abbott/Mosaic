@@ -248,7 +248,9 @@ def parse_wrk2(output, threads):
     uncorrected = histogram(output, "Uncorrected Latency (measured without taking delayed starts into account)")
     if corrected["count"] != uncorrected["count"]:
         fail("wrk2 corrected and uncorrected histogram counts disagree")
-    full = re.search(r"^\s*([0-9]+) requests in ([0-9]+(?:\.[0-9]+)?)s", output, re.MULTILINE)
+    # wrk2 formats longer elapsed times in minutes/hours. The cumulative
+    # count is diagnostic; timing comes from the recorded monotonic window.
+    full = re.search(r"^\s*([0-9]+) requests in ", output, re.MULTILINE)
     if not full:
         fail("wrk2 omitted cumulative request count")
     errors = re.search(r"Socket errors: connect ([0-9]+), read ([0-9]+), write ([0-9]+), timeout ([0-9]+)", output)
@@ -300,9 +302,11 @@ def validate_steady_window(metrics, rate, minimum_seconds, actual_seconds, audit
         warnings.append(f"interior dispatch count differs from configured rate by {audit_deviation:+.2f}%")
     if metrics["socket_errors"] or metrics["non_2xx_responses"]:
         warnings.append("socket or non-2xx errors")
-    # wrk2 dispatches in per-connection batches. Use wider bins at low rates.
+    # A one-second bin can hide a complete dispatch pause and its catch-up
+    # burst. Keep the 200 ms check at low rates as well; pool sizing must
+    # produce faithful pacing rather than relying on wider aggregation.
     bins = {int(k): v for k, v in metrics["lua_100ms_bins"].items()}
-    width = 2 if rate >= 800 else 10
+    width = 2
     expected_bucket = rate * width / 10
     for bucket in range(10, int((audit_seconds - 1) * 10), width):
         observed_bucket = sum(bins.get(i, 0) for i in range(bucket, bucket + width))

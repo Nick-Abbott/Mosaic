@@ -101,6 +101,15 @@ At 6,400 RPS, one of five repetitions had a material pacing wave, so 6,400 is
 not qualified. An authoritative suite above 3,200 RPS is rejected;
 `--exploratory` permits a clearly non-authoritative diagnostic run.
 
+The independent qualification used four workers, 100 connections, `-d60s`,
+`--timeout 5s`, and `GET /health`. An independent loopback-arrival audit ran
+from 15 to 55 seconds; the audit proxy used the background CPU group. No proxy
+is present in application measurements. Application connection pools are sized
+for latency headroom and may differ from that reference pool. The ceiling is
+a qualification decision for this environment, not a promise that every run
+or connection configuration below it will pace correctly. Every application
+run must still pass the count, temporal-bin, error, and latency-anomaly checks.
+
 ### Timing and request accounting
 
 wrk2 calibrates for about ten seconds. The runner uses `stdbuf` and waits for
@@ -137,9 +146,11 @@ responses over the complete run and records 100 ms request-dispatch bins in a
 fixed interior audit from launch + 10.5 seconds to the configured natural end. Its
 clock read is a lightweight in-process sanity check, not a network proxy or
 packet capture. The first and last second of bins are excluded from the
-pacing check to avoid boundary effects. At lower rates, one-second bins absorb
-wrk2's normal per-connection batching; from 800 RPS, adjacent 100 ms bins are
-checked, and at 3,200 RPS individual 100 ms bins are checked too. A rate/count mismatch over 1%, substantial bin wave, socket or
+pacing check to avoid boundary effects. Adjacent 100 ms bins are checked as
+200 ms windows at every offered rate (35% tolerance). A wider low-rate window
+can hide a dispatch pause followed by a catch-up burst despite an exact count.
+Connection pools must produce faithful pacing at low rates too. At 3,200 RPS,
+individual 100 ms bins are also checked (25% tolerance). A rate/count mismatch over 1%, substantial bin wave, socket or
 HTTP error, or large corrected-tail anomaly marks a run invalid. Invalid runs
 remain on disk and are excluded from paired aggregates; authoritative execution
 stops with an error so the whole case can be rerun. The independent `/health`
@@ -199,8 +210,9 @@ and JVM options are identical across variants and recorded in metadata. The
 JVM sees the pinned processors, so no `ActiveProcessorCount` override is used
 on this host.
 
-A brief host scheduler investigation found that `rtla` (`timerlat`/`osnoise`)
-was unavailable. It therefore classified host scheduling as **diagnosis
+A brief host scheduler investigation initially found `rtla` unavailable.
+After temporary provisioning, both `timerlat` and `osnoise` rejected execution
+because root permission was unavailable. Host scheduling remains **diagnosis
 unavailable/inconclusive**; no governor, interrupt, realtime, boot-isolation,
 or kernel setting was changed. Earlier k6, Vegeta, and oha investigations
 showed intermittent generator/host pacing disturbances. The 6,400-RPS wrk2

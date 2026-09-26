@@ -79,8 +79,35 @@ class BenchmarkLogicTest(unittest.TestCase):
         self.assertFalse(checked['valid_comparison_point'])
         self.assertIn('socket or non-2xx errors', checked['integrity_warnings'])
 
+    def test_cumulative_count_accepts_wrk2_duration_units(self):
+        for duration in ('18.08s', '1.18m', '2.34h'):
+            with self.subTest(duration=duration):
+                text = FIXTURE.read_text().replace('1824 requests in 18.08s',
+                                                   f'1824 requests in {duration}')
+                self.assertEqual(b.parse_wrk2(text, 2)['full_run_requests'], 1824)
+
+    def test_low_rate_catchup_wave_cannot_hide_in_one_second(self):
+        for rate in (100, 400, 600):
+            with self.subTest(rate=rate):
+                metric = b.parse_wrk2(FIXTURE.read_text(), 2)
+                bins = {i: rate // 10 for i in range(80)}
+                # One 200 ms pause, then a compensating 200 ms burst. The
+                # full count and every one-second count remain exact.
+                bins.update({30: 0, 31: 0, 32: rate // 5, 33: rate // 5})
+                self.assertEqual(sum(bins[i] for i in range(30, 40)), rate)
+                metric.update(steady_completed_requests=rate * 8,
+                              lua_window_requests=rate * 8, lua_100ms_bins=bins,
+                              corrected_p99_ms=687, uncorrected_p99_ms=285)
+                checked = b.validate_steady_window(metric, rate, 7, 8, 8, 1)
+                self.assertFalse(checked['valid_comparison_point'])
+                self.assertIn('200 ms pacing wave', ' '.join(checked['integrity_warnings']))
+
     def test_steady_window_rate_and_pacing(self):
         metric = b.parse_wrk2(FIXTURE.read_text(), 2)
+        # This historical fixture used an oversized low-rate pool and its
+        # 320 ms batching must now fail temporal validation.
+        self.assertFalse(b.validate_steady_window(metric, 100, 7, 8, 8, 1)['valid_comparison_point'])
+        metric['lua_100ms_bins'] = {i: 10 for i in range(80)}
         good = b.validate_steady_window(metric, 100, 7, 8.01, 8, 1)
         self.assertTrue(good['valid_comparison_point'])
         self.assertAlmostEqual(good['steady_expected_requests'], 801)
@@ -111,7 +138,18 @@ class BenchmarkLogicTest(unittest.TestCase):
         self.assertFalse(b.enforce_qualified_rates(cfg, env, True))
 
     def test_environment_version_identity(self):
-        env = b.load_environment()
+        # Unit tests run on CI without the machine-specific Nix store binary.
+        version = SimpleNamespace(stdout='wrk 4.0.0\n', stderr='')
+        with patch.object(Path, 'is_file', return_value=True), \
+                patch.object(b.subprocess, 'run', return_value=version):
+            env = b.load_environment()
+        with patch.object(Path, 'is_file', return_value=False), \
+                self.assertRaisesRegex(ValueError, 'binary missing'):
+            b.load_environment()
+        with patch.object(Path, 'is_file', return_value=True), \
+                patch.object(b.subprocess, 'run', return_value=SimpleNamespace(stdout='wrk 4.1.0\n', stderr='')), \
+                self.assertRaisesRegex(ValueError, 'identity differs'):
+            b.load_environment()
         self.assertEqual(env['wrk2_package'], 'wrk2-4.0.0-e0109df')
         self.assertEqual(env['wrk2_reported_version'], 'wrk 4.0.0')
         self.assertEqual(env['qualified_max_rps'], 3200)
