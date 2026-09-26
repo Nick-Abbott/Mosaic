@@ -11,6 +11,10 @@ The direct implementation is intended to be a useful, efficient baseline.
 
 ## Results
 
+The detailed application table and startup figures below are the established
+0.4 benchmark baseline, measured at `f334a8661247eb219c21f8707b1af7b0c2f2a05a`.
+They are historical framework-cost evidence, not a fresh 0.5 application matrix.
+
 Across the validated application benchmarks, Mosaic adds a small but measurable
 CPU cost compared with equivalent optimized Kotlin:
 
@@ -67,6 +71,45 @@ benchmark sessions are intentionally not committed. These benchmarks measure
 framework overhead, not maximum server capacity. Absolute timings depend on
 hardware and JVM; the published results compare paired direct/Mosaic runs under
 identical conditions.
+
+## 0.5 MultiTile regression and effectiveness
+
+Focused matched benchmarks compare the pre-feature runtime at
+`07a9eda5be3486ae6151dd35f43da129c3789401` with the coalescing implementation at
+`866ae0a9c90aec6f44864e8a9e47077d3bf33758`. The runtime implementation is unchanged
+by its subsequent rebase onto the documentation updates. On the same Ryzen 9
+9900X host with Zulu 21.0.8, JMH used average µs/op, one thread, 3 × 1s warmup,
+5 × 1s measurement, and two forks.
+
+Normal MultiTile operations showed no meaningful stable overhead regression:
+
+| Operation | Before µs/op | With coalescing µs/op |
+| --- | ---: | ---: |
+| Cold, 1 key | 3.295 | 3.276 |
+| Cold, 16 keys | 5.163 | 5.039 |
+| Fully cached, 1 key | 0.067 | 0.070 |
+| Fully cached, 16 keys | 0.436 | 0.438 |
+
+The full normal-operation matrix and 20-cell coalescing graph matrix showed no
+systematic regression; noisy graph cases received four-fork confirmations.
+Nanosecond-scale cached-path differences do not establish a meaningful regression.
+Matched application CPU measurements likewise found no stable regression; these
+comparisons do not establish a latency improvement.
+
+Untimed application diagnostics show the benefit of independent key discovery:
+
+| Mosaic workload | Before | With coalescing |
+| --- | --- | --- |
+| `batching` | One 24-key backend invocation | One 24-key backend invocation |
+| `coalescing/zero` | 4–5 invocations in 5 samples | 1 invocation in 10/20 samples; 2 in 10/20 |
+| `coalescing/service` | 3–5 invocations in 5 samples | 1 invocation in 12/20 samples; 2 in 8/20 |
+
+Every distinct product was fetched exactly once. `batching` is an already-optimal
+control; `coalescing` lets six sibling Tiles independently discover overlapping
+product keys. The latter typically needs only one or two backend invocations with
+0.5, without caller coordination or deliberate batching delay. These are observed
+batch counts, not guarantees: exact boundaries depend on scheduling, and deep or
+externally suspended paths need not combine.
 
 ## What we measure
 

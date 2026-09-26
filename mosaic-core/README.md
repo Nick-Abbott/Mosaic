@@ -191,9 +191,17 @@ val ChunkedProductsTile = chunkedMultiTile<String, Product>(batchSize = 50) { id
 }
 ```
 
-`multiTile` receives a set of uncached keys. `perKeyTile` fetches each key
-concurrently. `chunkedMultiTile` splits those keys into lists and starts chunks
-concurrently; chunk size limits request size, not request rate or concurrency.
+`multiTile` receives a set of uncached keys. Within one Mosaic, equal keys on
+the same MultiTile share in-flight work and cached results. When several calls
+have new keys pending before scheduled execution begins, Mosaic opportunistically
+combines those keys into one invocation. It does not deliberately delay ready work
+to collect more keys. A started batch is fixed; later new keys can form another
+batch, and batches may execute concurrently. Exact batch partitioning depends on
+scheduling and is not an API guarantee.
+
+`chunkedMultiTile` splits the resulting coalesced invocation into lists and starts
+chunks concurrently; chunk size limits request size, not request rate or
+concurrency. `perKeyTile` still fetches each key individually and concurrently.
 Return a non-null value for every requested key; a missing or null batch result
 fails that key with `NoSuchElementException`.
 
@@ -214,8 +222,9 @@ on the result map's iteration order.
 Caching belongs to one Mosaic instance. Calls using the same Tile instance
 share an in-flight deferred and its completed result. MultiTile caching uses
 the MultiTile instance and key equality, including overlapping key collections.
-Only uncached keys reach the fetch block; separate calls need not combine into
-one batch. Failed results are also retained in that Mosaic.
+Only uncached keys reach the fetch block. Pending calls can combine as described
+above, but not all calls in a Mosaic necessarily form one batch. Failed results
+are also retained in that Mosaic.
 
 Declare reusable tiles as `val`s. Constructing another Tile with equivalent code
 creates a different cache identity. Calling `Canvas.create()` creates a fresh
