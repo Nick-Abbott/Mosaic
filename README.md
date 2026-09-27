@@ -104,7 +104,7 @@ Add Mosaic to a Kotlin/JVM project:
 
 ```kotlin
 dependencies {
-  implementation("org.buildmosaic:mosaic-core:0.4.0")
+  implementation("org.buildmosaic:mosaic-core:0.5.0")
 }
 ```
 

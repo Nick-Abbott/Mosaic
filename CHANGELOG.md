@@ -5,6 +5,8 @@ predate this maintained changelog; their release history is not reconstructed he
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-26
+
 ### Changed
 
 - MultiTile opportunistically combines newly pending uncached keys for the same
