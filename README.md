@@ -182,8 +182,8 @@ inputs, failures, and delays simulated with coroutine virtual time.
 
 ## 📈 **Measured Against Handwritten Kotlin**
 
-Paired application benchmarks against equivalent optimized Kotlin measure the
-additional CPU Mosaic uses for the same downstream work:
+Against equivalent optimized Kotlin, Mosaic uses this much additional CPU
+for the same downstream work:
 
 | Workload | Additional Mosaic CPU/request |
 | --- | ---: |
@@ -192,16 +192,16 @@ additional CPU Mosaic uses for the same downstream work:
 | Independent sibling coalescing | **61–78 µs** |
 | CPU-heavy | **6–9 µs** |
 
-At 800 RPS in the service-backed aggregate case, Mosaic added about
-**115 µs of CPU/request**. Both variants had median HTTP latency of about
-**21.12 ms**; small differences are below the benchmark's approximately 1 ms
-timing accuracy.
+For the service-backed aggregate graph at 800 RPS, that was about
+**115 µs of CPU/request**, with median HTTP latency of about **21.12 ms**
+for both implementations.
 
-In the coalescing workload, six sibling Tiles referenced 24 distinct products;
-Mosaic fetched every key once in one or two backend batches across 40 samples.
+In the coalescing workload, six sibling Tiles independently discovered overlapping
+product keys. Mosaic fetched all 24 distinct products once, using one or two
+backend batches across 40 samples.
 
-Absolute timings depend on hardware and JVM; each direct/Mosaic pair ran under
-identical conditions. [Results, workloads, and methodology →](performance/README.md)
+Timings depend on hardware and JVM.
+[Performance evidence, workloads, and measurement limits →](performance/README.md)
 
 ## 🌐 **Bring Your HTTP Framework**
 
