@@ -11,95 +11,234 @@ The direct implementation is intended to be a useful, efficient baseline.
 
 ## Results
 
-Across the validated application benchmarks, Mosaic adds a small but measurable
-CPU cost compared with equivalent optimized Kotlin:
+The authoritative dataset measures the current coalescing runtime against
+optimized Kotlin under controlled offered load. Mosaic's additional process CPU
+cost depends on the graph:
 
-| Workload | Observed Mosaic CPU overhead |
+| Workload | Paired median Mosaic CPU overhead |
 | --- | ---: |
-| Light | +11–20 µs/request |
-| Batching | +17–31 µs/request |
-| Aggregate | +48–101 µs/request |
-| Compute | +1–12 µs/request |
+| Light | +14–15 µs/request |
+| Batching | +14–21 µs/request |
+| Aggregate | +48–115 µs/request |
+| Coalescing | +61–78 µs/request |
+| Compute | +6–9 µs/request |
 
-These ranges summarize rounded paired median differences. The largest aggregate overhead
-is about one tenth of a millisecond of CPU per request.
+These ranges summarize rounded paired medians across the measured rates and
+profiles. They describe framework overhead, not maximum throughput. The
+CPU-heavy control's individual differences straddle zero; its small median is
+not evidence of a repeatable speed advantage for either implementation.
 
-At 1,200 RPS in `aggregate/service`, direct Kotlin used approximately 0.085 ms
-CPU/request and Mosaic 0.187 ms/request, with a paired overhead of 0.101 ms
-(101 µs). Median HTTP latency was approximately 21.44 ms versus 21.45 ms:
-the intentional service delays dominate response time. For service-backed
-workloads, median response-latency differences were below wrk2's approximately
-±1 ms timing accuracy. This does not establish zero latency overhead.
+### Application CPU
 
-Mosaic generally used several additional MiB of process memory, with median RSS
-differences reaching roughly 20 MiB. Startup was effectively similar across
-20 pairs: medians were approximately 345 ms for direct Kotlin and 349 ms for
-Mosaic, with a median paired difference of about +5 ms. Individual startup
-paired differences varied in both directions.
+Each point has six alternating direct/Mosaic pairs, with a fresh JVM per variant,
+15 seconds of explicit application warmup, then wrk2 calibration and a requested
+30-second measured interval. CPU overhead is the median of the six **paired
+Mosaic − direct differences**, which can differ from subtracting variant medians.
+The interquartile range (IQR) describes the middle half of those differences.
 
-The table reports variant medians; CPU overhead is the median of four paired
-Mosaic − direct differences, which can differ from subtracting variant medians.
-Latency values are descriptive; sub-millisecond differences are below the stated
-timing accuracy.
+| Workload/profile | RPS | Direct µs/request | Mosaic µs/request | Paired overhead µs/request | Paired min…max | Paired IQR |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| light/zero | 800 | 36.5 | 52.9 | +14.6 | 10.5…24.3 | 4.3 |
+| light/zero | 1600 | 30.7 | 43.7 | +14.0 | 10.5…17.8 | 3.6 |
+| light/service | 800 | 57.3 | 65.9 | +15.0 | 6.5…30.0 | 11.0 |
+| batching/zero | 800 | 54.5 | 77.0 | +20.5 | 6.5…35.3 | 9.0 |
+| batching/zero | 1600 | 45.4 | 63.6 | +19.1 | 15.2…21.9 | 4.5 |
+| batching/service | 800 | 61.4 | 76.4 | +14.4 | 8.1…28.9 | 5.0 |
+| aggregate/zero | 800 | 51.1 | 111.0 | +60.0 | 52.3…67.3 | 9.3 |
+| aggregate/zero | 1600 | 40.3 | 89.7 | +48.2 | 42.6…59.2 | 4.7 |
+| aggregate/service | 800 | 89.4 | 201.4 | +114.9 | 104.6…120.0 | 8.9 |
+| aggregate/service | 1200 | 74.4 | 178.5 | +103.9 | 99.2…115.9 | 2.7 |
+| coalescing/zero | 1600 | 37.2 | 98.8 | +61.3 | 57.6…66.1 | 3.1 |
+| coalescing/service | 800 | 58.4 | 136.4 | +78.0 | 72.2…88.3 | 6.3 |
+| compute/zero | 800 | 387.3 | 394.5 | +8.7 | -4.1…17.0 | 6.5 |
+| compute/zero | 1600 | 365.8 | 371.2 | +6.2 | -9.3…17.9 | 6.1 |
 
-| Workload/profile | RPS | Direct CPU µs/request | Mosaic CPU µs/request | Mosaic overhead µs/request | Direct p50 ms | Mosaic p50 ms | Direct avg RSS MiB | Mosaic avg RSS MiB |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| light/zero | 800 | 55.117 | 75.182 | +20.466 | 0.058 | 0.060 | 187.8 | 201.7 |
-| light/zero | 1600 | 32.917 | 46.936 | +14.133 | 0.046 | 0.049 | 193.1 | 195.8 |
-| light/service | 400 | 139.696 | 158.269 | +18.572 | 3.130 | 3.120 | 190.4 | 196.4 |
-| light/service | 800 | 56.941 | 69.504 | +12.157 | 3.120 | 3.110 | 193.8 | 204.3 |
-| light/service | 1000 | 52.333 | 63.351 | +11.017 | 3.110 | 3.110 | 196.8 | 203.4 |
-| batching/zero | 800 | 69.909 | 95.034 | +29.589 | 0.071 | 0.084 | 190.9 | 202.6 |
-| batching/zero | 1600 | 46.630 | 68.146 | +21.538 | 0.059 | 0.073 | 188.9 | 208.0 |
-| batching/service | 400 | 140.908 | 174.073 | +30.737 | 3.140 | 3.150 | 191.4 | 198.6 |
-| batching/service | 800 | 73.966 | 89.159 | +17.185 | 3.130 | 3.130 | 199.2 | 199.8 |
-| batching/service | 1600 | 49.663 | 72.820 | +23.664 | 3.115 | 3.125 | 205.2 | 201.0 |
-| aggregate/zero | 400 | 144.138 | 216.812 | +73.078 | 0.084 | 0.089 | 195.2 | 199.9 |
-| aggregate/zero | 800 | 68.693 | 131.307 | +62.578 | 0.072 | 0.076 | 192.1 | 206.6 |
-| aggregate/zero | 1600 | 45.208 | 92.547 | +47.847 | 0.060 | 0.067 | 197.4 | 199.0 |
-| aggregate/service | 1200 | 85.217 | 186.660 | +101.322 | 21.440 | 21.450 | 190.9 | 207.7 |
-| compute/zero | 800 | 396.964 | 393.522 | +1.012 | 0.116 | 0.118 | 194.3 | 203.4 |
-| compute/zero | 1600 | 362.687 | 374.980 | +11.774 | 0.118 | 0.121 | 196.7 | 201.1 |
+All 168 runs formed complete valid pairs, with zero integrity warnings, socket
+errors, or HTTP errors. No authoritative point required a retry or rate change.
+Completed rates were 99.80–99.99% of offered load. A separate 6,400 RPS
+`light/zero` qualification pair passed the stricter 100 ms pacing checks.
 
-Results come from paired fresh-JVM runs of equivalent applications performing
-the same logical downstream work. Invalid pacing runs are rejected. Full generated
-benchmark sessions are intentionally not committed. These benchmarks measure
-framework overhead, not maximum server capacity. Absolute timings depend on
-hardware and JVM; the published results compare paired direct/Mosaic runs under
-identical conditions.
+Per-request CPU generally falls at higher offered rates as fixed process costs
+are amortized. Pair-level variation remains visible: for example, `light/service`
+has an 11.0 µs IQR, and `batching/zero` at 800 RPS spans 6.5–35.3 µs. These are
+retained measurements, rather than a guarantee of one fixed cost per request.
 
-## MultiTile cost and batching
+### HTTP latency
 
-Focused JMH measurements on a Ryzen 9 9900X with Zulu 21.0.8 used average µs/op,
-one thread, 3 × 1s warmup, 5 × 1s measurement, and two forks:
+Values below are medians of six run-level uncorrected HTTP percentiles, **not**
+percentiles of a pooled distribution. They measure actual dispatch to response
+completion after pacing qualification. wrk2's approximately ±1 ms timing accuracy
+precludes claims about the sub-millisecond differences between variants.
+Scheduling-corrected latency is retained separately as a generator diagnostic.
 
-| MultiTile operation | Measured time |
+| Workload/profile | RPS | Direct p50 / p95 / p99 ms | Mosaic p50 / p95 / p99 ms |
+| --- | ---: | ---: | ---: |
+| light/zero | 800 | 0.049 / 0.069 / 0.082 | 0.060 / 0.084 / 0.095 |
+| light/zero | 1600 | 0.043 / 0.068 / 0.074 | 0.050 / 0.072 / 0.086 |
+| light/service | 800 | 3.070 / 3.105 / 3.120 | 3.070 / 3.110 / 3.150 |
+| batching/zero | 800 | 0.073 / 0.101 / 0.117 | 0.079 / 0.114 / 0.131 |
+| batching/zero | 1600 | 0.061 / 0.083 / 0.093 | 0.068 / 0.089 / 0.105 |
+| batching/service | 800 | 3.080 / 3.118 / 3.130 | 3.090 / 3.119 / 3.140 |
+| aggregate/zero | 800 | 0.068 / 0.092 / 0.103 | 0.070 / 0.095 / 0.107 |
+| aggregate/zero | 1600 | 0.053 / 0.076 / 0.088 | 0.066 / 0.089 / 0.107 |
+| aggregate/service | 800 | 21.120 / 21.159 / 21.210 | 21.120 / 21.159 / 21.185 |
+| aggregate/service | 1200 | 21.100 / 21.135 / 21.150 | 21.120 / 21.151 / 21.170 |
+| coalescing/zero | 1600 | 0.048 / 0.071 / 0.081 | 0.068 / 0.090 / 0.105 |
+| coalescing/service | 800 | 3.080 / 3.116 / 3.125 | 3.080 / 3.098 / 3.110 |
+| compute/zero | 800 | 0.111 / 0.140 / 0.174 | 0.113 / 0.143 / 0.175 |
+| compute/zero | 1600 | 0.113 / 0.175 / 0.227 | 0.111 / 0.169 / 0.220 |
+
+Service delays dominate elapsed response time: aggregate/service at 800 RPS used
+89.4 µs/request direct and 201.4 µs/request Mosaic, while both had median HTTP
+latency of about 21.12 ms. CPU cost and response latency answer different questions.
+
+### Process memory
+
+The table gives medians of measured-window average RSS, including JVM, heap,
+server, and application memory. It is not live-object size or allocation/request.
+The fixed 512 MiB initial heap makes these figures unsuitable for a direct
+comparison with older 64 MiB-initial-heap results. JVM residency varies by case
+and process; compute's paired RSS difference can be negative.
+
+| Workload/profile | RPS | Direct avg RSS MiB | Mosaic avg RSS MiB | Paired RSS difference MiB |
+| --- | ---: | ---: | ---: | ---: |
+| light/zero | 800 | 402.5 | 431.4 | +27.9 |
+| light/zero | 1600 | 471.3 | 478.8 | +7.7 |
+| light/service | 800 | 410.9 | 427.2 | +16.3 |
+| batching/zero | 800 | 476.5 | 486.6 | +14.9 |
+| batching/zero | 1600 | 475.4 | 485.4 | +5.1 |
+| batching/service | 800 | 468.5 | 471.9 | +5.3 |
+| aggregate/zero | 800 | 472.8 | 488.4 | +13.9 |
+| aggregate/zero | 1600 | 472.8 | 476.5 | +6.0 |
+| aggregate/service | 800 | 471.8 | 477.6 | +8.1 |
+| aggregate/service | 1200 | 478.7 | 478.7 | -1.7 |
+| coalescing/zero | 1600 | 466.6 | 488.4 | +23.5 |
+| coalescing/service | 800 | 469.2 | 476.7 | +5.6 |
+| compute/zero | 800 | 448.0 | 447.3 | +4.3 |
+| compute/zero | 1600 | 474.1 | 466.6 | -7.0 |
+
+Paired median RSS differences span −7.0 to +27.9 MiB. Raw output also records
+sampled peak RSS and process-lifetime `VmHWM`. Two runs reported a sampled peak
+less than 2 MiB above the reported high-water mark; retain these Linux process
+counters as approximate observations rather than exact memory accounting.
+
+### Startup
+
+Twenty alternating fresh-JVM pairs measured launch to the first successful
+`/health` response, using the same JVM settings and a 5 ms readiness poll.
+Direct median startup was **332.1 ms** and Mosaic **337.0 ms**. The median paired
+difference was **+4.9 ms**, ranging from −0.9 to +15.5 ms. Startup is measured
+separately from warmed request execution.
+
+### Isolated JMH operations
+
+JMH timing uses average µs/op, one thread, 10 × 1s warmup, 10 × 1s measurement,
+and two forks, with no profiler. JMH reports elapsed operation time, not HTTP
+process CPU/request. The [runtime benchmark guide](../docs/performance.md)
+explains fixture boundaries and how to reproduce the publication profile.
+
+| Operation / fixture | Mean µs/op | JMH 99.9% CI half-width µs |
+| --- | ---: | ---: |
+| Mosaic creation | 0.012134 | ±0.000010 |
+| SingleTile cold (includes request creation) | 3.1157 | ±0.1094 |
+| SingleTile completed compose | 0.005152 | ±0.000031 |
+| SingleTile completed composeAsync | 0.001087 | ±0.000003 |
+| MultiTile cold, 1 key | 3.3201 | ±0.0658 |
+| MultiTile cold, 16 keys | 5.1665 | ±0.1331 |
+| MultiTile fully cached, 1 key | 0.0744 | ±0.0023 |
+| MultiTile fully cached, 16 keys | 0.4254 | ±0.0060 |
+| Shared diamond, size 4 | 5.6155 | ±0.0112 |
+| Sibling coalescing, fan-out 4 / depth 0 | 7.8977 | ±0.0214 |
+
+The full timing run covers Canvas, SingleTile, MultiTile cache states, graph
+composition, coalescing fan-out/depth, and controls. Results describe these
+fixtures on this JVM; they are not service latency or a runtime regression
+comparison with the older dataset.
+
+### Allocation
+
+Allocation was measured in separate executions using JMH's GC profiler with the
+same iteration/fork profile. The rounded `gc.alloc.rate.norm` values report bytes/op;
+profiling results are not used as canonical timing measurements.
+
+| Operation / fixture | Normalized allocation B/op |
 | --- | ---: |
-| Cold, 1 key | ~3.28 µs/op |
-| Cold, 16 keys | ~5.04 µs/op |
-| Fully cached, 1 key | ~0.070 µs/op |
-| Fully cached, 16 keys | ~0.438 µs/op |
+| Mosaic creation | 208.0 |
+| SingleTile cold (includes request creation) | 818.8 |
+| SingleTile completed compose | 8.3 |
+| SingleTile completed composeAsync | 0.0 |
+| MultiTile cold, 1 key (includes invocation setup) | 2271.5 |
+| MultiTile cold, 16 keys (includes invocation setup) | 8021.9 |
+| MultiTile fully cached, 1 key (includes invocation setup) | 2799.5 |
+| MultiTile fully cached, 16 keys (includes invocation setup) | 10035.9 |
+| Shared diamond, size 4 | 3467.5 |
+| Sibling coalescing, fan-out 4 / depth 0 | 11459.1 |
 
-In paired application measurements, the coalescing workload added about
-55 µs CPU/request at `zero/1600 RPS` and 80 µs at `service/800 RPS`.
-These CPU measurements do not establish a latency improvement.
+Cold SingleTile and graph operations include request creation. MultiTile timing
+excludes invocation setup, but GC-profiler counters include that setup: its
+allocation rows include fresh request/cache preparation even for fully cached
+execution. They therefore cannot establish the allocation of an isolated cached
+`compose` call. The completed SingleTile async case directly returns its cached
+Deferred; the suspending case includes an amortized coroutine entry bridge.
 
-Untimed diagnostics show how independent key discovery combines into batches:
+### Batching and coalescing
 
-| Mosaic workload | Observed backend invocations |
+Untimed application diagnostics collected 20 samples per profile with tracing
+outside the measured HTTP path. Direct Kotlin made one 24-key call in every
+batching/coalescing sample. Mosaic produced:
+
+| Workload/profile | One backend call | Two backend calls |
+| --- | ---: | ---: |
+| batching/zero | 20/20 | 0/20 |
+| batching/service | 20/20 | 0/20 |
+| coalescing/zero | 10/20 | 10/20 |
+| coalescing/service | 9/20 | 11/20 |
+
+Every distinct product was fetched exactly once. `batching` is the already-optimal
+control; `coalescing` has six sibling Tiles independently discovering overlapping
+12-key sections covering 24 products. Pre-feature diagnostics at revision
+`07a9eda5be3486ae6151dd35f43da129c3789401` observed 3–5 backend calls; this current dataset
+observes one or two, without caller coordination or deliberate batching delay.
+
+Twenty graph samples per dispatcher also verified key completeness and uniqueness.
+ABC + CDE and fan-out 2 combined into one call in all Default-dispatcher samples;
+fan-out 4 took 1–2 calls, fan-out 8 took 2–5, and fan-out 16 took 5–8.
+A serial FIFO dispatcher combined all same-depth fan-out cases into one call.
+Depth 5, depth 10, and externally suspended consumers remained two calls with
+both dispatchers. These are scheduling observations, not API guarantees.
+
+### Provenance and comparison
+
+All current application, startup, JMH timing/allocation, and diagnostic results
+were collected from clean revision
+[`129b0c73864e82047e4f8e0b861aee31e4e9dc78`](https://github.com/Nick-Abbott/Mosaic/commit/129b0c73864e82047e4f8e0b861aee31e4e9dc78),
+based on the merged coalescing runtime at `c6ed689`. Identify this dataset by
+revision rather than assuming a published release version.
+
+| Setting | Authoritative configuration |
 | --- | --- |
-| `batching` | One 24-key invocation in all 40 samples |
-| `coalescing` | One invocation in 22 samples; two in 18 samples |
+| CPU / OS | AMD Ryzen 9 9900X, 12 physical cores / 24 threads; NixOS 26.05; Linux 7.2.7 |
+| Java | Zulu JDK 21.0.11+10-LTS |
+| JVM | `-Xms512m -Xmx512m -XX:+UseG1GC -XX:ActiveProcessorCount=12` |
+| Application / JMH affinity | `0-5,12-17` (six whole physical cores / twelve logical CPUs) |
+| Generator affinity | `6-9,18-21`; remaining physical cores available to the OS |
+| wrk2 | 4.0.0-e0109df; SHA256 `8ea9a2225686179c62bf66c681f2c8a1e990da3450d1bc66c3c2fd98d44c01f7` |
+| HTTP | Six pairs/point; 15s warmup; 30s requested measurement; four threads; 128 connections |
+| Simulated work | Deterministic inputs; 20,000 CPU-work iterations; tracing off |
 
-Each workload had 20 samples per profile (`zero` and `service`). Every distinct
-product was fetched exactly once. In `coalescing`, six sibling Tiles independently
-discover overlapping keys referencing 24 distinct products. Pending keys may
-combine without caller coordination or an intentional wait. Exact boundaries
-depend on scheduling; deeper or externally delayed consumers can form later batches.
+The previous application/startup table came from
+`f334a8661247eb219c21f8707b1af7b0c2f2a05a`, and the previous short MultiTile
+measurements from `866ae0a9c90aec6f44864e8a9e47077d3bf33758`. The new dataset
+changes explicit warmup, heap sizing, processor count, JDK/kernel environment,
+repetition count, and JMH iteration lengths. Absolute changes from those older
+figures cannot be attributed solely to Mosaic runtime changes. The earlier
+Linux 7.0.0 environment exhibited severe timer instability; this dataset uses
+Linux 7.2.7 and passed workload pacing qualification.
 
-Measurement provenance: application table and startup dataset revision
-`f334a8661247eb219c21f8707b1af7b0c2f2a05a`; MultiTile measurements and coalescing
-diagnostics revision `866ae0a9c90aec6f44864e8a9e47077d3bf33758`.
+Generated raw sessions, fingerprints, artifact hashes, execution commands, and
+pair-level results remain in the ignored `performance/results/` directory.
+Measurements compare equivalent applications under the same conditions within
+each pair; they do not measure maximum server capacity.
 
 ## What we measure
 
@@ -228,8 +367,8 @@ HTTP and scheduling latency are in milliseconds, memory is in MiB, and startup
 is in milliseconds. Peak RSS covers the measured window; `VmHWM` separately
 records the process lifetime high-water mark.
 
-Summaries show direct and Mosaic medians plus the median, minimum, maximum, and interquartile range of the
-paired differences in the metric's own units. A positive difference means Mosaic
+Summaries show direct and Mosaic medians plus the median, minimum, maximum,
+and interquartile range of paired differences in the metric's own units. A positive difference means Mosaic
 uses more CPU or memory, or has higher latency. For throughput, a positive
 difference means more completed requests per second. Inspect individual pairs
 and integrity warnings before interpreting a difference as repeatable.

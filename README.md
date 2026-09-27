@@ -187,13 +187,15 @@ additional CPU Mosaic uses for the same downstream work:
 
 | Workload | Additional Mosaic CPU/request |
 | --- | ---: |
-| Light and batching | **11–31 µs** |
-| Complex aggregate graph | **48–101 µs** |
-| CPU-heavy | **1–12 µs** |
+| Light and batching | **14–21 µs** |
+| Complex aggregate graph | **48–115 µs** |
+| Independent sibling coalescing | **61–78 µs** |
+| CPU-heavy | **6–9 µs** |
 
-In the service-backed aggregate case, Mosaic added about **101 µs of CPU/request**.
-Median HTTP latency was **21.44 ms direct vs 21.45 ms Mosaic**—a difference below
-the benchmark's approximately 1 ms timing accuracy.
+At 800 RPS in the service-backed aggregate case, Mosaic added about
+**115 µs of CPU/request**. Both variants had median HTTP latency of about
+**21.12 ms**; small differences are below the benchmark's approximately 1 ms
+timing accuracy.
 
 In the coalescing workload, six sibling Tiles referenced 24 distinct products;
 Mosaic fetched every key once in one or two backend batches across 40 samples.

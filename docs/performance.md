@@ -48,6 +48,7 @@ thread, average µs/op, 10 × 1s warmup, 10 × 1s measurement, and two forks:
 
 ```bash
 ./gradlew :mosaic-benchmarks:jmhJar
+mkdir -p performance/results
 taskset -c 0-5,12-17 java -jar mosaic-benchmarks/build/libs/mosaic-benchmarks-*-jmh.jar \
   -bm avgt -tu us -t 1 -wi 10 -i 10 -w 1s -r 1s -f 2 -foe true \
   -jvmArgs '-Xms512m -Xmx512m -XX:+UseG1GC -XX:ActiveProcessorCount=12' \
@@ -68,6 +69,11 @@ java -jar mosaic-benchmarks/build/libs/mosaic-benchmarks-*-jmh.jar \
   -tu us -prof gc -rf json \
   -rff mosaic-benchmarks/build/cache-hit-async-gc.json
 ```
+
+For publication allocation evidence, use the authoritative timing profile above
+with `-prof gc` in a separate execution and a separate output file. The current
+[operation and allocation results](../performance/README.md#isolated-jmh-operations)
+identify the source revision and fixture boundaries.
 
 The module's `check` task compiles benchmark sources without executing them.
 Run `:mosaic-benchmarks:jmh` to verify JMH generation and execution. The full

@@ -23,6 +23,9 @@ jobs:
     - name: Run comprehensive PR validation
       run: ./gradlew check --no-daemon
 
+    - name: Verify benchmark harness
+      run: python3 -m unittest discover -s performance/benchmark/tests -v
+
     - name: Verify examples
       run: ./gradlew check --no-daemon -p examples
 
