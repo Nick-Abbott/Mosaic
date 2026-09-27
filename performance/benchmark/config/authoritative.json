@@ -1,0 +1,18 @@
+{
+  "label": "Authoritative JDK 21 paired application matrix",
+  "cases": {
+    "light": {"zero": [800, 1600], "service": [800]},
+    "batching": {"zero": [800, 1600], "service": [800]},
+    "aggregate": {"zero": [800, 1600], "service": [800, 1200]},
+    "coalescing": {"zero": [1600], "service": [800]},
+    "compute": {"zero": [800, 1600]}
+  },
+  "repetitions": 6,
+  "warmup_seconds": 15,
+  "measurement_seconds": 30,
+  "calibration_timeout_seconds": 15,
+  "tail_seconds": 5,
+  "wrk2_connections": 128,
+  "wrk2_threads": 4,
+  "cpu_work": 20000
+}
