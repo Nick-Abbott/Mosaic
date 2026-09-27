@@ -5,7 +5,8 @@
 The `org.buildmosaic.analysis` plugin supports pure Kotlin/JVM `main` sources
 under `src/main/kotlin` with Kotlin Gradle plugin and compiler **2.2.10 only**.
 It is build tooling: it does not apply Kotlin or add Mosaic application runtime
-dependencies. Add Maven Central to plugin and dependency repositories. Install version 0.4.0 with:
+dependencies. Add Maven Central to plugin and dependency repositories. Install
+version 0.5.0 with:
 
 ```kotlin
 import org.buildmosaic.gradle.MosaicAnalysisEnforcement
@@ -13,7 +14,7 @@ import org.buildmosaic.gradle.MosaicAnalysisRole
 
 plugins {
   kotlin("jvm") version "2.2.10"
-  id("org.buildmosaic.analysis") version "0.4.0"
+  id("org.buildmosaic.analysis") version "0.5.0"
 }
 
 mosaicAnalysis {

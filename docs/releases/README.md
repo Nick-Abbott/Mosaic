@@ -8,7 +8,7 @@ are immutable and must already point to the validated source commit.
 Run the manual **Release** workflow from `main` with the existing version tag:
 
 ```bash
-gh workflow run release.yml --ref main -f tag=0.4.0
+gh workflow run release.yml --ref main -f tag=0.5.0
 ```
 
 Configure a protected GitHub Environment named `release` before running it.

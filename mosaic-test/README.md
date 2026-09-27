@@ -20,7 +20,7 @@ In an existing Kotlin/JVM project with a configured test runner:
 
 ```kotlin
 dependencies {
-  testImplementation("org.buildmosaic:mosaic-test:0.4.0")
+  testImplementation("org.buildmosaic:mosaic-test:0.5.0")
   testImplementation(kotlin("test"))
 }
 ```
