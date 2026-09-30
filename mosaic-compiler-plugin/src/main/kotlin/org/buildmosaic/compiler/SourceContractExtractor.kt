@@ -969,9 +969,9 @@ internal class SourceContractExtractor(
     val classId = runtimeKeyClass(type.classType) ?: return null
     val qualifier = initializer.argument("qualifier")
     if (qualifier != null && qualifier !is IrConst) return null
-    val literal = (qualifier as? IrConst)?.value
+    val literal = qualifier?.value
     if (literal != null && literal !is String) return null
-    return CanvasKeyIdentity(classId, literal as? String)
+    return CanvasKeyIdentity(classId, literal)
   }
 
   private fun multiTileExecution(call: IrCall): MultiTileExecution {

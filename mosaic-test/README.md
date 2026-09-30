@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/Nick-Abbott/Mosaic/workflows/Test%20Badge/badge.svg)](https://github.com/Nick-Abbott/Mosaic/actions?query=workflow%3A%22Test+Badge%22)
 [![Build](https://github.com/Nick-Abbott/Mosaic/workflows/Build%20Badge/badge.svg)](https://github.com/Nick-Abbott/Mosaic/actions?query=workflow%3A%22Build+Badge%22)
-[![Kotlin](https://img.shields.io/badge/kotlin-2.2.10-blue.svg)](https://kotlinlang.org)
+[![Kotlin](https://img.shields.io/badge/kotlin-2.4.20-blue.svg)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](../LICENSE)
 
 **Test Tile logic by replacing its dependencies.**
@@ -20,10 +20,15 @@ In an existing Kotlin/JVM project with a configured test runner:
 
 ```kotlin
 dependencies {
-  testImplementation("org.buildmosaic:mosaic-test:0.5.0")
+  testImplementation("org.buildmosaic:mosaic-test:0.6.0")
   testImplementation(kotlin("test"))
 }
 ```
+
+`mosaic-test` has the same JVM 17 and Kotlin 2.3.0 minimum consumer requirements
+as [Mosaic core](../mosaic-core/README.md#requirements-and-installation). The 0.6.0
+toolchain uses language/API level 2.4 and publishes stdlib and `kotlin-test`
+2.4.20 with coroutines core/test 1.11.0.
 
 `mosaic-test` exposes Mosaic core and coroutine test APIs. If you use the optional
 [BOM](../mosaic-bom/README.md), omit the Mosaic dependency version.

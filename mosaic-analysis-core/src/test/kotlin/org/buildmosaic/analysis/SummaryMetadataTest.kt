@@ -27,7 +27,7 @@ class SummaryMetadataTest {
       SummaryCodec.decode(bytes.replace("\"payload\":", "\"missingPayload\":").toByteArray())
     }
     assertFailsWith<IllegalArgumentException> {
-      SummaryCodec.decode(bytes.replace("2.2.10", "2.3.0").toByteArray())
+      SummaryCodec.decode(bytes.replace("2.4.20", "2.2.10").toByteArray())
     }
   }
 

@@ -31,8 +31,8 @@ val testKitKotlinPlugin =
 dependencies {
   compileOnly(project(":mosaic-analysis-core"))
   testImplementation(project(":mosaic-analysis-core"))
-  compileOnly("org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.10")
-  add(testKitKotlinPlugin.name, "org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.10")
+  compileOnly("org.jetbrains.kotlin:kotlin-gradle-plugin:${libs.versions.kotlin.get()}")
+  add(testKitKotlinPlugin.name, "org.jetbrains.kotlin:kotlin-gradle-plugin:${libs.versions.kotlin.get()}")
   testImplementation(project(":mosaic-core"))
   testImplementation(project(":mosaic-compiler-plugin"))
   testImplementation(gradleTestKit())

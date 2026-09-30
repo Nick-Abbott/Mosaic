@@ -27,7 +27,7 @@ class ProjectDependencyIntegrationTest {
       pluginManagement {
         repositories { gradlePluginPortal(); mavenCentral() }
         resolutionStrategy.eachPlugin {
-          if (requested.id.id == "org.jetbrains.kotlin.jvm") useModule("org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.10")
+          if (requested.id.id == "org.jetbrains.kotlin.jvm") useModule("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.20")
         }
       }
       rootProject.name = "project-dependency"
@@ -38,7 +38,7 @@ class ProjectDependencyIntegrationTest {
       val module = File(root, name).apply { mkdirs() }
       File(module, "build.gradle.kts").writeText(
         """
-        plugins { kotlin("jvm") version "2.2.10"; id("org.buildmosaic.analysis") }
+        plugins { kotlin("jvm") version "2.4.20"; id("org.buildmosaic.analysis") }
         group = "fixture"
         repositories {
           flatDir { dirs("${pluginJar.parentFile.invariantSeparatorsPath}") }
@@ -46,7 +46,7 @@ class ProjectDependencyIntegrationTest {
         }
         dependencies {
           implementation(files("${coreJar.invariantSeparatorsPath}"))
-          implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+          implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
           ${if (name == "consumer") "implementation(project(\":producer\"))" else ""}
         }
         mosaicAnalysis {

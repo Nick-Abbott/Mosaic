@@ -1,5 +1,6 @@
 package org.buildmosaic.compiler
 
+import org.buildmosaic.analysis.ANALYSIS_KOTLIN_VERSION
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.compiler.plugin.AbstractCliOption
 import org.jetbrains.kotlin.compiler.plugin.CliOption
@@ -8,6 +9,7 @@ import org.jetbrains.kotlin.compiler.plugin.CompilerPluginRegistrar
 import org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi
 import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.config.CompilerConfigurationKey
+import org.jetbrains.kotlin.config.KotlinCompilerVersion
 
 internal val outputKey = CompilerConfigurationKey<String>("Mosaic analysis output")
 internal val moduleKey = CompilerConfigurationKey<String>("Mosaic analysis module identity")
@@ -69,9 +71,14 @@ class MosaicCommandLineProcessor : CommandLineProcessor {
 
 @OptIn(ExperimentalCompilerApi::class)
 class MosaicCompilerRegistrar : CompilerPluginRegistrar() {
+  override val pluginId = "org.buildmosaic.analysis"
   override val supportsK2 = true
 
   override fun ExtensionStorage.registerExtensions(configuration: CompilerConfiguration) {
+    val supportedVersion = Regex("${Regex.escape(ANALYSIS_KOTLIN_VERSION)}(?:-release-[0-9]+)?")
+    require(KotlinCompilerVersion.VERSION.matches(supportedVersion)) {
+      "Mosaic analysis requires Kotlin compiler $ANALYSIS_KOTLIN_VERSION; found ${KotlinCompilerVersion.VERSION}"
+    }
     val mode = configuration.get(modeKey) ?: "complete"
     require(mode == "complete" || mode == "shards") { "Unsupported Mosaic compiler output mode $mode" }
     if (mode == "shards") requireNotNull(configuration.get(sourceRootKey)) { "Mosaic shards require a source root" }

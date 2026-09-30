@@ -6,7 +6,7 @@
 
 [![Tests](https://github.com/Nick-Abbott/Mosaic/workflows/Test%20Badge/badge.svg)](https://github.com/Nick-Abbott/Mosaic/actions?query=workflow%3A%22Test+Badge%22)
 [![Build](https://github.com/Nick-Abbott/Mosaic/workflows/Build%20Badge/badge.svg)](https://github.com/Nick-Abbott/Mosaic/actions?query=workflow%3A%22Build+Badge%22)
-[![Kotlin](https://img.shields.io/badge/kotlin-2.2.10-blue.svg)](https://kotlinlang.org)
+[![Kotlin](https://img.shields.io/badge/kotlin-2.4.20-blue.svg)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 **Think from the response up, not the database down.**
@@ -104,7 +104,7 @@ Add Mosaic to a Kotlin/JVM project:
 
 ```kotlin
 dependencies {
-  implementation("org.buildmosaic:mosaic-core:0.5.0")
+  implementation("org.buildmosaic:mosaic-core:0.6.0")
 }
 ```
 
@@ -154,7 +154,7 @@ can discover application entry points when safe and follow Tile dependencies
 across modules.
 
 It checks Canvas bindings and distinguishes **confirmed missing dependencies**
-from paths it can't verify. This optional tooling supports **Kotlin/JVM 2.2.10
+from paths it can't verify. This optional tooling supports **Kotlin/JVM 2.4.20
 only**; runtime composition doesn't depend on it. The graph shows static
 relationships, not runtime traces.
 

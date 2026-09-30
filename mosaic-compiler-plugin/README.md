@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This published build-tooling module is a read-only Kotlin 2.2.10 K2 compiler plugin. It uses
+This published build-tooling module is a read-only Kotlin 2.4.20 K2 compiler plugin. It uses
 `CompilerPluginRegistrar` and `IrGenerationExtension` before IR lowering. It
 does not transform Kotlin or run Mosaic code. The Gradle plugin installs it into the normal Kotlin/JVM `main`
 compilation through Kotlin’s compiler-subplugin API. It emits per-source internal
@@ -65,7 +65,7 @@ are not a public metadata format. After an incremental IR invocation, the
 compiler plugin removes obsolete shard files. A current-source manifest selects
 only current shards for assembly, including when Kotlin has no sources and does
 not invoke the plugin. The discovery path stays stable; the explicit header governs
-compatibility. Format 3 uses `analysis-contract-2` semantics and Kotlin 2.2.10.
+compatibility. Format 3 uses `analysis-contract-2` semantics and Kotlin 2.4.20.
 The producer version is `prototype-10`. Unpublished prototype-7 snapshots are
 rejected and must be regenerated. The payload checksum covers the canonical
 module, stable key exports, provenance limitations, and binary locators; it detects corruption,
