@@ -60,8 +60,13 @@ class ProjectDependencyIntegrationTest {
       writeText(
         """
         package producer
+        import org.buildmosaic.core.*
         import org.buildmosaic.core.injection.*
         class Metrics
+        val Single by singleTile { source<Metrics>() }
+        val Batch by multiTile<String, Metrics> { source<Metrics>(); emptyMap() }
+        val PerKey by perKeyTile<String, Metrics> { source<Metrics>() }
+        val Chunked by chunkedMultiTile<String, Metrics>(2) { source<Metrics>(); emptyMap() }
         suspend fun base(): Canvas = canvas { single<Metrics> { Metrics() } }
         """.trimIndent(),
       )
@@ -74,8 +79,15 @@ class ProjectDependencyIntegrationTest {
         import org.buildmosaic.core.*
         import org.buildmosaic.core.injection.*
         import producer.*
-        val MetricsTile = singleTile { source<Metrics>() }
-        suspend fun entry(): Metrics = base().create().compose(MetricsTile)
+        val MetricsTile by singleTile { source<Metrics>() }
+        suspend fun entry(): Metrics {
+          val mosaic = base().create()
+          mosaic.compose(Single)
+          mosaic.compose(Batch, "key")
+          mosaic.compose(PerKey, "key")
+          mosaic.compose(Chunked, "key")
+          return mosaic.compose(MetricsTile)
+        }
         """.trimIndent(),
       )
     }

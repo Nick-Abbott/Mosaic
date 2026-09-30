@@ -34,7 +34,7 @@ identities; unsupported capability captures remain named unknown.
 | C1 | LayerSemantics alias once; CorrectnessRegression distinct constructions; ActivationInvariant per invocation; EC aliases |
 | C2 | ActivationRegression boolean swap, canvas swap |
 | C3 | PathStateRegression forwarded Boolean, separate opaque actuals |
-| C4 | IdentityAndDiscovery declaration identity; EC member-dependent Tile U and Tile getter creation arguments |
+| C4 | IdentityAndDiscovery declaration identity; DelegatedTile top-level/local factories M/V, local ordinary/delegated aliases, binary export M/V/U, arbitrary/property-reference/member/captured delegates U; EC member-dependent Tile U and Tile getter creation arguments |
 | C5 | EC unused lambda V, invoked lambda/reference, returned/conditional callable escape U; DSL fixtures |
 | D1 | EnterpriseAnalysis M/V; G binary enterprise M/V |
 | D2 | LayerSemantics ancestor/nearest, late registration, child override |
