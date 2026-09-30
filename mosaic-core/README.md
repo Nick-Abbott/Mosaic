@@ -278,6 +278,30 @@ Runtime member naming works independently of analyzer support. See
 [analysis setup](../mosaic-gradle-plugin/README.md#installation) for toolchain
 requirements and configuration.
 
+## Runtime instrumentation SPI
+
+Integration modules can opt in to `ExperimentalMosaicInstrumentation` and supply
+[`MosaicInstrumentation`](src/main/kotlin/org/buildmosaic/core/instrumentation/MosaicInstrumentation.kt)
+to `MosaicImpl.instrumented(canvas, instrumentation, dispatcher)`.
+The SPI exposes caller capture, actual executions, batch contributors, and
+[`ProducerReference`](src/main/kotlin/org/buildmosaic/core/instrumentation/ProducerReference.kt)
+publication and reuse. Providers own bounded context retention, dependency
+subscriptions, and finalization. Callbacks must be prompt and nonblocking;
+callback failures are reported to the provider and contained by core.
+
+Execution completion supplies success, failure, or cancellation and a monotonic
+completion timestamp, outside the execution context. Finalization can wait for
+unresolved publications without delaying results. Pending work that never starts
+abandons its references. See the SPI KDoc for the lifecycle and accepted context
+elements. Providers receive names and opaque state, without keys or result data.
+
+With no provider, Mosaic retains its original fields, caches, method bodies,
+launch paths, and batching monitor. Instrumented construction selects a separate
+implementation through the existing virtual dispatch. Ordinary operations add
+no branches, fields, synchronization, caller captures, producer metadata, or
+contributor allocations. The companion factory has a one-time class-initialization
+cost. `Canvas.create()` keeps the ordinary path.
+
 ## 🌐 **Framework Integration**
 
 The example applications use the same [order tile library](../examples/tile-library).
