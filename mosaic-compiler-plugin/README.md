@@ -117,13 +117,13 @@ Stable Tile properties require a top-level immutable declaration with a supporte
 Tile initializer and either a default getter or Mosaic's generated delegated
 getter. `by singleTile`, `by multiTile`, `by perKeyTile`, and `by chunkedMultiTile`
 unwrap only Mosaic's own `provideDelegate`/`getValue` operators with compiler-created
-property references. In Kotlin 2.4.20's pre-lowering IR, top-level getters read a
-delegate field and local getters read a delegate variable. The local delegate
-API is nullable; an absent or unrecognized delegate stays unknown. Supported local
-delegated Tile values preserve fresh allocation identities and immutable aliases;
+property references. In pre-lowering IR, top-level getters read a delegate field
+and local getters read a delegate variable. The local delegate API is nullable;
+an absent or unrecognized delegate stays unknown. Supported local delegated Tile
+values preserve fresh allocation identities and immutable aliases;
 capability-bearing captures remain unknown. Arbitrary delegates, custom getters,
-and member-dependent Tiles keep their existing conservative boundaries. Naming
-is runtime metadata: this read-only plugin does not name ordinary `=` declarations.
+and member-dependent Tiles have conservative boundaries. Naming is runtime
+metadata: this read-only plugin does not name ordinary `=` declarations.
 Custom getters retain evaluated effects but yield unknown Tile provenance. Binary
 references require a proven stable Tile export from the selected producer summary;
 a top-level val alone is no proof.

@@ -239,9 +239,8 @@ Create a Mosaic per request to keep reuse scoped to that request.
 
 ### **Property names**
 
-In current 0.6 development builds, use `by` to bind a property name to a reusable
-Tile. This is available for all four factories; published 0.5.0 does not include
-these delegate operators:
+Use `by` to bind a property name to a reusable Tile. All four factories support
+this syntax:
 
 ```kotlin
 val OrderTile by singleTile { OrderService.getOrder(source(OrderKey)) }
@@ -266,17 +265,18 @@ factories is enough. When code is recompiled, these members take precedence over
 custom extension delegate operators on those types.
 
 A Tile created with `val OrderTile = singleTile { ... }` has `name == null` until
-it is used as a delegate. Ordinary declarations retain their existing behavior;
-the compiler plugin does not assign runtime names. Naming requires no
-`kotlin-reflect` dependency. Binding performs the name lookup once;
-inlined property reads allocate no delegate wrapper and perform no property lookup.
+it is used as a delegate. The compiler plugin does not assign runtime names.
+Naming requires no `kotlin-reflect` dependency. Binding performs the name lookup
+once; inlined property reads allocate no delegate wrapper and perform no property
+lookup.
 
 The optional analyzer understands Mosaic-owned delegated factories within its
-existing boundaries: stable top-level properties can be exported to consumers,
+supported boundaries: stable top-level properties can be exported to consumers,
 and supported local Tile values keep their deferred contracts. Arbitrary
-delegates and member-dependent Tile properties remain conservative. Runtime
-member naming does not broaden the analyzer's supported boundary. Current
-development analysis requires Kotlin compiler and Gradle plugin 2.4.20 exactly.
+delegates and member-dependent Tile properties are analyzed conservatively.
+Runtime member naming works independently of analyzer support. See
+[analysis setup](../mosaic-gradle-plugin/README.md#installation) for toolchain
+requirements and configuration.
 
 ## 🌐 **Framework Integration**
 
