@@ -13,7 +13,7 @@ import org.buildmosaic.core.injection.source
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-class TileDslTest {
+open class TileDslTest : RuntimeBehaviorTest() {
   @Test
   fun singleTileCachesAndInjects() =
     runTest {
@@ -32,7 +32,7 @@ class TileDslTest {
           }
         }
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(mockCanvas, testDispatcher)
+      val mosaic = createMosaic(mockCanvas, testDispatcher)
       val tile =
         singleTile {
           val s = canvas.source<Service>()
@@ -70,7 +70,7 @@ class TileDslTest {
           }
         }
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(mockCanvas, testDispatcher)
+      val mosaic = createMosaic(mockCanvas, testDispatcher)
       val tile =
         singleTile {
           val svc = source<Service>()
@@ -106,7 +106,7 @@ class TileDslTest {
           }
         }
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(mockCanvas, testDispatcher)
+      val mosaic = createMosaic(mockCanvas, testDispatcher)
       val tile =
         multiTile { ids ->
           val svc = source<Service>()
@@ -146,7 +146,7 @@ class TileDslTest {
           }
         }
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(mockCanvas, testDispatcher)
+      val mosaic = createMosaic(mockCanvas, testDispatcher)
       val tile =
         perKeyTile<String, String> { id ->
           val svc = source<Service>()
@@ -190,7 +190,7 @@ class TileDslTest {
           }
         }
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(mockCanvas, testDispatcher)
+      val mosaic = createMosaic(mockCanvas, testDispatcher)
       val tile =
         chunkedMultiTile<String, String>(2) { ids ->
           val svc = source<Service>()

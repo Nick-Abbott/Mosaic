@@ -209,7 +209,8 @@ scheduling and is not an API guarantee.
 chunks concurrently; chunk size limits request size, not request rate or
 concurrency. `perKeyTile` still fetches each key individually and concurrently.
 Return a non-null value for every requested key; a missing or null batch result
-fails that key with `NoSuchElementException`.
+fails that key with `MosaicMissingMultiTileResultException`, a `NoSuchElementException`
+subtype whose `key` field retains the requested key without including it in the message.
 
 | Call | Return shape |
 | --- | --- |
@@ -277,6 +278,13 @@ delegates and member-dependent Tile properties are analyzed conservatively.
 Runtime member naming works independently of analyzer support. See
 [analysis setup](../mosaic-gradle-plugin/README.md#installation) for toolchain
 requirements and configuration.
+
+## Runtime instrumentation SPI
+
+An experimental
+[`MosaicInstrumentation`](src/main/kotlin/org/buildmosaic/core/instrumentation/MosaicInstrumentation.kt)
+integration SPI observes actual execution, reuse, and batching. Normal composition
+does not require it. Its KDoc defines the API, lifecycle, and privacy contract.
 
 ## 🌐 **Framework Integration**
 

@@ -17,12 +17,12 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.measureTime
 
 @Suppress("LargeClass", "FunctionMaxLength")
-class MosaicTest {
+open class MosaicTest : RuntimeBehaviorTest() {
   @Test
   fun `should retrieve a singleTile asynchronously`() =
     runTest {
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(canvas { }, testDispatcher)
+      val mosaic = createMosaic(canvas { }, testDispatcher)
 
       val resultValue = "test-result"
       val delayLength = 100L
@@ -54,7 +54,7 @@ class MosaicTest {
   fun `should retrieve a singleTile synchronously`() =
     runTest {
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(canvas { }, testDispatcher)
+      val mosaic = createMosaic(canvas { }, testDispatcher)
 
       val resultValue = "test-result"
       val delayLength = 100L
@@ -84,7 +84,7 @@ class MosaicTest {
   fun `should retrieve a mutltiTile asynchronously`() =
     runTest {
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(canvas { }, testDispatcher)
+      val mosaic = createMosaic(canvas { }, testDispatcher)
 
       val resultMap = mapOf("a" to "foo", "b" to "bar", "c" to "baz")
       val delayLength = 100L
@@ -116,7 +116,7 @@ class MosaicTest {
   fun `should retrieve a multiTile synchronously`() =
     runTest {
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(canvas { }, testDispatcher)
+      val mosaic = createMosaic(canvas { }, testDispatcher)
 
       val resultMap = mapOf("a" to "foo", "b" to "bar", "c" to "baz")
       val delayLength = 100L
@@ -146,7 +146,7 @@ class MosaicTest {
   fun `should receive a single key from a multiTile asynchronously`() =
     runTest {
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(canvas { }, testDispatcher)
+      val mosaic = createMosaic(canvas { }, testDispatcher)
 
       val resultMap = mapOf("a" to "foo", "b" to "bar", "c" to "baz")
       val delayLength = 100L
@@ -178,7 +178,7 @@ class MosaicTest {
   fun `should receive a single key from a multiTile synchronously`() =
     runTest {
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(canvas { }, testDispatcher)
+      val mosaic = createMosaic(canvas { }, testDispatcher)
 
       val resultMap = mapOf("a" to "foo", "b" to "bar", "c" to "baz")
       val delayLength = 100L
@@ -210,7 +210,7 @@ class MosaicTest {
       class MyFakeException : Exception("test")
 
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(canvas { }, testDispatcher)
+      val mosaic = createMosaic(canvas { }, testDispatcher)
       assertFailsWith<MyFakeException> {
         mosaic.compose(singleTile<String> { throw MyFakeException() })
       }
@@ -222,7 +222,7 @@ class MosaicTest {
       class MyFakeException : Exception("test")
 
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(canvas { }, testDispatcher)
+      val mosaic = createMosaic(canvas { }, testDispatcher)
       assertFailsWith<MyFakeException> {
         mosaic.compose(multiTile<String, String> { throw MyFakeException() }, listOf("abc"))
       }
@@ -232,7 +232,7 @@ class MosaicTest {
   fun `should fail if a key is missing from the response`() =
     runTest {
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(canvas { }, testDispatcher)
+      val mosaic = createMosaic(canvas { }, testDispatcher)
       val tile = multiTile { mapOf("a" to "a") }
 
       assertFailsWith<NoSuchElementException> { mosaic.compose(tile, listOf("a", "b")) }
@@ -242,7 +242,7 @@ class MosaicTest {
   fun `should return empty response if no keys are provided`() =
     runTest {
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(canvas { }, testDispatcher)
+      val mosaic = createMosaic(canvas { }, testDispatcher)
       val tile = multiTile { mapOf("a" to "a", "b" to "b", "c" to "c") }
       assertEquals(emptyMap(), mosaic.compose(tile, emptyList()))
     }

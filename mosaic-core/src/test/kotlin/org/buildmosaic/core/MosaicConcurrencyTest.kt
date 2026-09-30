@@ -32,7 +32,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertSame
 
 @Suppress("FunctionOnlyReturningConstant", "FunctionMaxLength", "LargeClass")
-class MosaicConcurrencyTest {
+open class MosaicConcurrencyTest : RuntimeBehaviorTest() {
   private lateinit var mosaic: Mosaic
 
   @BeforeTest
@@ -41,7 +41,7 @@ class MosaicConcurrencyTest {
       object : Canvas {
         override fun <T : Any> sourceOr(key: CanvasKey<T>): T? = null
       }
-    mosaic = MosaicImpl(emptyCanvas)
+    mosaic = createMosaic(emptyCanvas)
   }
 
   @Test

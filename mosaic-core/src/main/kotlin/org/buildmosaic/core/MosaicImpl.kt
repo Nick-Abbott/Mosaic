@@ -8,7 +8,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import org.buildmosaic.core.exception.MosaicMissingMultiTileResultException
 import org.buildmosaic.core.injection.Canvas
+import org.buildmosaic.core.instrumentation.ExperimentalMosaicInstrumentation
+import org.buildmosaic.core.instrumentation.MosaicInstrumentation
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.CoroutineContext
 
@@ -25,6 +28,16 @@ open class MosaicImpl(
   override val canvas: Canvas,
   dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : Mosaic, CoroutineScope {
+  companion object {
+    /** Creates a Mosaic using the optional provider SPI. Ordinary constructors retain the direct path. */
+    @ExperimentalMosaicInstrumentation
+    fun instrumented(
+      canvas: Canvas,
+      instrumentation: MosaicInstrumentation,
+      dispatcher: CoroutineDispatcher = Dispatchers.Default,
+    ): MosaicImpl = InstrumentedMosaic(canvas, dispatcher, instrumentation)
+  }
+
   // Coroutine management
   private val job = SupervisorJob()
   override val coroutineContext: CoroutineContext = job + dispatcher
@@ -113,7 +126,7 @@ open class MosaicImpl(
         if (value != null) {
           placeholder.complete(value)
         } else {
-          placeholder.completeExceptionally(NoSuchElementException("Batch result missing key $key"))
+          placeholder.completeExceptionally(MosaicMissingMultiTileResultException(key))
         }
       }
     } catch (failure: Throwable) {
