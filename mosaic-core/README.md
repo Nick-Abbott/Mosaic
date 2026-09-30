@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/Nick-Abbott/Mosaic/workflows/Test%20Badge/badge.svg)](https://github.com/Nick-Abbott/Mosaic/actions?query=workflow%3A%22Test+Badge%22)
 [![Build](https://github.com/Nick-Abbott/Mosaic/workflows/Build%20Badge/badge.svg)](https://github.com/Nick-Abbott/Mosaic/actions?query=workflow%3A%22Build+Badge%22)
-[![Kotlin](https://img.shields.io/badge/kotlin-2.4.20-blue.svg)](https://kotlinlang.org)
+[![Kotlin (development)](https://img.shields.io/badge/kotlin%20(dev)-2.4.20-blue.svg)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](../LICENSE)
 
 **Compose backend responses from small, reusable Tiles.**
@@ -17,17 +17,22 @@ Canvas dependencies, batching, and caching. For isolated tile tests, use the
 
 The runtime libraries target JVM 17 and require Java 17 or later. This repository
 builds with a JDK 21 toolchain; the runnable framework examples also use JDK 21.
-The 0.6.0 toolchain builds the runtime libraries with Kotlin 2.4.20 and language/API
-level 2.4. Runtime consumers need Kotlin 2.3.0 or later; compilation and execution
-with 2.3.0 are tested. Published dependencies select stdlib 2.4.20 and coroutines
-1.11.0. Kotlin 2.2 consumers must upgrade. The **exact Kotlin 2.4.20** restriction
-belongs to the optional [analysis plugin](../mosaic-gradle-plugin/README.md).
+
+Mosaic 0.5.0 remains the latest published release and is built with Kotlin 2.2.10.
+Its published dependencies use stdlib 2.2.10 and coroutines 1.10.2. The exact
+Kotlin 2.2.10 restriction applies to its optional
+[analysis plugin](../mosaic-gradle-plugin/README.md).
+
+Current 0.6 development uses Kotlin 2.4.20 with language/API level 2.4. Development
+runtime artifacts are tested with Kotlin 2.3.0 consumers and use stdlib 2.4.20 and
+coroutines 1.11.0; recompiling against them requires Kotlin 2.3.0 or later.
+Development analysis requires exactly Kotlin compiler and Gradle plugin 2.4.20.
 
 In an existing Kotlin/JVM project:
 
 ```kotlin
 dependencies {
-  implementation("org.buildmosaic:mosaic-core:0.6.0")
+  implementation("org.buildmosaic:mosaic-core:0.5.0")
 }
 ```
 
