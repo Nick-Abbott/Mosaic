@@ -237,6 +237,47 @@ creates a different cache identity. Calling `Canvas.create()` creates a fresh
 Mosaic and cache; sharing a Canvas does not share tile results across Mosaics.
 Create a Mosaic per request to keep reuse scoped to that request.
 
+### **Property names**
+
+Use `by` to bind a property name to a reusable Tile. All four factories support
+this syntax:
+
+```kotlin
+val OrderTile by singleTile { OrderService.getOrder(source(OrderKey)) }
+val Products by multiTile<String, Product> { ids -> ProductService.getProducts(ids.toList()) }
+val PerKey by perKeyTile<String, Product> { id -> ProductService.getProducts(listOf(id)).getValue(id) }
+val Chunked by chunkedMultiTile<String, Product>(50) { ids -> ProductService.getProducts(ids) }
+```
+
+`OrderTile.name` is `"OrderTile"`. The name is captured when Kotlin binds the
+property; every read returns the same Tile object and cache identity. Top-level,
+member, and local delegated properties use the same runtime behavior.
+
+The first automatic binding wins. For example, `val Alias by OrderTile` returns
+the same instance, whose name remains `"OrderTile"`. An ordinary alias using `=`
+also shares its instance and name. Concurrent bindings retain the name of the
+first binding that acquires the Tile's binding lock. Names are labels, not unique
+identifiers, and never change caching or equality. The public `name` getter exposes
+this metadata for diagnostics; callers cannot assign it.
+
+The delegate operators are members of `Tile` and `MultiTile`, so importing the
+factories is enough. When code is recompiled, these members take precedence over
+custom extension delegate operators on those types.
+
+A Tile created with `val OrderTile = singleTile { ... }` has `name == null` until
+it is used as a delegate. The compiler plugin does not assign runtime names.
+Naming requires no `kotlin-reflect` dependency. Binding performs the name lookup
+once; inlined property reads allocate no delegate wrapper and perform no property
+lookup.
+
+The optional analyzer understands Mosaic-owned delegated factories within its
+supported boundaries: stable top-level properties can be exported to consumers,
+and supported local Tile values keep their deferred contracts. Arbitrary
+delegates and member-dependent Tile properties are analyzed conservatively.
+Runtime member naming works independently of analyzer support. See
+[analysis setup](../mosaic-gradle-plugin/README.md#installation) for toolchain
+requirements and configuration.
+
 ## 🌐 **Framework Integration**
 
 The example applications use the same [order tile library](../examples/tile-library).

@@ -43,6 +43,7 @@ import org.jetbrains.kotlin.ir.declarations.IrDeclaration
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
 import org.jetbrains.kotlin.ir.declarations.IrFile
 import org.jetbrains.kotlin.ir.declarations.IrFunction
+import org.jetbrains.kotlin.ir.declarations.IrLocalDelegatedProperty
 import org.jetbrains.kotlin.ir.declarations.IrPackageFragment
 import org.jetbrains.kotlin.ir.declarations.IrParameterKind
 import org.jetbrains.kotlin.ir.declarations.IrProperty
@@ -67,11 +68,14 @@ import org.jetbrains.kotlin.ir.expressions.IrGetField
 import org.jetbrains.kotlin.ir.expressions.IrGetObjectValue
 import org.jetbrains.kotlin.ir.expressions.IrGetValue
 import org.jetbrains.kotlin.ir.expressions.IrInstanceInitializerCall
+import org.jetbrains.kotlin.ir.expressions.IrLocalDelegatedPropertyReference
 import org.jetbrains.kotlin.ir.expressions.IrLoop
+import org.jetbrains.kotlin.ir.expressions.IrPropertyReference
 import org.jetbrains.kotlin.ir.expressions.IrReturn
 import org.jetbrains.kotlin.ir.expressions.IrSetField
 import org.jetbrains.kotlin.ir.expressions.IrSetValue
 import org.jetbrains.kotlin.ir.expressions.IrSpreadElement
+import org.jetbrains.kotlin.ir.expressions.IrStatementOrigin
 import org.jetbrains.kotlin.ir.expressions.IrThrow
 import org.jetbrains.kotlin.ir.expressions.IrTry
 import org.jetbrains.kotlin.ir.expressions.IrTypeOperatorCall
@@ -93,6 +97,8 @@ internal class SourceContractExtractor(
 ) {
   private val limitations = mutableListOf<String>()
   private val freshTemplates = linkedMapOf<String, TileContract>()
+  private val localTileDelegates =
+    mutableMapOf<org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol, org.jetbrains.kotlin.ir.symbols.IrValueSymbol>()
 
   fun extract(file: IrFile): SourceShard {
     val canvases = mutableListOf<CanvasContract>()
@@ -148,7 +154,7 @@ internal class SourceContractExtractor(
           }
           val stableTile = tilePropertyEligibility(declaration) == TilePropertyEligibility.LOCAL_STABLE
           if (stableTile) {
-            val call = initializer as IrFunctionAccessExpression
+            val call = tileInitializer(declaration)!!
             val lambda = call.argument("block") ?: call.argument("fetch")
             val normalizer = Normalizer(file, propertyId(declaration))
             val function = lambdaFunction(lambda)
@@ -178,7 +184,7 @@ internal class SourceContractExtractor(
             val normalizer = Normalizer(file, id, collectFreshTemplates = !stableTile)
             val value =
               when {
-                stableTile -> normalizer.body(initializer)
+                stableTile -> normalizer.body(tileInitializer(declaration))
                 declaration.isDelegated -> {
                   normalizer.effects += Effect.Unknown("$id:delegated", "Unsupported delegated property initialization", site)
                   Value()
@@ -359,6 +365,17 @@ internal class SourceContractExtractor(
             }
             Value()
           }
+          is IrLocalDelegatedProperty -> {
+            val delegate = localTileDelegate(element)
+            if (delegate != null) {
+              evaluate(delegate)
+              localTileDelegates[element.getter.symbol] = delegate.symbol
+            } else {
+              element.delegate?.initializer?.let(::evaluate)
+              unknown(element, "Unsupported local delegated property initialization")
+            }
+            Value()
+          }
           is IrGetValue -> values[element.symbol] ?: parameterValue(element)
           is IrTypeOperatorCall -> evaluate(element.argument)
           is IrConst ->
@@ -460,7 +477,19 @@ internal class SourceContractExtractor(
     private fun prepare(call: IrFunctionAccessExpression): Map<IrValueParameter, Value> {
       val actuals = linkedMapOf<IrValueParameter, Value>()
       call.symbol.owner.parameters.forEach { parameter ->
-        call.arguments[parameter]?.let { actuals[parameter] = evaluate(it) }
+        call.arguments[parameter]?.let { argument ->
+          // Kotlin creates these unbound references for delegation; their accessors do not run.
+          val delegateReference =
+            isTileDelegate(call) && parameter.name.asString() == "property" &&
+              (argument is IrPropertyReference || argument is IrLocalDelegatedPropertyReference)
+          actuals[parameter] =
+            if (delegateReference) {
+              evaluatedChildren(argument).forEach(::evaluate)
+              Value()
+            } else {
+              evaluate(argument)
+            }
+        }
       }
       return actuals
     }
@@ -469,8 +498,11 @@ internal class SourceContractExtractor(
       val function = call.symbol.owner
       val target = if (call is IrCall) resolvedName(call) else function.fqNameWhenAvailable?.asString().orEmpty()
       val actuals = prepare(call)
+      localTileDelegates[(function as? IrSimpleFunction)?.symbol]?.let { delegate ->
+        return values[delegate] ?: Value()
+      }
       val intrinsic =
-        call is IrCall && isIntrinsic(target) || isTileFactory(call) ||
+        call is IrCall && isIntrinsic(target) || isTileFactory(call) || isTileDelegate(call) ||
           target == "org.buildmosaic.core.injection.CanvasKey.<init>"
       if (!intrinsic) effects += usedDefaultEffects(call, file, owner)
       val receiver =
@@ -508,6 +540,7 @@ internal class SourceContractExtractor(
           }
           target == "org.buildmosaic.core.injection.create" -> return Value(mosaic = canvas(receiver, call))
           isTileFactory(call) -> return freshTile(call)
+          isTileDelegate(call) -> return receiver
           else -> {
             check(call is IrCall)
             val parent =
@@ -677,15 +710,68 @@ internal class SourceContractExtractor(
 
   /** The same property proof gates declaration export and reference resolution. */
   private fun tilePropertyEligibility(property: IrProperty): TilePropertyEligibility {
-    if (property.parent !is IrPackageFragment || property.isVar || property.isDelegated) return TilePropertyEligibility.UNSUPPORTED
+    if (property.parent !is IrPackageFragment || property.isVar) return TilePropertyEligibility.UNSUPPORTED
     // Binary IR cannot prove what the getter returns. Defer to the selected producer's export.
     if (property.parent !is IrFile) return TilePropertyEligibility.REQUIRES_EXPORT
-    val initializer = property.backingField?.initializer?.expression
-    return if (property.getter?.origin == IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR && initializer is IrFunctionAccessExpression && isTileFactory(initializer)) {
+    return if (tileInitializer(property) != null) {
       TilePropertyEligibility.LOCAL_STABLE
     } else {
       TilePropertyEligibility.UNSUPPORTED
     }
+  }
+
+  /** Unwrap only Mosaic's binding operator and its compiler-generated getter. */
+  private fun tileInitializer(property: IrProperty): IrFunctionAccessExpression? {
+    val initializer = property.backingField?.initializer?.expression as? IrFunctionAccessExpression ?: return null
+    if (!property.isDelegated) {
+      return initializer.takeIf {
+        property.getter?.origin == IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR && isTileFactory(it)
+      }
+    }
+    if (!isTileDelegate(initializer, "provideDelegate")) return null
+    val read = property.getter?.let(::delegatedGetterCall) ?: return null
+    val field = read.dispatchReceiverValue() as? IrGetField ?: return null
+    if (!isTileDelegate(read, "getValue") || field.symbol != property.backingField?.symbol) return null
+    return (initializer.dispatchReceiverValue() as? IrFunctionAccessExpression)?.takeIf(::isTileFactory)
+  }
+
+  private fun localTileDelegate(property: IrLocalDelegatedProperty): IrVariable? {
+    if (property.isVar) return null
+    val delegate = property.delegate ?: return null
+    val binding = delegate.initializer as? IrCall ?: return null
+    if (!isTileDelegate(binding, "provideDelegate")) return null
+    val read = delegatedGetterCall(property.getter) ?: return null
+    if (!isTileDelegate(read, "getValue")) return null
+    val receiver = read.dispatchReceiverValue() as? IrGetValue ?: return null
+    return delegate.takeIf { receiver.symbol == it.symbol }
+  }
+
+  private fun delegatedGetterCall(getter: IrSimpleFunction): IrCall? {
+    if (getter.origin != IrDeclarationOrigin.DELEGATED_PROPERTY_ACCESSOR) return null
+    val statement = (getter.body as? IrBlockBody)?.statements?.singleOrNull() as? IrReturn ?: return null
+    return statement.value as? IrCall
+  }
+
+  private fun IrFunctionAccessExpression.dispatchReceiverValue(): IrExpression? =
+    symbol.owner.parameters.singleOrNull { it.kind == IrParameterKind.DispatchReceiver }?.let { arguments[it] }
+
+  private fun isTileDelegate(
+    call: IrFunctionAccessExpression,
+    operator: String? = null,
+  ): Boolean {
+    if (call !is IrCall) return false
+    val member = call.symbol.owner.name.asString()
+    if (operator != null && member != operator) return false
+    if (member != "provideDelegate" && member != "getValue") return false
+    val generatedReference =
+      when (val property = call.argument("property")) {
+        is IrPropertyReference -> property.origin == IrStatementOrigin.PROPERTY_REFERENCE_FOR_DELEGATE
+        is IrLocalDelegatedPropertyReference -> property.origin == IrStatementOrigin.PROPERTY_REFERENCE_FOR_DELEGATE
+        else -> false
+      }
+    if (!generatedReference) return false
+    val name = resolvedName(call)
+    return name == "org.buildmosaic.core.Tile.$member" || name == "org.buildmosaic.core.MultiTile.$member"
   }
 
   private fun isIntrinsic(target: String): Boolean =
@@ -715,6 +801,7 @@ internal class SourceContractExtractor(
     callableActual: (IrValueParameter) -> Boolean = { call.arguments[it]?.let(::callableValue) == true },
   ): CallableEligibility {
     val function = call.symbol.owner
+    if (isTileDelegate(call)) return CallableEligibility.EffectFree
     val intrinsic = intrinsicEligibility(call)
     val boundary =
       when {
@@ -724,8 +811,9 @@ internal class SourceContractExtractor(
         function.parameters.any {
           it.kind == IrParameterKind.ExtensionReceiver && it.type.classFqName?.asString() == "org.buildmosaic.core.Mosaic"
         } -> "Mosaic extension receiver transfer is unsupported for ${symbolId(function)}"
-        (function as? IrSimpleFunction)?.correspondingPropertySymbol?.owner?.isDelegated == true ->
-          "Unsupported delegated property accessor"
+        (function as? IrSimpleFunction)?.correspondingPropertySymbol?.owner?.let {
+          it.isDelegated && tilePropertyEligibility(it) == TilePropertyEligibility.UNSUPPORTED
+        } == true -> "Unsupported delegated property accessor"
         function.parameters.any {
           it.kind != IrParameterKind.Regular && callableActual(it)
         } -> "Unsupported callable invocation"
@@ -797,6 +885,7 @@ internal class SourceContractExtractor(
       "kotlin.arrayOf", "kotlin.intArrayOf", "kotlin.emptyArray", "kotlin.internal.ir.less",
       "kotlin.internal.ir.greater", "kotlin.internal.ir.lessOrEqual", "kotlin.internal.ir.greaterOrEqual",
       "java.lang.System.nanoTime",
+      "org.buildmosaic.core.Tile.<get-name>", "org.buildmosaic.core.MultiTile.<get-name>",
     )
 
   private val primitiveOperations =
@@ -1024,6 +1113,11 @@ internal class SourceContractExtractor(
           if (element is IrGetValue && element.symbol !in local) {
             val value = outerValues[element.symbol]
             reason = unsupportedCaptureReason(element.type, value) ?: reason
+          }
+          if (element is IrCall) {
+            localTileDelegates[element.symbol]?.takeIf { it !in local }?.let { delegate ->
+              reason = unsupportedCaptureReason(element.type, outerValues[delegate]) ?: reason
+            }
           }
           element.acceptChildrenVoid(this)
         }

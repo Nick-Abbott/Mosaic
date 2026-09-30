@@ -68,7 +68,7 @@ class SourceShardLifecycleIntegrationTest {
     val ordinary = run(project, "extractMosaicMain", configurationCache = true)
     assertEquals(TaskOutcome.SUCCESS, ordinary.task(":compileKotlin")?.outcome)
     assertEquals(initial, SummaryCodec.decode(summaryFile.readBytes()))
-    source.writeText(source.readText().replace("source<String>()", "source<Int>()"))
+    source.writeText(source.readText().replace("= singleTile { source<String>()", "by singleTile { source<Int>()"))
     run(project, "extractMosaicMain", configurationCache = true)
     assertNotEquals(initial, SummaryCodec.decode(summaryFile.readBytes()))
     val dependentShard = File(project, "build/mosaic-analysis/main/shards/Dependent.kt.shard.json")
