@@ -6,6 +6,7 @@ import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.SpanKind
 import io.opentelemetry.extension.kotlin.asContextElement
 import io.opentelemetry.sdk.OpenTelemetrySdk
+import io.opentelemetry.sdk.common.Clock
 import io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter
 import io.opentelemetry.sdk.trace.SdkTracerProvider
 import io.opentelemetry.sdk.trace.data.SpanData
@@ -34,10 +35,11 @@ internal class TelemetryFixture(
   maxDependencyLinks: Int = 64,
   maxContributorLinks: Int = 64,
   maxPendingDependencies: Int = 64,
+  clock: Clock = Clock.getDefault(),
 ) : AutoCloseable {
   val exporter = InMemorySpanExporter.create()
   val provider =
-    SdkTracerProvider.builder().setSampler(sampler)
+    SdkTracerProvider.builder().setSampler(sampler).setClock(clock)
       .addSpanProcessor(SimpleSpanProcessor.create(exporter)).build()
   val telemetry = OpenTelemetrySdk.builder().setTracerProvider(provider).build()
   val failures = ConcurrentLinkedQueue<Throwable>()

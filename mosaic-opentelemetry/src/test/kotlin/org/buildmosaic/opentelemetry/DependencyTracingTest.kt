@@ -4,6 +4,7 @@ package org.buildmosaic.opentelemetry
 
 import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.StatusCode
+import io.opentelemetry.sdk.testing.time.TestClock
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -18,6 +19,24 @@ import kotlin.test.assertTrue
 
 @Suppress("LargeClass", "FunctionMaxLength")
 class DependencyTracingTest {
+  @Test
+  fun timestampsUseCoreClockWithCustomSdkClock() =
+    runTest {
+      TelemetryFixture(clock = TestClock.create(Instant.EPOCH)).use { otel ->
+        val mosaic = otel.mosaic(StandardTestDispatcher(testScheduler))
+        val tile by singleTile { 7 }
+        val before = System.currentTimeMillis() * 1_000_000
+        assertEquals(7, mosaic.compose(tile))
+        testScheduler.runCurrent()
+        val after = System.currentTimeMillis() * 1_000_000 + 999_999
+        val span = otel.spans.single()
+        assertTrue(span.startEpochNanos >= before)
+        assertTrue(span.endEpochNanos <= after)
+        assertTrue(span.endEpochNanos >= span.startEpochNanos)
+        assertTrue(otel.failures.isEmpty())
+      }
+    }
+
   @Test
   fun inFlightAndCompletedReuseLinkWithoutExtraSpans() =
     runTest {

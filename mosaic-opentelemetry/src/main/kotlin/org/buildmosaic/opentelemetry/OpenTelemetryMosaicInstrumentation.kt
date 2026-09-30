@@ -81,7 +81,9 @@ class OpenTelemetryMosaicInstrumentation(
         .setAttribute(tileKind, kind)
     if (batchSize != null) builder.setAttribute(batchSizeKey, batchSize.toLong())
     contributors.forEach { builder.addLink(it.context, contributorLink) }
-    val span = builder.startSpan()
+    val startedAtNanos = System.nanoTime()
+    val epochNanos = Instant.now().let { TimeUnit.SECONDS.toNanos(it.epochSecond) + it.nano }
+    val span = builder.setStartTimestamp(epochNanos, TimeUnit.NANOSECONDS).startSpan()
     try {
       val spanContext = span.spanContext
       val recording = span.isRecording
@@ -93,7 +95,7 @@ class OpenTelemetryMosaicInstrumentation(
         span,
         identity,
         context,
-        SpanTimestamp(),
+        epochNanos - startedAtNanos,
         this,
         maxDependencyLinks,
         maxPendingDependencies,
@@ -184,12 +186,4 @@ internal class Identity(val context: SpanContext) : MosaicInstrumentation.Execut
     other is Identity && context.traceId == other.context.traceId && context.spanId == other.context.spanId
 
   override fun hashCode(): Int = 31 * context.traceId.hashCode() + context.spanId.hashCode()
-}
-
-/** Convert core's monotonic completion time without using the later publication/finalization time. */
-internal class SpanTimestamp {
-  private val monotonicNanos = System.nanoTime()
-  private val epochNanos = Instant.now().let { TimeUnit.SECONDS.toNanos(it.epochSecond) + it.nano }
-
-  fun toEpochNanos(completedAtNanos: Long): Long = epochNanos + (completedAtNanos - monotonicNanos)
 }

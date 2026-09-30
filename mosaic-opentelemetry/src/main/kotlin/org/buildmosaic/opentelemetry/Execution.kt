@@ -29,7 +29,7 @@ internal class RecordingExecution(
   private val span: Span,
   override val identity: Identity,
   coroutineContext: CoroutineContext,
-  private val timestamp: SpanTimestamp,
+  private val epochOffsetNanos: Long,
   private val instrumentation: OpenTelemetryMosaicInstrumentation,
   private val maxLinks: Int,
   private val maxPending: Int,
@@ -106,7 +106,7 @@ internal class RecordingExecution(
     synchronized(monitor) {
       // Late telemetry needs only span identity/state, never the completed body's caller context.
       activeContext = EmptyCoroutineContext
-      completedAt = timestamp.toEpochNanos(completion.completedAtNanos)
+      completedAt = epochOffsetNanos + completion.completedAtNanos
       when (completion.outcome) {
         ExecutionOutcome.FAILURE -> {
           instrumentation.safely { span.setStatus(StatusCode.ERROR) }
