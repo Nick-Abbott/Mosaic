@@ -33,12 +33,12 @@ internal class RecordingExecution(
   private val instrumentation: OpenTelemetryMosaicInstrumentation,
   private val maxLinks: Int,
   private val maxPending: Int,
-  contributors: Set<SpanIdentity>,
+  contributors: Set<Identity>,
 ) : MosaicInstrumentation.Execution {
   private val monitor = Any()
   private var activeContext = coroutineContext
   override val coroutineContext: CoroutineContext get() = activeContext
-  private var linked: MutableSet<SpanIdentity>? = contributors.takeIf { it.isNotEmpty() }?.toMutableSet()
+  private var linked: MutableSet<Identity>? = contributors.takeIf { it.isNotEmpty() }?.toMutableSet()
   private var dependencyLinks = 0
   private var pending: MutableMap<ProducerReference, PendingDependency>? = null
   private var completedAt: Long? = null
@@ -85,14 +85,13 @@ internal class RecordingExecution(
     val producer = (resolution as? ProducerReference.Published)?.identity as? Identity ?: return
     val context = producer.context
     if (!context.isValid) return
-    val target = SpanIdentity(context)
-    if (target == SpanIdentity(identity.context) || linked?.contains(target) == true) return
+    if (producer == identity || linked?.contains(producer) == true) return
     if (dependencyLinks >= maxLinks) {
       linksTruncated = true
       return
     }
-    val retained = linked ?: HashSet<SpanIdentity>().also { linked = it }
-    retained.add(target)
+    val retained = linked ?: HashSet<Identity>().also { linked = it }
+    retained.add(producer)
     dependencyLinks++
     instrumentation.safely { span.addLink(context, dependencyLink) }
     if (dependencyLinks == maxLinks && pending?.isNotEmpty() == true) {

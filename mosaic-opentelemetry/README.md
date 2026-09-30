@@ -6,18 +6,32 @@ instance. This optional runtime module uses the OpenTelemetry API and its offici
 
 ## Installation and setup
 
-In an existing Kotlin/JVM application:
+This module is available from source. Publish matching runtime modules to your
+local Maven repository from the repository root:
+
+```bash
+./gradlew :mosaic-core:publishToMavenLocal :mosaic-opentelemetry:publishToMavenLocal \
+  -Pmosaic.version=0.6.0-SNAPSHOT
+```
+
+Then add the locally published version to your Kotlin/JVM application:
 
 ```kotlin
+repositories {
+  mavenLocal()
+  mavenCentral()
+}
+
 dependencies {
-  implementation("org.buildmosaic:mosaic-opentelemetry:0.6.0")
+  implementation("org.buildmosaic:mosaic-opentelemetry:0.6.0-SNAPSHOT")
 }
 ```
 
-The module includes `mosaic-core`, OpenTelemetry API 1.66.0, and
-`opentelemetry-extension-kotlin` 1.66.0. It targets JVM 17 and is built with
-Mosaic's Kotlin 2.4.20 toolchain. The [Mosaic BOM](../mosaic-bom/README.md) aligns
-its version with the other Mosaic runtime modules.
+The module includes `mosaic-core`, OpenTelemetry API, and the Kotlin coroutine
+extension. It requires Java 17 or later; see the
+[core installation requirements](../mosaic-core/README.md#requirements-and-installation)
+for Kotlin consumer compatibility. The [Mosaic BOM](../mosaic-bom/README.md) aligns
+Mosaic runtime versions when published with the same source version.
 
 Provide the `OpenTelemetry` instance your application already uses, and reuse
 the instrumentation across request-scoped Mosaics:
@@ -53,8 +67,8 @@ the Mosaic span as current, including across suspension and dispatcher changes.
 Propagate your server/request context into the coroutine that calls Mosaic using
 your framework's OpenTelemetry integration or `Context.asContextElement()`.
 Applications that call the Kotlin context extension directly should also declare
-`implementation("io.opentelemetry:opentelemetry-extension-kotlin:1.66.0")` for
-compile-time access to that API.
+`io.opentelemetry:opentelemetry-extension-kotlin` for compile-time access and align
+it with their application's OpenTelemetry dependencies.
 
 A runtime Tile name becomes the span name. Delegated properties capture their
 first bound name (`val products by multiTile { ... }`); aliases preserve it.

@@ -10,8 +10,8 @@ This module provides a Bill of Materials (BOM) for Mosaic, making it easier to a
 // In an existing Kotlin/JVM project's build.gradle.kts
 
 dependencies {
-    // Import the BOM (replace 0.6.0 with the desired version)
-    implementation(platform("org.buildmosaic:mosaic-bom:0.6.0"))
+    // Import the BOM (replace 0.5.0 with the desired version)
+    implementation(platform("org.buildmosaic:mosaic-bom:0.5.0"))
     
     // Add Mosaic dependencies without version numbers
     implementation("org.buildmosaic:mosaic-core")
@@ -26,7 +26,7 @@ dependencies {
 
 dependencies {
     // Import the BOM
-    implementation platform('org.buildmosaic:mosaic-bom:0.6.0')
+    implementation platform('org.buildmosaic:mosaic-bom:0.5.0')
     
     // Add Mosaic dependencies without version numbers
     implementation 'org.buildmosaic:mosaic-core'
@@ -43,7 +43,7 @@ dependencies {
             <dependency>
                 <groupId>org.buildmosaic</groupId>
                 <artifactId>mosaic-bom</artifactId>
-                <version>0.6.0</version>
+                <version>0.5.0</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -82,6 +82,9 @@ The BOM includes the following Mosaic artifacts:
 Mosaic uses ordinary library dependencies. The BOM aligns Mosaic runtime modules;
 no Mosaic-specific registration plugin or processor is needed. Adding the BOM
 does not install the optional tracing module or configure OpenTelemetry.
+For source-built modules, use their local publication version in the examples
+above. See the [OpenTelemetry installation guide](../mosaic-opentelemetry/README.md#installation-and-setup)
+for its source installation.
 Exact Kotlin restrictions apply to the optional analysis plugin, not to the BOM
 itself. See the [analysis setup guide](../mosaic-gradle-plugin/README.md).
 

@@ -8,13 +8,20 @@ import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.SpanBuilder
 import io.opentelemetry.api.trace.SpanContext
 import io.opentelemetry.api.trace.SpanKind
+import io.opentelemetry.api.trace.TraceFlags
+import io.opentelemetry.api.trace.TraceState
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.context.Context
+import io.opentelemetry.context.ContextKey
+import io.opentelemetry.extension.kotlin.asContextElement
 import io.opentelemetry.sdk.trace.data.LinkData
 import io.opentelemetry.sdk.trace.samplers.Sampler
 import io.opentelemetry.sdk.trace.samplers.SamplingResult
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.buildmosaic.core.instrumentation.MosaicInstrumentation
 import org.buildmosaic.core.multiTile
 import org.buildmosaic.core.singleTile
@@ -27,6 +34,72 @@ import kotlin.test.assertTrue
 
 @Suppress("LargeClass")
 class SamplingTest {
+  @Test
+  fun nonRecordingKeepsContextThroughSuspension() =
+    runTest {
+      for (noop in listOf(true, false)) {
+        TelemetryFixture(CapturingSampler { it == "Root" || it.startsWith("downstream.") }).use { otel ->
+          val adapter = OpenTelemetryMosaicInstrumentation(if (noop) OpenTelemetry.noop() else otel.telemetry)
+          val mosaic = otel.mosaic(StandardTestDispatcher(testScheduler), adapter)
+          val key = ContextKey.named<String>("application-context")
+          val privateValue = "private-context-value"
+          val inner by singleTile {
+            delay(1)
+            assertEquals(privateValue, Context.current().get(key))
+            assertFalse(Span.current().isRecording)
+            otel.downstream("downstream.context")
+            7
+          }
+          val outer by singleTile {
+            assertEquals(privateValue, Context.current().get(key))
+            withContext(Dispatchers.Default) { compose(inner) }
+          }
+          otel.root {
+            withContext(Context.current().with(key, privateValue).asContextElement()) {
+              assertEquals(7, mosaic.compose(outer))
+            }
+            assertEquals(null, Context.current().get(key))
+          }
+          assertEquals(setOf("Root", "downstream.context"), otel.spans.map { it.name }.toSet())
+          assertPrivate(otel.spans, privateValue)
+          assertTrue(otel.failures.isEmpty())
+        }
+      }
+    }
+
+  @Test
+  fun contributorDedupIgnoresFlagsAndRemoteState() =
+    runTest {
+      val sampler = CapturingSampler { false }
+      TelemetryFixture(sampler).use { otel ->
+        val mosaic = otel.mosaic(StandardTestDispatcher(testScheduler))
+        val products by multiTile<Int, Int> { it.associateWith { key -> key } }
+        val emptyTraceState = TraceState.getDefault()
+        val original = SpanContext.create("1".repeat(32), "2".repeat(16), TraceFlags.getSampled(), emptyTraceState)
+        val unsampled = SpanContext.create(original.traceId, original.spanId, TraceFlags.getDefault(), emptyTraceState)
+        val remote =
+          SpanContext.createFromRemoteParent(
+            original.traceId,
+            original.spanId,
+            TraceFlags.getDefault(),
+            emptyTraceState,
+          )
+        val pending =
+          listOf(original, unsampled, remote).mapIndexed { index, context ->
+            withContext(Context.root().with(Span.wrap(context)).asContextElement()) {
+              mosaic.composeAsync(products, index)
+            }
+          }
+        testScheduler.runCurrent()
+        assertEquals(listOf(0, 1, 2), pending.map { it.await() })
+        val batch = sampler.requests.single()
+        assertEquals(original.spanId, batch.parentId)
+        assertEquals(3L, batch.attributes.get(batchSizeKey))
+        assertTrue(batch.links.isEmpty())
+        assertTrue(otel.failures.isEmpty())
+      }
+    }
+
   @Test
   fun unsampledProducerKeepsItsOwnDependencyIdentity() =
     runTest {

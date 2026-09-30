@@ -38,8 +38,10 @@ class OpenTelemetryMosaicInstrumentation(
     require(maxPendingDependencies >= 0) { "maxPendingDependencies must be nonnegative" }
   }
 
-  override fun captureCaller(execution: MosaicInstrumentation.ExecutionIdentity?): MosaicInstrumentation.CallerContext =
-    Caller(Context.current())
+  override fun captureCaller(execution: MosaicInstrumentation.ExecutionIdentity?): MosaicInstrumentation.CallerContext {
+    val context = Context.current()
+    return if (context === rootCaller.context) rootCaller else Caller(context)
+  }
 
   override fun startSingle(
     name: String?,
@@ -51,7 +53,7 @@ class OpenTelemetryMosaicInstrumentation(
   override fun onCallbackFailure(failure: Throwable) = failureHandler(failure)
 
   @Suppress("TooGenericExceptionCaught", "SwallowedException")
-  internal fun safely(action: () -> Unit) {
+  internal inline fun safely(action: () -> Unit) {
     try {
       action()
     } catch (failure: Throwable) {
@@ -68,19 +70,18 @@ class OpenTelemetryMosaicInstrumentation(
     name: String?,
     parent: Context,
     batchSize: Int?,
-    contributors: Map<SpanIdentity, SpanContext> = emptyMap(),
+    contributors: Set<Identity> = emptySet(),
     contributorsTruncated: Boolean = false,
   ): MosaicInstrumentation.Execution {
     val kind = if (batchSize == null) "single" else "multi"
     val builder =
-      tracer.spanBuilder(name ?: "Mosaic $kind")
+      tracer.spanBuilder(name ?: if (batchSize == null) "Mosaic single" else "Mosaic multi")
         .setSpanKind(SpanKind.INTERNAL)
         .setParent(parent)
         .setAttribute(tileKind, kind)
     if (batchSize != null) builder.setAttribute(batchSizeKey, batchSize.toLong())
-    contributors.values.forEach { builder.addLink(it, contributorLink) }
-    val timestamp = SpanTimestamp()
-    val span = builder.setStartTimestamp(timestamp.epochNanos, TimeUnit.NANOSECONDS).startSpan()
+    contributors.forEach { builder.addLink(it.context, contributorLink) }
+    val span = builder.startSpan()
     try {
       val spanContext = span.spanContext
       val recording = span.isRecording
@@ -92,11 +93,11 @@ class OpenTelemetryMosaicInstrumentation(
         span,
         identity,
         context,
-        timestamp,
+        SpanTimestamp(),
         this,
         maxDependencyLinks,
         maxPendingDependencies,
-        contributors.keys,
+        contributors,
       )
     } catch (failure: Throwable) {
       safely { span.end() }
@@ -109,12 +110,13 @@ class OpenTelemetryMosaicInstrumentation(
     recording: Boolean,
     parent: Context,
   ): Identity {
+    if (!context.isValid) return invalidIdentity
     if (!recording) {
       val parentContext = Span.fromContext(parent).spanContext
       // OTel no-op spans can borrow their parent's identity. It propagates context, but does not
       // identify a new producer execution. Unsampled SDK spans have their own valid identity.
       if (context.traceId == parentContext.traceId && context.spanId == parentContext.spanId) {
-        return Identity(SpanContext.getInvalid())
+        return invalidIdentity
       }
     }
     return Identity(context)
@@ -125,8 +127,8 @@ class OpenTelemetryMosaicInstrumentation(
   private inner class Contributors : MosaicInstrumentation.Batch {
     private var hasParent = false
     private var parent: Context? = null
-    private var parentIdentity: SpanIdentity? = null
-    private var links: MutableMap<SpanIdentity, SpanContext>? = null
+    private var parentIdentity: Identity? = null
+    private var links: MutableSet<Identity>? = null
     private var truncated = false
 
     override fun contribute(caller: MosaicInstrumentation.CallerContext?) {
@@ -135,15 +137,15 @@ class OpenTelemetryMosaicInstrumentation(
       if (!hasParent) {
         hasParent = true
         parent = context
-        if (spanContext.isValid) parentIdentity = SpanIdentity(spanContext)
+        if (spanContext.isValid) parentIdentity = Identity(spanContext)
       } else if (spanContext.isValid) {
-        val identity = SpanIdentity(spanContext)
-        if (identity == parentIdentity || links?.containsKey(identity) == true) return
+        val identity = Identity(spanContext)
+        if (identity == parentIdentity || links?.contains(identity) == true) return
         if ((links?.size ?: 0) >= maxContributorLinks) {
           truncated = true
         } else {
-          val retained = links ?: LinkedHashMap<SpanIdentity, SpanContext>().also { links = it }
-          retained[identity] = spanContext
+          val retained = links ?: LinkedHashSet<Identity>().also { links = it }
+          retained.add(identity)
         }
       }
     }
@@ -153,7 +155,7 @@ class OpenTelemetryMosaicInstrumentation(
       batchSize: Int,
     ): MosaicInstrumentation.Execution {
       try {
-        return start(name, parent ?: Context.root(), batchSize, links ?: emptyMap(), truncated)
+        return start(name, parent ?: Context.root(), batchSize, links ?: emptySet(), truncated)
       } finally {
         abandon()
       }
@@ -168,21 +170,26 @@ class OpenTelemetryMosaicInstrumentation(
 
   private companion object {
     const val DEFAULT_LIMIT = 64
+    val rootCaller = Caller(Context.root())
+    val invalidIdentity = Identity(SpanContext.getInvalid())
   }
 }
 
-/** Cache publications retain only this immutable context, never a span/execution or its subscriptions. */
-internal class Identity(val context: SpanContext) : MosaicInstrumentation.ExecutionIdentity
+/**
+ * Cache publications and retained links share this immutable identity, never execution state.
+ * SpanContext equality also includes flags/remote state; link identity is strictly trace ID + span ID.
+ */
+internal class Identity(val context: SpanContext) : MosaicInstrumentation.ExecutionIdentity {
+  override fun equals(other: Any?): Boolean =
+    other is Identity && context.traceId == other.context.traceId && context.spanId == other.context.spanId
 
-/** SpanContext equality also includes flags/remote state; link identity is strictly trace ID + span ID. */
-internal data class SpanIdentity(val traceId: String, val spanId: String) {
-  constructor(context: SpanContext) : this(context.traceId, context.spanId)
+  override fun hashCode(): Int = 31 * context.traceId.hashCode() + context.spanId.hashCode()
 }
 
 /** Convert core's monotonic completion time without using the later publication/finalization time. */
 internal class SpanTimestamp {
   private val monotonicNanos = System.nanoTime()
-  val epochNanos = Instant.now().let { TimeUnit.SECONDS.toNanos(it.epochSecond) + it.nano }
+  private val epochNanos = Instant.now().let { TimeUnit.SECONDS.toNanos(it.epochSecond) + it.nano }
 
   fun toEpochNanos(completedAtNanos: Long): Long = epochNanos + (completedAtNanos - monotonicNanos)
 }
