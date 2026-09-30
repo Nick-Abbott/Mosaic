@@ -1,13 +1,13 @@
 plugins {
   kotlin("jvm")
-  kotlin("plugin.serialization") version "2.2.10"
+  kotlin("plugin.serialization") version "2.4.20"
 }
 
 val mosaicVersion: String by rootProject.extra
 
 dependencies {
   // KotlinX Serialization
-  implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+  implementation(libs.kotlinx.serialization.json)
   implementation("org.buildmosaic:mosaic-core:$mosaicVersion")
 
   // Coroutines

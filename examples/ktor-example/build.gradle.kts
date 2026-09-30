@@ -1,6 +1,6 @@
 plugins {
   kotlin("jvm")
-  kotlin("plugin.serialization") version "2.2.10"
+  kotlin("plugin.serialization") version "2.4.20"
   application
 }
 
@@ -14,7 +14,7 @@ dependencies {
   implementation("io.ktor:ktor-server-content-negotiation:2.3.12")
   implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.12")
   implementation("io.ktor:ktor-server-status-pages:2.3.12")
-  implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+  implementation(libs.kotlinx.serialization.json)
   implementation(libs.kotlinx.coroutines.core)
   testImplementation("io.ktor:ktor-server-tests:2.3.12")
   testImplementation("io.ktor:ktor-client-content-negotiation:2.3.12")

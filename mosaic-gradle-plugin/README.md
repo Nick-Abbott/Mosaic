@@ -2,8 +2,9 @@
 
 ## Installation
 
-The `org.buildmosaic.analysis` plugin supports pure Kotlin/JVM `main` sources
-under `src/main/kotlin` with Kotlin Gradle plugin and compiler **2.2.10 only**.
+Current 0.6 development of `org.buildmosaic.analysis` supports pure Kotlin/JVM
+`main` sources under `src/main/kotlin` with Kotlin Gradle plugin and compiler
+**2.4.20 only**. The latest published release, **0.5.0**, requires **2.2.10 only**.
 It is build tooling: it does not apply Kotlin or add Mosaic application runtime
 dependencies. Add Maven Central to plugin and dependency repositories. Install
 version 0.5.0 with:
@@ -43,8 +44,9 @@ mosaicAnalysis {
 }
 ```
 
-The Gradle plugin uses Kotlin 2.2.10’s `KotlinCompilerPluginSupportPlugin` API to
-resolve the same-version `mosaic-compiler-plugin` artifact for the `main` Kotlin/JVM
+The current development Gradle plugin uses Kotlin 2.4.20’s
+`KotlinCompilerPluginSupportPlugin` API to resolve the same-version
+`mosaic-compiler-plugin` artifact for the `main` Kotlin/JVM
 compilation. No compiler JAR path or application dependency is needed. The
 compiler artifact is self-contained; its publication does not add a second
 analysis-core or serialization runtime to the compiler plugin classpath.

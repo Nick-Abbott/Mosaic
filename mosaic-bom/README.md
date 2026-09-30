@@ -80,8 +80,8 @@ The BOM includes the following Mosaic artifacts:
 
 Mosaic uses ordinary library dependencies. The BOM aligns `mosaic-core` and
 `mosaic-test`; no Mosaic-specific registration plugin or processor is needed.
-The Kotlin 2.2.10 restriction applies to the optional analysis plugin, not to
-the BOM itself.
+Exact Kotlin restrictions apply to the optional analysis plugin (2.2.10 for
+released 0.5.0, 2.4.20 for current 0.6 development), not to the BOM itself.
 
 ## Versioning
 

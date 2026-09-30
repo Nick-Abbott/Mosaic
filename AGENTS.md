@@ -24,7 +24,7 @@ analysis tooling.
 
 ## Analysis invariants
 
-- Support exactly Kotlin compiler and Gradle plugin 2.2.10. Reject unsupported
+- Support exactly Kotlin compiler and Gradle plugin 2.4.20. Reject unsupported
   project configurations conservatively.
 - Mosaic analysis runs inside normal `main` Kotlin compilation. Production
   builds launch no separate Mosaic compiler process.

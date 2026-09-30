@@ -315,7 +315,7 @@ class IrShapeTest {
     assertTrue(
       unknownReport.findings.any {
         it.certainty == Certainty.UNVERIFIED && it.key?.classId == "regression.Metrics" &&
-          it.pathCondition.any { condition -> condition.toString().contains("multi-tile executes") }
+          it.pathCondition.any { condition -> condition.contains("multi-tile executes") }
       },
       unknownReport.toString(),
     )

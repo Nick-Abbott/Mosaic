@@ -89,8 +89,8 @@ entries, and duplicate parameters are rejected.
 
 Format 3 has separate `formatVersion`, `semanticsVersion`, `toolVersion`,
 `kotlinCompilerVersion`, `moduleId`, `sourceSet`, and `complete` header fields.
-The current reader accepts format 3, `analysis-contract-2`, Kotlin 2.2.10,
-and complete `main` source-set snapshots. Older format-2 summaries are rejected
+The current development reader accepts format 3, `analysis-contract-2`, Kotlin
+2.4.20, and complete `main` source-set snapshots. Older format-2 summaries are rejected
 because they have no stable CanvasKey export contract. The producer version is recorded
 separately from semantic compatibility. `payloadHash` is lowercase SHA-256 of
 the canonical compact UTF-8 JSON serialization of the entire `payload` object

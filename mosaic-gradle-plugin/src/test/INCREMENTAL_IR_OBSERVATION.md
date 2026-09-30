@@ -1,4 +1,8 @@
-# Kotlin 2.2.10 incremental IR observation
+# Kotlin incremental IR observation
+
+The original observation used Kotlin 2.2.10. The source-shard lifecycle and
+build-cache TestKit fixtures validate the same affected-source and clean-build
+equivalence guarantees with Kotlin 2.4.20.
 
 A disposable, pure Kotlin/JVM project attached Mosaic's existing read-only IR
 probe to the normal `compileKotlin` task. It contained `A.kt` (Tile), `B.kt`

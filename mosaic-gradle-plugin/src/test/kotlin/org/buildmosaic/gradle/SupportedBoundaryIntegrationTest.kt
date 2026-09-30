@@ -32,7 +32,7 @@ class SupportedBoundaryIntegrationTest {
     val unsupportedOptions =
       """
       tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile>("compileKotlin") {
-        compilerOptions.freeCompilerArgs.add("-Xcontext-receivers")
+        compilerOptions.freeCompilerArgs.add("-Xno-param-assertions")
       }
       """.trimIndent()
     buildFile.writeText(validBuild + "\n" + unsupportedOptions)
@@ -60,10 +60,10 @@ class SupportedBoundaryIntegrationTest {
     )
     File(project, "src/main/kotlin/Script.kts").delete()
     buildFile.writeText(
-      validBuild + "\ntasks.named<org.buildmosaic.gradle.ExtractMosaicTask>(\"extractMosaicMain\") { productionCompilerVersion.set(\"2.3.0\") }",
+      validBuild + "\ntasks.named<org.buildmosaic.gradle.ExtractMosaicTask>(\"extractMosaicMain\") { productionCompilerVersion.set(\"2.2.10\") }",
     )
     assertTrue(
-      run(project, "extractMosaicMain", expectFailure = true).output.contains("requires Kotlin Gradle plugin 2.2.10"),
+      run(project, "extractMosaicMain", expectFailure = true).output.contains("requires Kotlin Gradle plugin 2.4.20"),
     )
     buildFile.writeText(
       validBuild + "\ntasks.named<org.buildmosaic.gradle.ExtractMosaicTask>(\"extractMosaicMain\") { selectedJavaVersion.set(\"999\") }",

@@ -1,6 +1,6 @@
 plugins {
   kotlin("jvm")
-  kotlin("plugin.serialization") version "2.2.10"
+  kotlin("plugin.serialization") version "2.4.20"
   id("com.google.devtools.ksp")
   id("io.micronaut.application") version "4.5.4"
 }
@@ -15,7 +15,7 @@ dependencies {
   implementation("io.micronaut:micronaut-http-server-netty")
   implementation("io.micronaut:micronaut-jackson-databind")
   implementation("io.micronaut.kotlin:micronaut-kotlin-runtime")
-  implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+  implementation(libs.kotlinx.serialization.json)
   implementation("org.yaml:snakeyaml")
   implementation(libs.kotlinx.coroutines.core)
   implementation("jakarta.inject:jakarta.inject-api:2.0.1")

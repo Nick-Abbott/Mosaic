@@ -30,10 +30,10 @@ plugins {
 }
 
 dependencies {
-  compileOnly("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.2.10")
+  compileOnly("org.jetbrains.kotlin:kotlin-compiler-embeddable:${libs.versions.kotlin.get()}")
   compileOnly(project(":mosaic-analysis-core"))
   testImplementation(project(":mosaic-analysis-core"))
-  testImplementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.2.10")
+  testImplementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:${libs.versions.kotlin.get()}")
   testImplementation(project(":mosaic-core"))
   testImplementation(kotlin("test"))
 }
