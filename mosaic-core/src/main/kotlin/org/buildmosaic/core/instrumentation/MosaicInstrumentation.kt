@@ -13,7 +13,11 @@ annotation class ExperimentalMosaicInstrumentation
 /**
  * Observes actual executions, independently of cached values. Callbacks must be prompt and nonblocking.
  * Callback exceptions (including cancellation exceptions) are isolated and sent to [onCallbackFailure].
- * Providers own sampling, limits, and finalization; core supplies no keys, Canvas values, or results.
+ * Providers own sampling, limits, and finalization. Core supplies Tile names, counts, and opaque
+ * provenance state, never keys, Canvas values, results, application exceptions, messages, or stacks.
+ * Completion exposes only the exception's JVM class name. Applications must deliberately instrument
+ * any payload they want an integration to observe; installing a provider does not grant payload access.
+ * Callbacks may synchronously reenter composition; they must not wait for the work they reserve.
  */
 @ExperimentalMosaicInstrumentation
 interface MosaicInstrumentation {
@@ -35,11 +39,18 @@ interface MosaicInstrumentation {
     caller: CallerContext?,
   ): Execution?
 
-  /** Creates bounded contributor state for one pending batch. Returning null declines observation. */
+  /**
+   * Creates bounded contributor state for one pending batch. Returning null declines observation.
+   * Returning an accumulator transfers its lifecycle to core: [Batch.start] is called at most once,
+   * and [Batch.abandon] is called exactly once when the accumulator is not used by an execution.
+   * Providers release any state they allocate before throwing or returning null.
+   */
   fun createBatch(): Batch?
 
   /**
-   * A provider-owned accumulator. Core serializes [contribute] calls with the pending batch handoff.
+   * A provider-owned accumulator. Core serializes [contribute] calls with the pending batch handoff,
+   * including synchronous reentry. Callbacks for the same accumulator never overlap or recursively
+   * invoke one another.
    * After that handoff no more contributors are added; [start] is called at most once.
    * Implementations may deduplicate, sample, or truncate contributors without retaining caller lists.
    */
@@ -47,8 +58,15 @@ interface MosaicInstrumentation {
     /** One call per request reserving any new keys, including callers with no captured context. */
     fun contribute(caller: CallerContext?)
 
-    /** Starts the real batch, with its fixed contributors. Returning null declines observation. */
-    fun start(name: String?): Execution?
+    /**
+     * Starts the real batch, with its fixed contributors. [batchSize] is the number of distinct newly
+     * fetched keys passed to this execution's MultiTile block; key values are never supplied.
+     * Returning null declines observation.
+     */
+    fun start(
+      name: String?,
+      batchSize: Int,
+    ): Execution?
 
     /** Releases contributor state when work never starts, or [start] declines observation or throws. */
     fun abandon()
@@ -80,17 +98,26 @@ interface MosaicInstrumentation {
     fun complete(completion: ExecutionCompletion)
   }
 
-  /** Diagnostics for failed adapter callbacks. Failures of this callback are also contained. */
+  /**
+   * Diagnostics for failures originating in provider callbacks, including provider context elements
+   * and publication subscribers. These may contain the provider's raw exception; application Tile
+   * exceptions never reach this callback. Failures of this callback are also contained.
+   */
   fun onCallbackFailure(failure: Throwable)
 }
 
 @ExperimentalMosaicInstrumentation
 enum class ExecutionOutcome { SUCCESS, FAILURE, CANCELLED }
 
-/** Actual Tile completion, independent of result awaiting and adapter finalization. */
+/**
+ * Actual Tile completion, independent of result awaiting and adapter finalization.
+ * [errorType] is the exception's JVM binary class name, or null on success. It contains no application
+ * exception instance, message, stack trace, cause, suppressed exception, or structured payload.
+ * Cancellation remains distinguishable through [outcome].
+ */
 @ExperimentalMosaicInstrumentation
 class ExecutionCompletion internal constructor(
   val outcome: ExecutionOutcome,
-  val failure: Throwable?,
+  val errorType: String?,
   val completedAtNanos: Long,
 )

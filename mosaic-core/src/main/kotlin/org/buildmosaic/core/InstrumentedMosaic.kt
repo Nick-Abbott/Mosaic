@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import org.buildmosaic.core.exception.MosaicMissingMultiTileResultException
 import org.buildmosaic.core.injection.Canvas
 import org.buildmosaic.core.instrumentation.ExperimentalMosaicInstrumentation
 import org.buildmosaic.core.instrumentation.InstrumentationCalls
@@ -85,8 +86,8 @@ internal class InstrumentedMosaic(
       if (winners.isEmpty()) {
         producer?.abandon()
       } else {
-        val reservation = KeyReservation(winners, checkNotNull(producer))
-        val owner = state.enqueue(reservation, caller)
+        val reservation = KeyReservation(winners, checkNotNull(producer), caller)
+        val owner = state.enqueue(reservation)
         if (owner != null) launchPending(tile, state, owner)
       }
     }
@@ -142,14 +143,13 @@ internal class InstrumentedMosaic(
     tile: MultiTile<K, V>,
     batch: PendingBatch<K, V>,
   ) {
+    val keys = batch.prepareKeys(calls) ?: return
     val collector = batch.owner.contributors
-    val started = if (collector == null) null else calls.invoke { collector.start(tile.name) }
+    val started = if (collector == null) null else calls.invoke { collector.start(tile.name, keys.size) }
     if (started == null && collector != null) calls.invoke { collector.abandon() }
     val execution = runner.observe(started)
     batch.reservations.forEach { runner.publish(it.producer, execution) }
     runner.execute(execution, { failure -> batch.failValues(failure) }) { complete ->
-      val keys = LinkedHashSet<K>()
-      batch.reservations.forEach { reservation -> reservation.keys.forEach { keys.add(it.first) } }
       val values = tile.block(this@InstrumentedMosaic, keys)
       var missing: Throwable? = null
       batch.reservations.forEach { reservation ->
@@ -158,7 +158,7 @@ internal class InstrumentedMosaic(
           if (value != null) {
             entry.value.complete(value)
           } else {
-            val failure = NoSuchElementException("Batch result missing key $key")
+            val failure = MosaicMissingMultiTileResultException(key)
             if (missing == null) missing = failure
             entry.value.completeExceptionally(failure)
           }
@@ -166,59 +166,5 @@ internal class InstrumentedMosaic(
       }
       complete(missing)
     }
-  }
-}
-
-private class ExecutionEntry<V>(val value: CompletableDeferred<V>, val producer: ProducerReference)
-
-private class KeyReservation<K : Any, V>(
-  val keys: List<Pair<K, ExecutionEntry<V>>>,
-  val producer: ProducerReference,
-)
-
-private class PendingOwner(val contributors: MosaicInstrumentation.Batch?)
-
-private class PendingBatch<K : Any, V>(val reservations: List<KeyReservation<K, V>>, val owner: PendingOwner) {
-  fun failValues(failure: Throwable) {
-    reservations.forEach { reservation -> reservation.keys.forEach { it.second.value.completeExceptionally(failure) } }
-  }
-}
-
-private class InstrumentedMultiState<K : Any, V>(private val calls: InstrumentationCalls) {
-  val cache = ConcurrentHashMap<K, ExecutionEntry<V>>()
-  private val monitor = Any()
-  private var pending = ArrayList<KeyReservation<K, V>>()
-  private var owner: PendingOwner? = null
-
-  fun enqueue(
-    reservation: KeyReservation<K, V>,
-    caller: MosaicInstrumentation.CallerContext?,
-  ): PendingOwner? =
-    synchronized(monitor) {
-      pending.add(reservation)
-      val previous = owner
-      val current = previous ?: PendingOwner(calls.invoke { calls.provider.createBatch() }).also { owner = it }
-      current.contributors?.let { collector -> calls.invoke { collector.contribute(caller) } }
-      if (previous == null) current else null
-    }
-
-  fun takePending(expected: PendingOwner): PendingBatch<K, V>? =
-    synchronized(monitor) {
-      if (owner !== expected) return null
-      check(pending.isNotEmpty()) { "Pending owner without reserved keys" }
-      PendingBatch(pending, expected).also {
-        pending = ArrayList()
-        owner = null
-      }
-    }
-
-  fun failPending(
-    expected: PendingOwner,
-    failure: Throwable,
-  ) {
-    val abandoned = takePending(expected) ?: return
-    abandoned.reservations.forEach { it.producer.abandon() }
-    abandoned.owner.contributors?.let { collector -> calls.invoke { collector.abandon() } }
-    abandoned.failValues(failure)
   }
 }

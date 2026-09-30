@@ -192,7 +192,7 @@ class SingleTileProvenanceTest {
       assertApplicationFailure(failure, assertFailsWith<IllegalArgumentException> { result.await() })
       assertSame(result, mosaic.composeAsync(tile))
       val completion = recording.execution("tile").completions.single()
-      assertSame(failure, completion.failure)
+      assertEquals(failure.javaClass.name, completion.errorType)
       assertEquals(ExecutionOutcome.FAILURE, completion.outcome)
     }
 

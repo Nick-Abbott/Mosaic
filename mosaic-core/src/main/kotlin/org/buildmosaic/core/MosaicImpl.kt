@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import org.buildmosaic.core.exception.MosaicMissingMultiTileResultException
 import org.buildmosaic.core.injection.Canvas
 import org.buildmosaic.core.instrumentation.ExperimentalMosaicInstrumentation
 import org.buildmosaic.core.instrumentation.MosaicInstrumentation
@@ -125,7 +126,7 @@ open class MosaicImpl(
         if (value != null) {
           placeholder.complete(value)
         } else {
-          placeholder.completeExceptionally(NoSuchElementException("Batch result missing key $key"))
+          placeholder.completeExceptionally(MosaicMissingMultiTileResultException(key))
         }
       }
     } catch (failure: Throwable) {

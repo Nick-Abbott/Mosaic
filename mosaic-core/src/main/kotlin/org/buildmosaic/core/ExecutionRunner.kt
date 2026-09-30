@@ -68,7 +68,7 @@ internal class ExecutionRunner(private val calls: InstrumentationCalls) {
         is CancellationException -> ExecutionOutcome.CANCELLED
         else -> ExecutionOutcome.FAILURE
       }
-    return ExecutionCompletion(outcome, failure, System.nanoTime())
+    return ExecutionCompletion(outcome, failure?.javaClass?.name, System.nanoTime())
   }
 }
 

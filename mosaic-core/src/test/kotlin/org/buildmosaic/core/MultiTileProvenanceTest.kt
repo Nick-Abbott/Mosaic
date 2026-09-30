@@ -12,6 +12,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
+import org.buildmosaic.core.exception.MosaicMissingMultiTileResultException
 import org.buildmosaic.core.instrumentation.ExecutionOutcome
 import org.buildmosaic.core.instrumentation.ExperimentalMosaicInstrumentation
 import org.buildmosaic.core.instrumentation.ProducerReference
@@ -53,6 +54,7 @@ class MultiTileProvenanceTest {
       assertTrue(batch.frozen)
       val reused = recording.execution("second").dependencies.single()
       val identity = recording.execution("multi").identity
+      assertEquals(3, recording.execution("multi").batchSize)
       assertSame(identity, assertIs<ProducerReference.Published>(reused.resolution).identity)
       val c = mosaic.composeAsync(cached)
       testScheduler.runCurrent()
@@ -83,6 +85,7 @@ class MultiTileProvenanceTest {
       testScheduler.runCurrent()
       val executions = recording.executions.filter { it.batch != null }
       assertEquals(2, executions.size)
+      assertEquals(listOf(2, 1), executions.map { it.batchSize })
       assertEquals(listOf(recording.execution("first").identity), executions[0].batch!!.callers.map { it!!.owner })
       assertEquals(listOf(recording.execution("second").identity), executions[1].batch!!.callers.map { it!!.owner })
       assertSame(
@@ -117,6 +120,7 @@ class MultiTileProvenanceTest {
       testScheduler.runCurrent()
       assertEquals(1, a.getValue(1).await())
       assertEquals(1, recording.batches.single().contributed)
+      assertEquals(1, recording.execution("multi").batchSize)
       assertEquals(1, recording.captures.get())
       assertTrue(mosaic.composeAsync(multi, emptyList<Int>()).isEmpty())
       assertEquals(1, recording.batches.size)
@@ -140,6 +144,7 @@ class MultiTileProvenanceTest {
         testScheduler.runCurrent()
         assertEquals((1..5).associateWith { it + 7 }, result.await())
         val batchExecution = recording.executions.single { it.batch != null }
+        assertEquals(5, batchExecution.batchSize)
         assertSame(batchExecution.identity, recording.execution("leaf").caller!!.owner)
         assertSame(batchExecution.identity, recording.execution("leaf").caller!!.ambient)
         assertEquals(4, batchExecution.dependencies.size)
@@ -159,7 +164,7 @@ class MultiTileProvenanceTest {
       result.values.forEach { assertApplicationFailure(failure, assertFailsWith<IllegalStateException> { it.await() }) }
       val completion = recording.execution("tile").completions.single()
       assertEquals(ExecutionOutcome.FAILURE, completion.outcome)
-      assertSame(failure, completion.failure)
+      assertEquals(failure.javaClass.name, completion.errorType)
       assertSame(result.getValue(1), mosaic.composeAsync(tile, 1))
       recording.assertCompletedOnce()
     }
@@ -175,7 +180,8 @@ class MultiTileProvenanceTest {
       val failure = assertFailsWith<NoSuchElementException> { result.getValue(2).await() }
       val completion = recording.execution("tile").completions.single()
       assertEquals(ExecutionOutcome.FAILURE, completion.outcome)
-      assertApplicationFailure(completion.failure!!, failure)
+      assertEquals(2, assertIs<MosaicMissingMultiTileResultException>(failure).key)
+      assertEquals(MosaicMissingMultiTileResultException::class.java.name, completion.errorType)
       recording.assertCompletedOnce()
     }
 
@@ -226,6 +232,7 @@ class MultiTileProvenanceTest {
       repeat(256) { mosaic.composeAsync(tile, it) }
       testScheduler.runCurrent()
       assertEquals(256, recording.batches.single().contributed)
+      assertEquals(256, recording.execution("tile").batchSize)
       assertEquals(4, recording.batches.single().callers.size)
       repeat(64) {
         mosaic.composeAsync(tile, it + 256)
@@ -239,6 +246,7 @@ class MultiTileProvenanceTest {
       assertEquals(320, execution.reported.get())
       assertEquals(4, execution.dependencies.size)
       assertEquals(65, recording.batches.size)
+      assertEquals(List(64) { 1 }, recording.executions.filter { it.batch != null }.drop(1).map { it.batchSize })
       recording.assertCompletedOnce()
     }
 
@@ -260,6 +268,7 @@ class MultiTileProvenanceTest {
         }
         assertEquals((0 until 47).toSet(), fetched.flatMap { it }.toSet())
         assertEquals(47, fetched.sumOf { it.size })
+        assertEquals(47, recording.executions.filter { it.batch != null }.sumOf { it.batchSize!! })
         recording.executions.flatMap { it.dependencies }.forEach {
           assertIs<ProducerReference.Published>(
             it.resolution,

@@ -55,6 +55,7 @@ class InstrumentationFailureTest {
         assertSame(result, mosaic.composeAsync(first))
         assertTrue(recording.failures.isNotEmpty(), broken)
         assertTrue(recording.failures.all { it === failure }, broken)
+        if (broken == "batchStart") assertEquals(1, recording.batches.single().abandonCalls)
         recording.assertCompletedOnce(allowCallbackFailures = true)
         mosaic.cancel()
       }

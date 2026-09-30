@@ -209,7 +209,8 @@ scheduling and is not an API guarantee.
 chunks concurrently; chunk size limits request size, not request rate or
 concurrency. `perKeyTile` still fetches each key individually and concurrently.
 Return a non-null value for every requested key; a missing or null batch result
-fails that key with `NoSuchElementException`.
+fails that key with `MosaicMissingMultiTileResultException`, a `NoSuchElementException`
+subtype whose `key` field retains the requested key without including it in the message.
 
 | Call | Return shape |
 | --- | --- |
@@ -280,27 +281,10 @@ requirements and configuration.
 
 ## Runtime instrumentation SPI
 
-Integration modules can opt in to `ExperimentalMosaicInstrumentation` and supply
+An experimental
 [`MosaicInstrumentation`](src/main/kotlin/org/buildmosaic/core/instrumentation/MosaicInstrumentation.kt)
-to `MosaicImpl.instrumented(canvas, instrumentation, dispatcher)`.
-The SPI exposes caller capture, actual executions, batch contributors, and
-[`ProducerReference`](src/main/kotlin/org/buildmosaic/core/instrumentation/ProducerReference.kt)
-publication and reuse. Providers own bounded context retention, dependency
-subscriptions, and finalization. Callbacks must be prompt and nonblocking;
-callback failures are reported to the provider and contained by core.
-
-Execution completion supplies success, failure, or cancellation and a monotonic
-completion timestamp, outside the execution context. Finalization can wait for
-unresolved publications without delaying results. Pending work that never starts
-abandons its references. See the SPI KDoc for the lifecycle and accepted context
-elements. Providers receive names and opaque state, without keys or result data.
-
-With no provider, Mosaic retains its original fields, caches, method bodies,
-launch paths, and batching monitor. Instrumented construction selects a separate
-implementation through the existing virtual dispatch. Ordinary operations add
-no branches, fields, synchronization, caller captures, producer metadata, or
-contributor allocations. The companion factory has a one-time class-initialization
-cost. `Canvas.create()` keeps the ordinary path.
+integration SPI observes actual execution, reuse, and batching. Normal composition
+does not require it. Its KDoc defines the API, lifecycle, and privacy contract.
 
 ## 🌐 **Framework Integration**
 

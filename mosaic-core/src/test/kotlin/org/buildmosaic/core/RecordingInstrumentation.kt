@@ -33,7 +33,10 @@ internal fun assertApplicationFailure(
   assertTrue(observed === expected || observed.cause === expected, "Application exception was replaced: $observed")
 }
 
-internal class RecordingInstrumentation(private val limit: Int = Int.MAX_VALUE) : MosaicInstrumentation {
+internal class RecordingInstrumentation(
+  private val limit: Int = Int.MAX_VALUE,
+  private val recordBoundary: Boolean = false,
+) : MosaicInstrumentation {
   data class Identity(val number: Int, val name: String?) : MosaicInstrumentation.ExecutionIdentity
 
   class Caller(val owner: Identity?, val ambient: Identity?) : MosaicInstrumentation.CallerContext
@@ -42,12 +45,14 @@ internal class RecordingInstrumentation(private val limit: Int = Int.MAX_VALUE) 
   val executions = ConcurrentLinkedQueue<RecordedExecution>()
   val batches = ConcurrentLinkedQueue<RecordedBatch>()
   val failures = ConcurrentLinkedQueue<Throwable>()
+  val receivedArguments = ConcurrentLinkedQueue<Any>()
   val captures = AtomicInteger()
   val next = AtomicInteger()
   var callback: (String) -> Unit = {}
   var context: ((RecordedExecution) -> CoroutineContext)? = null
 
   override fun captureCaller(execution: MosaicInstrumentation.ExecutionIdentity?): Caller {
+    recordArguments(execution)
     callback("capture")
     captures.incrementAndGet()
     return Caller(execution as Identity?, current.get())
@@ -57,6 +62,7 @@ internal class RecordingInstrumentation(private val limit: Int = Int.MAX_VALUE) 
     name: String?,
     caller: MosaicInstrumentation.CallerContext?,
   ): RecordedExecution {
+    recordArguments(name, caller)
     callback("single")
     return RecordedExecution(name, caller as Caller?, null).also { executions.add(it) }
   }
@@ -76,22 +82,29 @@ internal class RecordingInstrumentation(private val limit: Int = Int.MAX_VALUE) 
     var contributed = 0
     var frozen = false
     var abandoned = false
+    var abandonCalls = 0
 
     override fun contribute(caller: MosaicInstrumentation.CallerContext?) {
+      recordArguments(caller)
       callback("contribute")
       check(!frozen)
       contributed++
       if (callers.size < limit) callers.add(caller as Caller?)
     }
 
-    override fun start(name: String?): RecordedExecution {
+    override fun start(
+      name: String?,
+      batchSize: Int,
+    ): RecordedExecution {
+      recordArguments(name, batchSize)
       callback("batchStart")
       check(!frozen)
       frozen = true
-      return RecordedExecution(name, null, this).also { executions.add(it) }
+      return RecordedExecution(name, null, this, batchSize).also { executions.add(it) }
     }
 
     override fun abandon() {
+      abandonCalls++
       callback("abandon")
       check(!abandoned)
       abandoned = true
@@ -104,6 +117,7 @@ internal class RecordingInstrumentation(private val limit: Int = Int.MAX_VALUE) 
     name: String?,
     val caller: Caller?,
     val batch: RecordedBatch?,
+    val batchSize: Int? = null,
   ) : MosaicInstrumentation.Execution {
     private val token = Identity(next.incrementAndGet(), name)
     override val identity: Identity get() {
@@ -122,11 +136,13 @@ internal class RecordingInstrumentation(private val limit: Int = Int.MAX_VALUE) 
     val reported = AtomicInteger()
 
     override fun dependency(producer: ProducerReference) {
+      recordArguments(producer)
       callback("dependency")
       reported.incrementAndGet()
       if (retained.getAndIncrement() < limit) {
         dependencies.add(producer)
-        producer.subscribe {
+        producer.subscribe { resolution ->
+          recordArguments(resolution)
           callback("subscriber")
           finalizeIfReady()
         }
@@ -134,6 +150,7 @@ internal class RecordingInstrumentation(private val limit: Int = Int.MAX_VALUE) 
     }
 
     override fun complete(completion: ExecutionCompletion) {
+      recordArguments(completion)
       assertNotSame(token, current.get(), "Completed execution context must be removed")
       completions.add(completion)
       callback("complete")
@@ -149,6 +166,10 @@ internal class RecordingInstrumentation(private val limit: Int = Int.MAX_VALUE) 
   }
 
   fun execution(name: String): RecordedExecution = executions.single { it.identity.name == name }
+
+  private fun recordArguments(vararg arguments: Any?) {
+    if (recordBoundary) arguments.filterNotNull().forEach { receivedArguments.add(it) }
+  }
 
   fun assertCompletedOnce(allowCallbackFailures: Boolean = false) {
     executions.forEach { assertEquals(1, it.completions.size) }
