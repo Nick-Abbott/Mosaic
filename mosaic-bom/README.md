@@ -67,7 +67,7 @@ dependencies {
 ## Benefits of Using the BOM
 
 1. **Simplified Dependency Management**: One version for the included Mosaic runtime libraries
-2. **Version Alignment**: Aligns `mosaic-core` and `mosaic-test` versions
+2. **Version Alignment**: Aligns Mosaic runtime module versions
 3. **Easier Upgrades**: Update the included runtime libraries by changing one BOM version
 4. **Reduced Configuration**: No need to specify versions for the included runtime dependencies
 
@@ -77,9 +77,11 @@ The BOM includes the following Mosaic artifacts:
 
 - `mosaic-core`: Core Mosaic functionality
 - `mosaic-test`: Testing utilities for Mosaic
+- `mosaic-opentelemetry`: Optional runtime tracing with application-owned OpenTelemetry (0.6.0 onward)
 
-Mosaic uses ordinary library dependencies. The BOM aligns `mosaic-core` and
-`mosaic-test`; no Mosaic-specific registration plugin or processor is needed.
+Mosaic uses ordinary library dependencies. The BOM aligns Mosaic runtime modules;
+no Mosaic-specific registration plugin or processor is needed. Adding the BOM
+does not install the optional tracing module or configure OpenTelemetry.
 Exact Kotlin restrictions apply to the optional analysis plugin (2.2.10 for
 released 0.5.0, 2.4.20 for current 0.6 development), not to the BOM itself.
 

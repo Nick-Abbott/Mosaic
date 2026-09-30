@@ -5,6 +5,9 @@ plugins {
 
 dependencies {
   implementation(project(":mosaic-core"))
+  implementation(project(":mosaic-opentelemetry"))
+  implementation(libs.opentelemetry.sdk)
+  implementation(libs.opentelemetry.sdk.testing)
   testImplementation(kotlin("test"))
   testImplementation(libs.kotlinx.coroutines.core)
 }

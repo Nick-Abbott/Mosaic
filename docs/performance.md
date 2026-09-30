@@ -151,8 +151,8 @@ results remain ignored; the local handoff contains exhaustive execution evidence
 ## JMH runtime benchmarks
 
 Mosaic uses JMH for repeatable JVM timing and allocation measurements. The internal
-`mosaic-benchmarks` module depends on `mosaic-core` and is neither published nor
-included in the BOM. JMH handles warmup, measurement, forks, and JVM profiling;
+`mosaic-benchmarks` module includes core and optional tracing fixtures and is
+neither published nor included in the BOM. JMH handles warmup, measurement, forks, and JVM profiling;
 the suite does not time operations with a clock in benchmark code.
 
 The suite measures request Mosaic creation from an already-built Canvas, SingleTile
@@ -228,6 +228,38 @@ identify the source revision and fixture boundaries.
 The module's `check` task compiles benchmark sources without executing them.
 Run `:mosaic-benchmarks:jmh` to verify JMH generation and execution. The full
 suite is not part of normal PR validation.
+
+### Focused OpenTelemetry measurements
+
+`TracingBenchmark` uses the existing fixture boundaries for SingleTile cold,
+completed async cache hit, MultiTile cold/cached 16, shared diamond size 4, and
+coalescing fan-out 4/depth 0. Its `mode` parameter selects ordinary Mosaic,
+configured OpenTelemetry no-op, SDK with an always-off sampler, or recording SDK
+with `SimpleSpanProcessor` and `InMemorySpanExporter`. The exporter resets every
+4,096 exported spans to bound benchmark retention; that reset cost is included.
+No network exporter runs. Request/cache setup remains outside MultiTile timing
+and contributes to GC-profiler allocation, as described below.
+
+Use JDK 21 and collect timing and allocation in separate processes:
+
+```bash
+./gradlew :mosaic-benchmarks:jmhJar
+mkdir -p performance/results/tracing
+java -jar mosaic-benchmarks/build/libs/mosaic-benchmarks-*-jmh.jar \
+  '.*TracingBenchmark.*' -bm avgt -tu us -t 1 -wi 3 -i 5 -w 1s -r 1s -f 2 \
+  -jvmArgs '-Xms512m -Xmx512m -XX:+UseG1GC -XX:ActiveProcessorCount=12' \
+  -rf json -rff performance/results/tracing/timing.json
+java -jar mosaic-benchmarks/build/libs/mosaic-benchmarks-*-jmh.jar \
+  '.*TracingBenchmark.*' -bm avgt -tu us -t 1 -wi 3 -i 5 -w 1s -r 1s -f 2 -prof gc \
+  -jvmArgs '-Xms512m -Xmx512m -XX:+UseG1GC -XX:ActiveProcessorCount=12' \
+  -rf json -rff performance/results/tracing/allocation.json
+```
+
+Choose new output paths for each run, and record revision, jar hash, Java version,
+JVM options, and affinity. Compare ordinary mode with the existing six benchmark
+methods on the same host/profile when checking the baseline. These focused runs
+measure adapter cost before real exporter/network work; they do not replace the
+application performance suite or establish throughput limits.
 
 ### Fixture boundaries
 

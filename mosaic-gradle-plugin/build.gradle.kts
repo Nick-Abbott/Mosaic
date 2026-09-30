@@ -35,6 +35,7 @@ dependencies {
   add(testKitKotlinPlugin.name, "org.jetbrains.kotlin:kotlin-gradle-plugin:${libs.versions.kotlin.get()}")
   testImplementation(project(":mosaic-core"))
   testImplementation(project(":mosaic-compiler-plugin"))
+  testImplementation(libs.kotlinx.serialization.json)
   testImplementation(gradleTestKit())
   testImplementation(kotlin("test"))
 }
