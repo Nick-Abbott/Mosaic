@@ -1,8 +1,5 @@
-@file:OptIn(ExperimentalMosaicInstrumentation::class)
-
 package org.buildmosaic.core
 
-import org.buildmosaic.core.instrumentation.ExperimentalMosaicInstrumentation
 import org.buildmosaic.core.instrumentation.InstrumentationCalls
 import org.buildmosaic.core.instrumentation.ProducerReference
 import java.util.concurrent.CountDownLatch

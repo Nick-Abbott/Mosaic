@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalMosaicInstrumentation::class)
-
 package org.buildmosaic.core.instrumentation
 
 import kotlinx.coroutines.test.runTest
@@ -33,7 +31,7 @@ class CanvasInstrumentationTest {
         }
       val child = applicationCanvas.withLayer { single<String> { "request" } }
       val requestCanvas = canvas(child) {}
-      assertSame(provider, requestCanvas.instrumentation)
+      assertSame(provider, requestCanvas.runtimeConfig.instrumentation)
       assertNull(requestCanvas.sourceOr<MosaicInstrumentation>())
       assertNull(requestCanvas.sourceOr<RecordingInstrumentation>())
       val work by singleTile { 7 }
@@ -49,8 +47,8 @@ class CanvasInstrumentationTest {
       val ordinary = canvas {}
       val provider = RecordingInstrumentation()
       val applicationBinding = canvas { single<MosaicInstrumentation> { provider } }
-      assertNull(ordinary.instrumentation)
-      assertNull(applicationBinding.instrumentation)
+      assertNull(ordinary.runtimeConfig.instrumentation)
+      assertNull(applicationBinding.runtimeConfig.instrumentation)
       assertEquals(MosaicImpl::class, ordinary.create()::class)
       val mosaic = applicationBinding.create()
       assertEquals(MosaicImpl::class, mosaic::class)
@@ -87,7 +85,7 @@ class CanvasInstrumentationTest {
           }
         }
       assertEquals(duplicate.message, inherited.message)
-      assertSame(provider, parent.instrumentation)
+      assertSame(provider, parent.runtimeConfig.instrumentation)
     }
 
   @Test
@@ -106,7 +104,7 @@ class CanvasInstrumentationTest {
         installInstrumentation { provider }
       }.use { parent ->
         parent.withLayer {}.close()
-        assertSame(provider, parent.instrumentation)
+        assertSame(provider, parent.runtimeConfig.instrumentation)
       }
       assertTrue(!closed)
     }

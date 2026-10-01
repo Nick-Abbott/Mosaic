@@ -1,5 +1,3 @@
-@file:OptIn(org.buildmosaic.core.instrumentation.ExperimentalMosaicInstrumentation::class)
-
 package org.buildmosaic.opentelemetry
 
 import io.opentelemetry.api.trace.StatusCode

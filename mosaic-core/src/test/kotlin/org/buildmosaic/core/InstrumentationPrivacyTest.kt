@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalMosaicInstrumentation::class)
-
 package org.buildmosaic.core
 
 import kotlinx.coroutines.CancellationException
@@ -11,7 +9,6 @@ import org.buildmosaic.core.injection.CanvasKey
 import org.buildmosaic.core.injection.canvas
 import org.buildmosaic.core.instrumentation.ExecutionCompletion
 import org.buildmosaic.core.instrumentation.ExecutionOutcome
-import org.buildmosaic.core.instrumentation.ExperimentalMosaicInstrumentation
 import org.buildmosaic.core.instrumentation.ProducerReference
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -96,6 +96,26 @@ Applications that call the Kotlin context extension directly should also declare
 `io.opentelemetry:opentelemetry-extension-kotlin` for compile-time access and align
 it with their application's OpenTelemetry dependencies.
 
+Canvas configures tracing once; each request's Mosaic executes the graph, and each
+actual Tile execution has its own span. Code inside a traced Tile can enrich that
+execution's span using the standard OpenTelemetry API:
+
+```kotlin
+import io.opentelemetry.api.trace.Span
+import org.buildmosaic.core.singleTile
+
+val UserTile by singleTile {
+  val user = service.loadUser()
+  Span.current().setAttribute("app.user.segment", user.segment)
+  user
+}
+```
+
+Here `service` is an application service. `Span.current()` refers to this Tile
+execution's span. Nested Tiles get their own current spans; suspension and dispatcher
+changes preserve the correct span, and returning from nested work restores the caller's
+span. A span is execution-scoped and does not belong in Canvas DI.
+
 A runtime Tile name becomes the span name. Delegated properties capture their
 first bound name (`val products by multiTile { ... }`); aliases preserve it.
 Unnamed Tiles use `Mosaic single` or `Mosaic multi`. Names never include keys,
@@ -133,10 +153,10 @@ span ends with the saved timestamp. Application results do not wait for telemetr
 ## Privacy and limits
 
 Enabling tracing does not automatically export application data. The integration never
-receives or emits MultiTile keys, Tile results, Canvas values, application
+receives or emits Tile inputs, MultiTile keys, Tile results, Canvas values, application
 exceptions, messages, stacks, causes, request IDs, user IDs, or arbitrary objects.
-Applications can deliberately add attributes/events with ordinary OpenTelemetry
-APIs while a Tile span is current; the application controls that data.
+Adding attributes or events through `Span.current()` is an explicit application
+decision, subject to the application's privacy and telemetry policy.
 
 State is bounded to 64 dependency links per execution, 64 contributor links per
 batch (excluding its parent), and 64 unresolved dependencies per execution.

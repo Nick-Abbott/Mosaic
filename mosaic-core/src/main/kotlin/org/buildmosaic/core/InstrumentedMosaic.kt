@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalMosaicInstrumentation::class)
-
 package org.buildmosaic.core
 
 import kotlinx.coroutines.CompletableDeferred
@@ -9,7 +7,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.buildmosaic.core.exception.MosaicMissingMultiTileResultException
 import org.buildmosaic.core.injection.Canvas
-import org.buildmosaic.core.instrumentation.ExperimentalMosaicInstrumentation
 import org.buildmosaic.core.instrumentation.InstrumentationCalls
 import org.buildmosaic.core.instrumentation.MosaicInstrumentation
 import org.buildmosaic.core.instrumentation.ProducerReference

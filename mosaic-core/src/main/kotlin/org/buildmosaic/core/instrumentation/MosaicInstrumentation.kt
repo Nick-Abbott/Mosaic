@@ -4,13 +4,10 @@ import kotlinx.coroutines.ThreadContextElement
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 
-/** Provider SPI for runtime integrations. Application composition does not require this API. */
-@RequiresOptIn(message = "The Mosaic instrumentation SPI is experimental.")
-@Retention(AnnotationRetention.BINARY)
-@Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION, AnnotationTarget.CONSTRUCTOR)
-annotation class ExperimentalMosaicInstrumentation
-
 /**
+ * Supported runtime instrumentation API for integration authors. Application composition uses
+ * the integration's Canvas configuration API rather than implementing this contract.
+ *
  * Observes actual executions, independently of cached values. Callbacks must be prompt and nonblocking.
  * Callback exceptions (including cancellation exceptions) are isolated and sent to [onCallbackFailure].
  * Providers own sampling, limits, and finalization. Core supplies Tile names, counts, and opaque
@@ -19,7 +16,6 @@ annotation class ExperimentalMosaicInstrumentation
  * any payload they want an integration to observe; installing a provider does not grant payload access.
  * Callbacks may synchronously reenter composition; they must not wait for the work they reserve.
  */
-@ExperimentalMosaicInstrumentation
 interface MosaicInstrumentation {
   /** Opaque captured caller state. Providers should retain only bounded, necessary context. */
   interface CallerContext
@@ -106,16 +102,16 @@ interface MosaicInstrumentation {
   fun onCallbackFailure(failure: Throwable)
 }
 
-@ExperimentalMosaicInstrumentation
+/** Actual execution outcome supplied to runtime integrations, with cancellation distinct from failure. */
 enum class ExecutionOutcome { SUCCESS, FAILURE, CANCELLED }
 
 /**
- * Actual Tile completion, independent of result awaiting and adapter finalization.
+ * Actual Tile completion supplied to runtime integrations, independent of result awaiting and
+ * adapter finalization.
  * [errorType] is the exception's JVM binary class name, or null on success. It contains no application
  * exception instance, message, stack trace, cause, suppressed exception, or structured payload.
  * Cancellation remains distinguishable through [outcome].
  */
-@ExperimentalMosaicInstrumentation
 class ExecutionCompletion internal constructor(
   val outcome: ExecutionOutcome,
   val errorType: String?,

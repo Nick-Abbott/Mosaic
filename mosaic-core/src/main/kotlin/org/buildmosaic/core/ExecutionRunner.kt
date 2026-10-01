@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalMosaicInstrumentation::class)
-
 package org.buildmosaic.core
 
 import kotlinx.coroutines.CancellationException
@@ -7,7 +5,6 @@ import kotlinx.coroutines.ThreadContextElement
 import kotlinx.coroutines.withContext
 import org.buildmosaic.core.instrumentation.ExecutionCompletion
 import org.buildmosaic.core.instrumentation.ExecutionOutcome
-import org.buildmosaic.core.instrumentation.ExperimentalMosaicInstrumentation
 import org.buildmosaic.core.instrumentation.InstrumentationCalls
 import org.buildmosaic.core.instrumentation.MosaicInstrumentation
 import org.buildmosaic.core.instrumentation.ProducerReference

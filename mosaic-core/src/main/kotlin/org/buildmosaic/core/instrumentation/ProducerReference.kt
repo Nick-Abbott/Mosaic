@@ -1,13 +1,11 @@
-@file:OptIn(ExperimentalMosaicInstrumentation::class)
-
 package org.buildmosaic.core.instrumentation
 
 /**
- * A cache producer's publication, visible before an execution identity exists.
+ * Publication API for runtime integration authors, visible before a cache producer's execution
+ * identity exists.
  * It transitions once from unresolved ([resolution] == null) to [Published] or [Abandoned].
  * Core owns transitions. Subscribers may race publication and must not block in their callbacks.
  */
-@ExperimentalMosaicInstrumentation
 class ProducerReference internal constructor(private val calls: InstrumentationCalls) {
   sealed interface Resolution
 

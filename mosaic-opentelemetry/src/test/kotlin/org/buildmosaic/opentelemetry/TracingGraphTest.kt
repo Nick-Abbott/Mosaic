@@ -1,5 +1,4 @@
 @file:Suppress("VariableNaming", "ktlint:standard:property-naming")
-@file:OptIn(org.buildmosaic.core.instrumentation.ExperimentalMosaicInstrumentation::class)
 
 package org.buildmosaic.opentelemetry
 

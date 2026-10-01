@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalMosaicInstrumentation::class)
-
 package org.buildmosaic.opentelemetry
 
 import io.opentelemetry.api.trace.Span
@@ -23,7 +21,6 @@ import org.buildmosaic.core.injection.Canvas
 import org.buildmosaic.core.injection.CanvasKey
 import org.buildmosaic.core.injection.canvas
 import org.buildmosaic.core.injection.create
-import org.buildmosaic.core.instrumentation.ExperimentalMosaicInstrumentation
 import org.buildmosaic.core.instrumentation.MosaicInstrumentation
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.coroutines.CoroutineContext

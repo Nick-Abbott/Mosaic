@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalMosaicInstrumentation::class)
-
 package org.buildmosaic.core
 
 import kotlinx.coroutines.CoroutineDispatcher
@@ -8,7 +6,6 @@ import kotlinx.coroutines.asContextElement
 import org.buildmosaic.core.injection.Canvas
 import org.buildmosaic.core.injection.CanvasKey
 import org.buildmosaic.core.instrumentation.ExecutionCompletion
-import org.buildmosaic.core.instrumentation.ExperimentalMosaicInstrumentation
 import org.buildmosaic.core.instrumentation.MosaicInstrumentation
 import org.buildmosaic.core.instrumentation.ProducerReference
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -178,7 +175,6 @@ internal class RecordingInstrumentation(
 }
 
 /** Existing runtime scenarios are inherited unchanged by instrumented variants. */
-@OptIn(ExperimentalMosaicInstrumentation::class)
 open class RuntimeBehaviorTest {
   protected open val instrumentation: MosaicInstrumentation? = null
 
@@ -191,22 +187,18 @@ open class RuntimeBehaviorTest {
     } ?: MosaicImpl(canvas, dispatcher)
 }
 
-@OptIn(ExperimentalMosaicInstrumentation::class)
 class InstrumentedMosaicBehaviorTest : MosaicTest() {
   override val instrumentation: MosaicInstrumentation = RecordingInstrumentation()
 }
 
-@OptIn(ExperimentalMosaicInstrumentation::class)
 class InstrumentedConcurrencyBehaviorTest : MosaicConcurrencyTest() {
   override val instrumentation: MosaicInstrumentation = RecordingInstrumentation()
 }
 
-@OptIn(ExperimentalMosaicInstrumentation::class)
 class InstrumentedCoalescingBehaviorTest : MultiTileCoalescingTest() {
   override val instrumentation: MosaicInstrumentation = RecordingInstrumentation()
 }
 
-@OptIn(ExperimentalMosaicInstrumentation::class)
 class InstrumentedDslBehaviorTest : TileDslTest() {
   override val instrumentation: MosaicInstrumentation = RecordingInstrumentation()
 }

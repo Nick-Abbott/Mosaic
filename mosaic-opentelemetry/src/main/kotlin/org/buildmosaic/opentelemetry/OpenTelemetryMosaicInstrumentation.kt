@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalMosaicInstrumentation::class)
-
 package org.buildmosaic.opentelemetry
 
 import io.opentelemetry.api.OpenTelemetry
@@ -8,7 +6,6 @@ import io.opentelemetry.api.trace.SpanContext
 import io.opentelemetry.api.trace.SpanKind
 import io.opentelemetry.context.Context
 import io.opentelemetry.extension.kotlin.asContextElement
-import org.buildmosaic.core.instrumentation.ExperimentalMosaicInstrumentation
 import org.buildmosaic.core.instrumentation.MosaicInstrumentation
 import java.time.Instant
 import java.util.concurrent.TimeUnit

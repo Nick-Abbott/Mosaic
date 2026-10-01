@@ -1,12 +1,9 @@
-@file:OptIn(ExperimentalMosaicInstrumentation::class)
-
 package org.buildmosaic.opentelemetry
 
 import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.StatusCode
 import org.buildmosaic.core.instrumentation.ExecutionCompletion
 import org.buildmosaic.core.instrumentation.ExecutionOutcome
-import org.buildmosaic.core.instrumentation.ExperimentalMosaicInstrumentation
 import org.buildmosaic.core.instrumentation.MosaicInstrumentation
 import org.buildmosaic.core.instrumentation.ProducerReference
 import java.util.concurrent.TimeUnit

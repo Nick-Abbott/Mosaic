@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
 
 class PublishedRuntimeInstallationTest {
   @Test
-  fun `published runtime supports Canvas tracing DSL`() {
+  fun `published tracing and SPI need no opt-in`() {
     val repositoryRoot = File(System.getProperty("user.dir")).parentFile
     val version =
       repositoryRoot.resolve("gradle.properties").readLines()
@@ -211,9 +211,15 @@ private fun verifyRuntimeConsumer(
     writeText(
       """
       import kotlinx.coroutines.test.runTest
+      import kotlinx.coroutines.CompletableDeferred
       import org.buildmosaic.core.singleTile
       import org.buildmosaic.core.injection.canvas
       import org.buildmosaic.core.injection.create
+      import org.buildmosaic.core.instrumentation.MosaicInstrumentation
+      import org.buildmosaic.core.instrumentation.ProducerReference
+      import org.buildmosaic.core.instrumentation.ExecutionCompletion
+      import org.buildmosaic.core.instrumentation.ExecutionOutcome
+      import org.buildmosaic.core.instrumentation.installInstrumentation
       import org.buildmosaic.opentelemetry.tracing
       import io.opentelemetry.api.OpenTelemetry
       import org.buildmosaic.test.TestMosaicBuilder
@@ -236,6 +242,30 @@ private fun verifyRuntimeConsumer(
           val requestCanvas = applicationCanvas.withLayer {}
           val mosaic = requestCanvas.create()
           assertEquals(7, mosaic.compose(singleTile { 7 }))
+        }
+        @Test fun supportsRuntimeIntegrationWithoutOptIn() = runTest {
+          val completed = CompletableDeferred<ExecutionCompletion>()
+          var dependencies = 0
+          val provider = object : MosaicInstrumentation {
+            override fun captureCaller(execution: MosaicInstrumentation.ExecutionIdentity?) = null
+            override fun createBatch(): MosaicInstrumentation.Batch? = null
+            override fun onCallbackFailure(failure: Throwable) { throw AssertionError(failure) }
+            override fun startSingle(name: String?, caller: MosaicInstrumentation.CallerContext?) =
+              object : MosaicInstrumentation.Execution {
+                override val identity = object : MosaicInstrumentation.ExecutionIdentity {}
+                override fun dependency(producer: ProducerReference) { dependencies++ }
+                override fun complete(completion: ExecutionCompletion) { completed.complete(completion) }
+              }
+          }
+          val applicationCanvas = canvas { installInstrumentation { provider } }
+          val requestCanvas = applicationCanvas.withLayer {}
+          val mosaic = requestCanvas.create()
+          val shared = singleTile { 7 }
+          val cached = singleTile { compose(shared) }
+          assertEquals(7, mosaic.compose(shared))
+          assertEquals(ExecutionOutcome.SUCCESS, completed.await().outcome)
+          assertEquals(7, mosaic.compose(cached))
+          assertEquals(1, dependencies)
         }
       }
       """.trimIndent(),
