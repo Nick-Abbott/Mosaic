@@ -23,7 +23,7 @@ class InstrumentationReentrancyTest {
     runTest {
       for (dispatcher in listOf(StandardTestDispatcher(testScheduler), InlineDispatcher)) {
         val recording = RecordingInstrumentation()
-        val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, dispatcher)
+        val mosaic = instrumentedMosaic(emptyCanvas, recording, dispatcher)
         val fetched = mutableListOf<Set<Int>>()
         val tile by multiTile<Int, Int> { keys ->
           fetched.add(keys)
@@ -53,7 +53,7 @@ class InstrumentationReentrancyTest {
   @Test fun createBatchReentryCanFinishANestedCallerBeforePublication() =
     runTest {
       val recording = RecordingInstrumentation()
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, InlineDispatcher)
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, InlineDispatcher)
       val fetched = mutableListOf<Set<Int>>()
       val multi by multiTile<Int, Int> { keys ->
         fetched.add(keys)
@@ -119,7 +119,7 @@ class InstrumentationReentrancyTest {
             }
           }
         }
-      mosaic = MosaicImpl.instrumented(emptyCanvas, provider, InlineDispatcher)
+      mosaic = instrumentedMosaic(emptyCanvas, provider, InlineDispatcher)
       val first = mosaic.composeAsync(tile, 1)
       assertEquals(1, first.await())
       assertEquals(2, nested!!.await())
@@ -131,7 +131,7 @@ class InstrumentationReentrancyTest {
   @Test fun pendingHandoffWaitsForActiveContributor() =
     runTest {
       val recording = RecordingInstrumentation()
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
       val fetched = mutableListOf<Set<Int>>()
       val tile by multiTile<Int, Int> { keys ->
         fetched.add(keys)
@@ -162,7 +162,7 @@ class InstrumentationReentrancyTest {
   @Test fun cancellationDuringContributionAbandonsOnce() =
     runTest {
       val recording = RecordingInstrumentation()
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
       val tile by multiTile<Int, Int> { error("must not start") }
       val first = mosaic.composeAsync(tile, 1)
       recording.callback = { phase ->
@@ -185,7 +185,7 @@ class InstrumentationReentrancyTest {
   @Test fun cancelledCreateBatchReentryAbandonsItsAccumulator() =
     runTest {
       val recording = RecordingInstrumentation()
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, InlineDispatcher)
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, InlineDispatcher)
       val tile by multiTile<Int, Int> { error("must not start") }
       var nested: Deferred<Int>? = null
       var reentered = false

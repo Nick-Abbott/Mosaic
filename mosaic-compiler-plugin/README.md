@@ -44,10 +44,10 @@ receiver provenance, unsupported control flow, and capability callbacks also
 produce explicit unknown effects. This is a narrow extractor, not a general
 Kotlin interpreter.
 
-Canvas is a sealed Mosaic-owned abstraction. Consumers construct it through
-`canvas` or `withLayer`; external implementations are rejected by Kotlin and
-the JVM rather than modeled as consumer operations. Existing lookup, layer,
-factory, and unknown-provenance analysis remains unchanged. Durable runtime
+Canvas is a final Mosaic-owned class. Consumers construct it through
+`canvas` or `withLayer`; external subclasses and delegated implementations are
+rejected by Kotlin and the JVM. Existing lookup, layer, factory, and
+unknown-provenance analysis remains unchanged. Durable runtime
 configuration is separate from DI bindings and is not a source of Canvas keys.
 Integration provider callbacks retain the existing conservative callback boundary.
 

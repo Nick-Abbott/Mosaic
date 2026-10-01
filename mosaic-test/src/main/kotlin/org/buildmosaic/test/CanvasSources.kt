@@ -1,8 +1,8 @@
 package org.buildmosaic.test
 
 import kotlinx.coroutines.runBlocking
+import org.buildmosaic.core.injection.Canvas
 import org.buildmosaic.core.injection.CanvasKey
-import org.buildmosaic.core.injection.MosaicCanvas
 import org.buildmosaic.core.injection.canvas
 import kotlin.reflect.KClass
 
@@ -29,7 +29,7 @@ internal class CanvasSources {
   }
 
   // TestMosaicBuilder.build() is synchronous. These constructors only return supplied values.
-  fun build(): MosaicCanvas =
+  fun build(): Canvas =
     runBlocking {
       canvas {
         sources.forEach { (key, value) ->

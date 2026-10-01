@@ -136,13 +136,12 @@ built Canvas. Continuing with `UserIdKey` from the quick start:
 
 ```kotlin
 import org.buildmosaic.core.injection.Canvas
-import org.buildmosaic.core.injection.MosaicCanvas
 
 class GreetingService(private val prefix: String) {
   fun greet(userId: String): String = "$prefix, $userId!"
 }
 
-suspend fun createApplicationCanvas(): MosaicCanvas = canvas {
+suspend fun createApplicationCanvas(): Canvas = canvas {
   single<String>("greetingPrefix") { "Welcome" }
   single<GreetingService> { GreetingService(paint<String>("greetingPrefix")) }
 }
@@ -159,9 +158,9 @@ suspend fun handleRequest(applicationCanvas: Canvas, userId: String): String =
   }
 ```
 
-In 0.6 development, `Canvas` is a sealed interface with Mosaic-owned
-implementations. Continue using `Canvas` as a public type and construct it with
-`canvas` or `withLayer`.
+In 0.6 development, `Canvas` is a final Mosaic-owned class. Construct it with
+`canvas` or `withLayer`; each Canvas carries its own dependency bindings and
+inherited immutable runtime configuration.
 
 `canvas` eagerly constructs bindings. A child layer resolves local bindings
 first, then falls back to its parent. Overrides do not rewire services already
@@ -169,8 +168,7 @@ constructed by the parent.
 
 ### **Resource ownership**
 
-The concrete `MosaicCanvas` implements `AutoCloseable`; the `Canvas` interface
-does not. Cleanup requires calling `close()` on that concrete instance, using
+`Canvas` implements `AutoCloseable`. Cleanup requires calling `close()`, using
 `use`, or arranging an equivalent application shutdown hook. Closing it closes
 its locally created `AutoCloseable` bindings, not parent resources. Keep an
 application Canvas for long-lived services and close it at shutdown; scope child
@@ -292,6 +290,11 @@ uses the Canvas DSL or an integration-specific DSL. Integration authors implemen
 `MosaicInstrumentation` and use `CanvasBuilder.installInstrumentation { provider }`.
 `ProducerReference` and `ExecutionCompletion` are also integration-author APIs.
 Their KDoc defines the lifecycle and privacy contract.
+
+`Canvas.create()` and the `MosaicImpl` constructor use the Canvas runtime
+configuration. One request-scoped runtime owns caching, reservations, batching,
+and result completion. Its optional execution-provenance support observes
+those lifecycle boundaries and installs guarded context for actual Tile work.
 
 Installation is separate from dependency bindings. One provider can be installed
 per effective Canvas hierarchy; descendants inherit the same immutable runtime

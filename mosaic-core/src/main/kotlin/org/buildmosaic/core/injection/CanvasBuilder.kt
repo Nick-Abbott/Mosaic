@@ -47,7 +47,7 @@ class CanvasBuilder internal constructor(
 }
 
 /**
- * Factory for creating [MosaicCanvas] instances from dependency bindings.
+ * Factory for creating [Canvas] instances from dependency bindings.
  *
  * This class handles the initialization of all registered dependencies and manages
  * their lifecycle, including cleanup of locally owned [AutoCloseable] instances when the canvas is closed.
@@ -62,9 +62,9 @@ class CanvasFactory internal constructor(
   private val closeables = mutableListOf<AutoCloseable>()
 
   /**
-   * Builds the final [MosaicCanvas] by initializing all registered dependencies.
+   * Builds the final [Canvas] by initializing all registered dependencies.
    */
-  internal suspend fun build(runtimeConfig: MosaicRuntimeConfig = MosaicRuntimeConfig.EMPTY): MosaicCanvas {
+  internal suspend fun build(runtimeConfig: MosaicRuntimeConfig = MosaicRuntimeConfig.EMPTY): Canvas {
     val providers =
       bindings.mapValues { (_, binding) ->
         val provider = binding.toProvider(this)
@@ -72,7 +72,7 @@ class CanvasFactory internal constructor(
         if (instance is AutoCloseable) closeables.add(instance)
         provider
       }
-    return MosaicCanvas(providers, closeables.toList(), parent, runtimeConfig)
+    return Canvas(providers, closeables.toList(), parent, runtimeConfig)
   }
 
   /**
@@ -103,47 +103,14 @@ class CanvasFactory internal constructor(
 }
 
 /**
- * Production implementation of [Canvas] carrying dependencies and durable Mosaic runtime configuration.
- *
- * This canvas implementation supports hierarchical dependency resolution through parent canvases
- * and automatic lifecycle management of [AutoCloseable] dependencies. Runtime configuration is
- * inherited separately from dependency bindings and is not available through source lookup.
- *
- * @param providers Map of initialized dependency providers
- * @param closeables List of closeable dependencies for cleanup
- * @param parent Optional parent canvas for fallback dependency resolution
- */
-class MosaicCanvas internal constructor(
-  private val providers: Map<CanvasKey<*>, Provider<*>>,
-  private val closeables: List<AutoCloseable>,
-  private val parent: Canvas? = null,
-  internal val runtimeConfig: MosaicRuntimeConfig = MosaicRuntimeConfig.EMPTY,
-) : Canvas, AutoCloseable {
-  @Suppress("UNCHECKED_CAST")
-  override fun <T : Any> sourceOr(key: CanvasKey<T>): T? {
-    if (key !in providers) return parent?.sourceOr(key)
-    return when (val provider = providers[key]!!) {
-      is Single -> provider.get() as T
-    }
-  }
-
-  override fun close() {
-    closeables.forEach { closeable ->
-      runCatching { closeable.close() }
-        .onFailure { e -> System.err.println("Close hook failed: ${e.message}") }
-    }
-  }
-}
-
-/**
- * Creates a new [MosaicCanvas] using the canvas DSL.
+ * Creates a new [Canvas] using the canvas DSL.
  *
  * This is the primary way to create a canvas with dependency bindings. The canvas
  * supports hierarchical dependency resolution, inherited runtime configuration, and automatic lifecycle management.
  *
  * @param parent Optional parent canvas for fallback dependency resolution
  * @param build DSL block for configuring dependency bindings and runtime settings
- * @return A fully initialized [MosaicCanvas]
+ * @return A fully initialized [Canvas]
  *
  * ```kotlin
  * val canvas = canvas {
@@ -155,7 +122,7 @@ class MosaicCanvas internal constructor(
 suspend fun canvas(
   parent: Canvas? = null,
   build: CanvasBuilder.() -> Unit,
-): MosaicCanvas {
+): Canvas {
   val inheritedConfig = parent?.runtimeConfig ?: MosaicRuntimeConfig.EMPTY
   val builder = CanvasBuilder(inheritedConfig).apply(build)
   return CanvasFactory(builder.bindings, parent).build(builder.runtimeConfig())

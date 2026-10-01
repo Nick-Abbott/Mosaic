@@ -1,12 +1,13 @@
 package org.buildmosaic.core.instrumentation
 
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.buildmosaic.core.MosaicImpl
 import org.buildmosaic.core.RecordingInstrumentation
 import org.buildmosaic.core.injection.Canvas
 import org.buildmosaic.core.injection.canvas
 import org.buildmosaic.core.injection.create
-import org.buildmosaic.core.injection.runtimeConfig
 import org.buildmosaic.core.injection.sourceOr
 import org.buildmosaic.core.singleTile
 import kotlin.test.Test
@@ -39,6 +40,27 @@ class CanvasInstrumentationTest {
       assertEquals(7, requestCanvas.create().compose(work))
       assertEquals(1, installations)
       assertEquals(listOf("work", "work"), provider.executions.map { it.identity.name })
+    }
+
+  @Test
+  fun allConstructionUsesCanvasConfiguration() =
+    runTest {
+      val provider = RecordingInstrumentation()
+      val configured = canvas { installInstrumentation { provider } }
+      val factory = configured.create() as MosaicImpl
+      val direct = MosaicImpl(configured, StandardTestDispatcher(testScheduler))
+      assertEquals(MosaicImpl::class, factory::class)
+      assertEquals(MosaicImpl::class, direct::class)
+      val work by singleTile { 7 }
+      val pending = direct.composeAsync(work)
+      assertTrue(!pending.isCompleted)
+      testScheduler.runCurrent()
+      assertEquals(7, pending.await())
+      assertEquals(7, factory.compose(work))
+      assertEquals(2, provider.executions.size)
+      provider.assertCompletedOnce()
+      factory.cancel()
+      direct.cancel()
     }
 
   @Test

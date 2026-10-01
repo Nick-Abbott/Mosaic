@@ -16,7 +16,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertSame
 
 @Suppress("LargeClass", "FunctionMaxLength")
-class MosaicCanvasTest {
+class CanvasConstructionTest {
   // Test interfaces for dependency injection
   interface TestService {
     fun getValue(): String

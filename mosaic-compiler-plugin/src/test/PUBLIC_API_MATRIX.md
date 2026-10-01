@@ -4,7 +4,7 @@
 
 | Public API operation | Decision and semantics |
 |---|---|
-| Implementing or delegating `Canvas` | I: sealed Mosaic-owned abstraction. Kotlin and JVM consumers cannot add implementations; construct through `canvas` / `withLayer` and retain `Canvas` as the public type. |
+| Implementing or delegating `Canvas` | I: final Mosaic-owned class. Kotlin and JVM consumers cannot add implementations; construct through `canvas` / `withLayer` and retain `Canvas` as the public type. |
 | `Mosaic.canvas` | S: return the currently bound Canvas value, including through an immutable alias. Do not use a nested builder/factory receiver as its owner. |
 | `Mosaic.source(qualifier)` / `source(CanvasKey)` | S for known identity, required lookup on the receiver Mosaic's Canvas. U for dynamic qualifier/key. |
 | `Mosaic.sourceOr(qualifier)` / `sourceOr(CanvasKey)` | S for known identity, optional lookup on the receiver Mosaic's Canvas. U for dynamic qualifier/key. |
@@ -15,7 +15,7 @@
 | `CanvasFactory.paint(CanvasKey)` / reified `paint<T>(qualifier)` | S for known identity: local registration first, then parent fallback at provider-construction time. U for dynamic key/qualifier or escaped factory. |
 | `canvas(build)` / `canvas(parent, build)` / named parent | S: evaluate supplied parent once, before builder registration and provider construction; no child binding can satisfy parent-expression work. Unknown parent is U unless local bindings prove the lookup. |
 | `Canvas.withLayer(build)` | S: receiver evaluated once as parent, child has local-first/parent-fallback resolution. |
-| `Canvas.create()` | S: produces Mosaic bound to exactly that Canvas; selects runtime instrumentation from separate durable configuration once at construction. |
+| `Canvas.create()` | S: produces Mosaic bound to exactly that Canvas; the shared runtime prepares optional execution provenance from separate durable configuration once at construction. |
 | `CanvasBuilder.installInstrumentation`, `MosaicInstrumentation`, `ProducerReference`, `ExecutionCompletion` | O: supported integration-author runtime APIs, separate from Canvas dependency bindings. Provider callbacks retain the existing conservative callback boundary; installation grants no DI binding. |
 | `Tile(block)` / `singleTile(block)` | S: evaluate creation arguments once; a fresh local Tile value and its immutable aliases retain one allocation identity, with the body deferred until composition. Relevant deferred capture provenance must be established. Known immutable `CanvasKey` facts and stable exported key references, including aliases, are snapshotted into the Tile body; unknown key provenance is named U. Canvas/Mosaic/Tile/callable captures without a faithful snapshot are named U when the body executes; harmless scalar and known KClass/qualifier captures remain S. Top-level immutable default-getter declarations remain stable exports. Custom/member/computed Tile properties retain their existing U provenance boundary. |
 | `MultiTile(block)` / `multiTile(block)` / `perKeyTile(fetch)` / `chunkedMultiTile(batchSize, fetch)` | S for fresh local values with established deferred captures, including immutable aliases. Creation arguments execute once; body/fetch is deferred. Execute body for known nonempty keys, skip for known empty keys, retain both possibilities for unknown keys. Unsupported capability-bearing captures are named U only if the body can execute. Invalid batch size/general exceptions are O because the analyzer checks Canvas availability. |
@@ -24,7 +24,7 @@
 | `Mosaic.compose(Tile)` / `composeAsync(Tile)` | S: execute Tile body when composed; preserve synchronous versus asynchronous failure propagation. Evaluate tile argument first. |
 | `Mosaic.compose(MultiTile, Collection)` / `composeAsync(MultiTile, Collection)` | S: evaluate both arguments; empty skips body, obvious nonempty executes body, unknown collection retains both paths. No arbitrary collection-content inference. |
 | `Mosaic.compose(MultiTile, singleKey)` / `composeAsync(MultiTile, singleKey)` | S: evaluate both arguments; always nonempty. |
-| `MosaicCanvas.close` | O: resource lifecycle, not Canvas availability. `MosaicCanvas` constructor and `CanvasBuilder`/`CanvasFactory` constructors/build method are I (`internal`). |
+| `Canvas.close` | O: resource lifecycle, not Canvas availability. `Canvas` constructor and `CanvasBuilder`/`CanvasFactory` constructors/build method are I (`internal`). |
 | `Stub.create/toProvider`, `SingleStub` constructor, `Provider.get`, `Single` constructor/get, `MosaicDI` | I: internal Canvas implementation types; not callable by library users. |
 | `CanvasKey.toString` and generated value methods | O: formatting/value operations, with no Canvas lookup/register/paint contract. General user overrides and collection callbacks remain existing conservative boundaries. |
 

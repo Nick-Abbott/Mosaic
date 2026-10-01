@@ -31,7 +31,12 @@ data class CanvasKey<T : Any>(val type: KClass<T>, val qualifier: String? = null
  * through [canvas] or [withLayer]. Framework integrations should extend [CanvasBuilder]
  * configuration and Canvas construction.
  */
-sealed interface Canvas {
+class Canvas internal constructor(
+  private val providers: Map<CanvasKey<*>, Provider<*>>,
+  private val closeables: List<AutoCloseable>,
+  private val parent: Canvas?,
+  internal val runtimeConfig: MosaicRuntimeConfig,
+) : AutoCloseable {
   /**
    * Retrieves an instance of the registered object of the specified type and qualifier
    *
@@ -77,7 +82,13 @@ sealed interface Canvas {
    * @param key the key the object is registered under
    * @return The registered object
    */
-  fun <T : Any> sourceOr(key: CanvasKey<T>): T?
+  @Suppress("UNCHECKED_CAST")
+  fun <T : Any> sourceOr(key: CanvasKey<T>): T? {
+    val provider = providers[key] ?: return parent?.sourceOr(key)
+    return when (provider) {
+      is Single -> provider.get() as T
+    }
+  }
 
   /**
    * A DSL method to create another layer on your [Canvas]
@@ -89,7 +100,15 @@ sealed interface Canvas {
    *
    * @param build A block of code registering all sources for your [Canvas] layer
    */
-  suspend fun withLayer(build: CanvasBuilder.() -> Unit): MosaicCanvas = canvas(this, build)
+  suspend fun withLayer(build: CanvasBuilder.() -> Unit): Canvas = canvas(this, build)
+
+  /** Closes locally owned dependencies, leaving parent resources and runtime providers to their owners. */
+  override fun close() {
+    closeables.forEach { closeable ->
+      runCatching { closeable.close() }
+        .onFailure { failure -> System.err.println("Close hook failed: ${failure.message}") }
+    }
+  }
 }
 
 /**
@@ -115,14 +134,4 @@ inline fun <reified T : Any> Canvas.sourceOr(): T? = sourceOr(T::class)
  *
  * @return An instance of [Mosaic] scoped to the [Canvas]
  */
-fun Canvas.create(): Mosaic {
-  val instrumentation = runtimeConfig.instrumentation
-  return if (instrumentation == null) MosaicImpl(this) else MosaicImpl.instrumented(this, instrumentation)
-}
-
-/** Exhaustive access to settings on Mosaic-owned Canvas implementations. */
-internal val Canvas.runtimeConfig: MosaicRuntimeConfig
-  get() =
-    when (this) {
-      is MosaicCanvas -> runtimeConfig
-    }
+fun Canvas.create(): Mosaic = MosaicImpl(this)

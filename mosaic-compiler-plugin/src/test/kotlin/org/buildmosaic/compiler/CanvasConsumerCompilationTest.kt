@@ -19,6 +19,7 @@ class CanvasConsumerCompilationTest {
     source.writeText(
       """
       package org.buildmosaic.core.injection
+      fun construct() = Canvas(emptyMap(), emptyList(), null, error("hidden configuration"))
       abstract class CustomCanvas : Canvas
       class DelegatingCanvas(parent: Canvas) : Canvas by parent
       val anonymous = object : Canvas {
@@ -35,8 +36,10 @@ class CanvasConsumerCompilationTest {
         "-d", File(directory, "classes").absolutePath, source.absolutePath,
       )
     assertEquals(ExitCode.COMPILATION_ERROR, exit, diagnostics.toString())
-    val sealedErrors = Regex("sealed", RegexOption.IGNORE_CASE).findAll(diagnostics.toString()).count()
-    assertTrue(sealedErrors >= 3, diagnostics.toString())
+    val errors = diagnostics.toString()
+    assertTrue(Regex("this type is final", RegexOption.IGNORE_CASE).findAll(errors).count() >= 3, errors)
+    assertTrue(errors.contains("internal", ignoreCase = true), errors)
+    assertTrue(errors.contains("delegation is supported only for interfaces", ignoreCase = true), errors)
   }
 
   @Test
@@ -46,7 +49,7 @@ class CanvasConsumerCompilationTest {
     source.writeText(
       """
       import org.buildmosaic.core.injection.Canvas;
-      public abstract class CustomCanvas implements Canvas {}
+      public abstract class CustomCanvas extends Canvas {}
       """.trimIndent(),
     )
     val diagnostics = ByteArrayOutputStream()
@@ -57,7 +60,7 @@ class CanvasConsumerCompilationTest {
         "-d", directory.absolutePath, source.absolutePath,
       )
     assertEquals(1, exit, diagnostics.toString())
-    assertTrue(diagnostics.toString().contains("sealed", ignoreCase = true), diagnostics.toString())
+    assertTrue(diagnostics.toString().contains("final", ignoreCase = true), diagnostics.toString())
   }
 
   @Test

@@ -29,7 +29,7 @@ class InstrumentationFailureTest {
         recording.callback = { phase ->
           if (phase == broken || (broken == "diagnostic" && phase == "capture")) throw failure
         }
-        val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+        val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
         val shared by singleTile { 7 }
         val fetched = mutableListOf<Set<Int>>()
         val multi by multiTile<Int, Int> { keys ->
@@ -62,7 +62,7 @@ class InstrumentationFailureTest {
     runTest {
       val recording = RecordingInstrumentation()
       recording.callback = { if (it == "complete" || it == "diagnostic") error("adapter") }
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
       val failure = UnsupportedOperationException("application")
       val single by singleTile<Int> { throw failure }
       val multi by multiTile<Int, Int> { throw failure }
@@ -83,7 +83,7 @@ class InstrumentationFailureTest {
     runTest {
       val recording = RecordingInstrumentation()
       recording.callback = { if (it == "abandon" || it == "diagnostic") error("adapter") }
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
       val tile by multiTile<Int, Int> { error("must not start") }
       val result = mosaic.composeAsync(tile, listOf(1, 2))
       mosaic.cancel()
@@ -98,7 +98,7 @@ class InstrumentationFailureTest {
       for (context in listOf(Job().apply { cancel() }, Dispatchers.Unconfined)) {
         val recording = RecordingInstrumentation()
         recording.context = { context }
-        val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+        val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
         val tile by singleTile { 7 }
         val result = mosaic.composeAsync(tile)
         testScheduler.runCurrent()
@@ -115,7 +115,7 @@ class InstrumentationFailureTest {
         val recording = RecordingInstrumentation()
         val failure = IllegalArgumentException("adapter context")
         recording.context = { BrokenContext(updateFails, failure) }
-        val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+        val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
         val gate = CompletableDeferred<Unit>()
         val tile by singleTile {
           gate.await()

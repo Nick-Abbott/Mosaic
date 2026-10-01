@@ -82,12 +82,12 @@ internal fun canvasParameters(
   }.map { ContractParameter(id, it.name.asString(), ParameterKind.CANVAS) }
 
 internal fun isCanvasType(type: IrType): Boolean =
-  type.classFqName?.asString() in setOf("org.buildmosaic.core.injection.Canvas", "org.buildmosaic.core.injection.MosaicCanvas")
+  type.classFqName?.asString() == "org.buildmosaic.core.injection.Canvas"
 
 internal fun isCapabilityType(type: IrType): Boolean =
   type.classFqName?.asString() in
     setOf(
-      "org.buildmosaic.core.injection.Canvas", "org.buildmosaic.core.injection.MosaicCanvas",
+      "org.buildmosaic.core.injection.Canvas",
       "org.buildmosaic.core.injection.CanvasBuilder", "org.buildmosaic.core.injection.CanvasFactory",
       "org.buildmosaic.core.Mosaic", "org.buildmosaic.core.Tile", "org.buildmosaic.core.MultiTile",
       "org.buildmosaic.core.injection.CanvasKey",
@@ -99,7 +99,6 @@ internal fun isSource(target: String): Boolean =
       "org.buildmosaic.core.source", "org.buildmosaic.core.sourceOr",
       "org.buildmosaic.core.injection.source", "org.buildmosaic.core.injection.sourceOr",
       "org.buildmosaic.core.injection.Canvas.source", "org.buildmosaic.core.injection.Canvas.sourceOr",
-      "org.buildmosaic.core.injection.MosaicCanvas.sourceOr",
     )
 
 internal fun isTileFactory(call: IrFunctionAccessExpression): Boolean =

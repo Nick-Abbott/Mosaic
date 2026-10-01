@@ -27,7 +27,7 @@ class MultiTileProvenanceTest {
   @Test fun overlappingRequestsContributeAndReuseInOneBatch() =
     runTest {
       val recording = RecordingInstrumentation()
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
       val fetched = mutableListOf<Set<Int>>()
       val multi by multiTile<Int, Int> { keys ->
         fetched.add(keys)
@@ -68,7 +68,7 @@ class MultiTileProvenanceTest {
   @Test fun schedulerDependentBatchesKeepFixedContributors() =
     runTest {
       val recording = RecordingInstrumentation()
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
       val gate = CompletableDeferred<Unit>()
       val multi by multiTile<Int, Int> { keys ->
         if (1 in keys) gate.await()
@@ -109,7 +109,7 @@ class MultiTileProvenanceTest {
   @Test fun duplicateKeysAndCachedCallsAddNoContributors() =
     runTest {
       val recording = RecordingInstrumentation()
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
       val multi by multiTile<Int, Int> { keys -> keys.associateWith { it } }
       val a = mosaic.composeAsync(multi, listOf(1, 1, 1))
       val b = mosaic.composeAsync(multi, listOf(1, 1))
@@ -128,7 +128,7 @@ class MultiTileProvenanceTest {
     runTest {
       for (chunked in listOf(false, true)) {
         val recording = RecordingInstrumentation()
-        val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+        val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
         val leaf by singleTile { 7 }
         val multi =
           if (chunked) {
@@ -153,7 +153,7 @@ class MultiTileProvenanceTest {
   @Test fun thrownBatchFailureFinishesOnceAndFailsEveryKey() =
     runTest {
       val recording = RecordingInstrumentation()
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
       val failure = IllegalStateException("application")
       val tile by multiTile<Int, Int> { throw failure }
       val result = mosaic.composeAsync(tile, listOf(1, 2))
@@ -169,7 +169,7 @@ class MultiTileProvenanceTest {
   @Test fun missingBatchResultReportsFailureAndPreservesOtherValues() =
     runTest {
       val recording = RecordingInstrumentation()
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
       val tile by multiTile<Int, Int> { mapOf(1 to 7) }
       val result = mosaic.composeAsync(tile, listOf(1, 2))
       testScheduler.runCurrent()
@@ -185,7 +185,7 @@ class MultiTileProvenanceTest {
   @Test fun scopeCancellationFinishesStartedBatchAndAbandonsPendingBatch() =
     runTest {
       val recording = RecordingInstrumentation()
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
       val tile by multiTile<Int, Int> { awaitCancellation() }
       val result = mosaic.composeAsync(tile, listOf(1, 2))
       testScheduler.runCurrent()
@@ -202,7 +202,7 @@ class MultiTileProvenanceTest {
   @Test fun pendingBatchAbandonsPublicationAndContributorState() =
     runTest {
       val recording = RecordingInstrumentation()
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
       val tile by multiTile<Int, Int> { error("must not start") }
       val caller by singleTile {
         composeAsync(tile, listOf(1, 2))
@@ -224,7 +224,7 @@ class MultiTileProvenanceTest {
   @Test fun manyContributorsAndEarlierBatchesCanBeBounded() =
     runTest {
       val recording = RecordingInstrumentation(limit = 4)
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
       val tile by multiTile<Int, Int> { keys -> keys.associateWith { it } }
       repeat(256) { mosaic.composeAsync(tile, it) }
       testScheduler.runCurrent()
@@ -251,7 +251,7 @@ class MultiTileProvenanceTest {
     runBlocking {
       repeat(20) {
         val recording = RecordingInstrumentation(limit = 4)
-        val mosaic = MosaicImpl.instrumented(emptyCanvas, recording)
+        val mosaic = instrumentedMosaic(emptyCanvas, recording)
         val fetched = ConcurrentLinkedQueue<Set<Int>>()
         val tile by multiTile<Int, Int> { keys ->
           fetched.add(keys)

@@ -9,6 +9,7 @@ import org.buildmosaic.core.injection.canvas
 import org.buildmosaic.core.instrumentation.ExecutionCompletion
 import org.buildmosaic.core.instrumentation.MosaicInstrumentation
 import org.buildmosaic.core.instrumentation.ProducerReference
+import org.buildmosaic.core.instrumentation.installInstrumentation
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -19,6 +20,12 @@ import kotlin.test.assertNotSame
 import kotlin.test.assertTrue
 
 internal val emptyCanvas = runBlocking { canvas {} }
+
+internal fun instrumentedMosaic(
+  parent: Canvas,
+  instrumentation: MosaicInstrumentation,
+  dispatcher: CoroutineDispatcher = Dispatchers.Default,
+): MosaicImpl = MosaicImpl(runBlocking { parent.withLayer { installInstrumentation { instrumentation } } }, dispatcher)
 
 // Coroutine debug stack recovery may copy an exception with the original as its cause at await.
 internal fun assertApplicationFailure(
@@ -181,7 +188,7 @@ open class RuntimeBehaviorTest {
     dispatcher: CoroutineDispatcher = Dispatchers.Default,
   ): MosaicImpl =
     instrumentation?.let {
-      MosaicImpl.instrumented(canvas, it, dispatcher)
+      instrumentedMosaic(canvas, it, dispatcher)
     } ?: MosaicImpl(canvas, dispatcher)
 }
 

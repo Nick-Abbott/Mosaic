@@ -35,7 +35,7 @@ class SingleTileProvenanceTest {
       val recording = RecordingInstrumentation()
       val external = RecordingInstrumentation.Identity(0, "external")
       recording.current.set(external)
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, Dispatchers.Unconfined)
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, Dispatchers.Unconfined)
       try {
         val leaf by singleTile { 7 }
         val parent by singleTile {
@@ -72,7 +72,7 @@ class SingleTileProvenanceTest {
   @Test fun firstExecutionCapturesCallerAndPublishesOneIdentity() =
     runTest {
       val recording = RecordingInstrumentation()
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording)
+      val mosaic = instrumentedMosaic(emptyCanvas, recording)
       val external = RecordingInstrumentation.Identity(0, "external")
       recording.current.set(external)
       val tile by singleTile { 42 }
@@ -93,7 +93,7 @@ class SingleTileProvenanceTest {
   @Test fun inFlightAndCompletedReuseRetainProducer() =
     runTest {
       val recording = RecordingInstrumentation()
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
       val gate = CompletableDeferred<Unit>()
       val shared by singleTile {
         gate.await()
@@ -129,7 +129,7 @@ class SingleTileProvenanceTest {
   @Test fun callerCompletesBeforeProducerPublication() =
     runTest {
       val recording = RecordingInstrumentation()
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
       val shared by singleTile { 7 }
       val caller by singleTile {
         composeAsync(shared)
@@ -162,7 +162,7 @@ class SingleTileProvenanceTest {
   @Test fun nestedCompositionCarriesOwnedCallerAcrossSuspension() =
     runTest {
       val recording = RecordingInstrumentation()
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
       val leaf by singleTile { 7 }
       val middle by singleTile {
         kotlinx.coroutines.yield()
@@ -181,7 +181,7 @@ class SingleTileProvenanceTest {
   @Test fun thrownFailureRetainsOriginalExceptionAndCompletion() =
     runTest {
       val recording = RecordingInstrumentation()
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
       val failure = IllegalArgumentException("application")
       val tile by singleTile<Int> { throw failure }
       val result = mosaic.composeAsync(tile)
@@ -196,7 +196,7 @@ class SingleTileProvenanceTest {
   @Test fun cancellingAwaiterDoesNotCancelSharedExecution() =
     runTest {
       val recording = RecordingInstrumentation()
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
       val gate = CompletableDeferred<Unit>()
       val tile by singleTile {
         gate.await()
@@ -216,7 +216,7 @@ class SingleTileProvenanceTest {
   @Test fun scopeCancellationCompletesStartedExecutionOnce() =
     runTest {
       val recording = RecordingInstrumentation()
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
       val tile by singleTile<Int> { awaitCancellation() }
       val result = mosaic.composeAsync(tile)
       testScheduler.runCurrent()
@@ -230,7 +230,7 @@ class SingleTileProvenanceTest {
   @Test fun ownedCallerCancellationLeavesProducerRunning() =
     runTest {
       val recording = RecordingInstrumentation()
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
       val gate = CompletableDeferred<Unit>()
       val shared by singleTile {
         gate.await()
@@ -257,7 +257,7 @@ class SingleTileProvenanceTest {
   @Test fun manyUnresolvedReuseReportsCanBeBounded() =
     runTest {
       val recording = RecordingInstrumentation(limit = 4)
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
       val shared by singleTile { 7 }
       val caller by singleTile {
         composeAsync(shared)
@@ -284,7 +284,7 @@ class SingleTileProvenanceTest {
             caller: MosaicInstrumentation.CallerContext?,
           ): MosaicInstrumentation.Execution? = if (name == "shared") null else recording.startSingle(name, caller)
         }
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, provider, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, provider, StandardTestDispatcher(testScheduler))
       val shared by singleTile { 7 }
       val caller by singleTile {
         composeAsync(shared)
@@ -301,7 +301,7 @@ class SingleTileProvenanceTest {
   @Test fun cancellationBeforeStartAbandonsVisibleProducer() =
     runTest {
       val recording = RecordingInstrumentation()
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
       val shared by singleTile { error("must not start") }
       val caller by singleTile {
         composeAsync(shared)
@@ -322,7 +322,7 @@ class SingleTileProvenanceTest {
   @Test fun manyConcurrentCallersShareOneExecutionAndBoundDependencies() =
     runBlocking {
       val recording = RecordingInstrumentation(limit = 4)
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording)
+      val mosaic = instrumentedMosaic(emptyCanvas, recording)
       val starts = AtomicInteger()
       val gate = CompletableDeferred<Unit>()
       val shared by singleTile {

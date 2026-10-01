@@ -30,7 +30,7 @@ class InstrumentationPrivacyTest {
       val payload = Payload(secrets[1])
       val canvasKey = CanvasKey(Payload::class, secrets[3])
       val mosaic =
-        MosaicImpl.instrumented(
+        instrumentedMosaic(
           canvas { single(canvasKey) { payload } },
           recording,
           StandardTestDispatcher(testScheduler),
@@ -78,7 +78,7 @@ class InstrumentationPrivacyTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val mosaic =
           if (instrumented) {
-            MosaicImpl.instrumented(
+            instrumentedMosaic(
               emptyCanvas,
               recording,
               dispatcher,
@@ -117,7 +117,7 @@ class InstrumentationPrivacyTest {
   @Test fun cancellationReportsOutcomeAndTypeWithoutItsMessage() =
     runTest {
       val recording = RecordingInstrumentation(recordBoundary = true)
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
       val cancellation = CancellationException(secrets[2])
       val single by singleTile<Int> { throw cancellation }
       val multi by multiTile<SensitiveKey, Int> { throw cancellation }
@@ -140,7 +140,7 @@ class InstrumentationPrivacyTest {
       val recording = RecordingInstrumentation(recordBoundary = true)
       val adapterFailure = IllegalStateException("instrumentation-owned failure")
       recording.callback = { if (it == "complete") throw adapterFailure }
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
       val applicationFailure = IllegalArgumentException(secrets[2])
       val tile by singleTile<Int> { throw applicationFailure }
       val result = mosaic.composeAsync(tile)
@@ -154,7 +154,7 @@ class InstrumentationPrivacyTest {
   @Test fun failedKeyPreparationAbandonsWithoutAFakeExecution() =
     runTest {
       val recording = RecordingInstrumentation(recordBoundary = true)
-      val mosaic = MosaicImpl.instrumented(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
+      val mosaic = instrumentedMosaic(emptyCanvas, recording, StandardTestDispatcher(testScheduler))
       val failure = IllegalArgumentException(secrets[2])
       val key = HashFailingKey(failure)
       val multi by multiTile<HashFailingKey, Int> { error("must not start") }

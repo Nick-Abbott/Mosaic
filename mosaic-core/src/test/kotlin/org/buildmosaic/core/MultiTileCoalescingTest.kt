@@ -3,8 +3,12 @@ package org.buildmosaic.core
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -216,6 +220,74 @@ open class MultiTileCoalescingTest : RuntimeBehaviorTest() {
       assertEquals(30, calls.sumOf { it.size })
       assertSame(results[0]!!.getValue(10), results[1]!!.getValue(10))
     }
+  }
+
+  @Test fun losingReservationDoesNotLeaveAScopeChild() =
+    runTest {
+      val mosaic = createMosaic(emptyCanvas, StandardTestDispatcher(testScheduler))
+      val tile = multiTile<HashCallbackKey, Int> { keys -> keys.associateWith { it.id } }
+      var nested: Deferred<Int>? = null
+      lateinit var key: HashCallbackKey
+      key =
+        HashCallbackKey(7) { call ->
+          // A competing reservation wins between lookup and putIfAbsent.
+          if (call == 2) nested = mosaic.composeAsync(tile, key)
+        }
+      val outer = mosaic.composeAsync(tile, key)
+      assertSame(outer, nested)
+      testScheduler.runCurrent()
+      assertEquals(7, outer.await())
+      assertTrue(mosaic.coroutineContext[Job]!!.children.none())
+      mosaic.cancel()
+    }
+
+  @Test fun failedInsertionCancelsItsUnpublishedPlaceholder() =
+    runTest {
+      val mosaic = createMosaic(emptyCanvas, StandardTestDispatcher(testScheduler))
+      val tile = multiTile<HashCallbackKey, Int> { keys -> keys.associateWith { it.id } }
+      val winner = HashCallbackKey(1)
+      val broken = HashCallbackKey(2) { call -> if (call == 2) error("insertion failed") }
+      assertFailsWith<IllegalStateException> { mosaic.composeAsync(tile, listOf(winner, broken)) }
+      testScheduler.runCurrent()
+      assertEquals(1, mosaic.compose(tile, winner))
+      assertTrue(mosaic.coroutineContext[Job]!!.children.none())
+      mosaic.cancel()
+    }
+
+  @Test fun cancelledDetachedBatchCannotConsumeNewerWork() =
+    runTest {
+      val mosaic = createMosaic(emptyCanvas, StandardTestDispatcher(testScheduler))
+      val calls = mutableListOf<Set<Int>>()
+      lateinit var tile: MultiTile<Int, Int>
+      var newer: Deferred<Int>? = null
+      tile =
+        multiTile { keys ->
+          calls.add(keys)
+          if (1 in keys) {
+            newer = composeAsync(tile, 2)
+            currentCoroutineContext().cancel()
+            awaitCancellation()
+          }
+          keys.associateWith { it }
+        }
+      val first = mosaic.composeAsync(tile, 1)
+      testScheduler.runCurrent()
+      assertFailsWith<CancellationException> { first.await() }
+      assertEquals(2, newer!!.await())
+      assertEquals(listOf(setOf(1), setOf(2)), calls)
+      assertTrue(mosaic.coroutineContext[Job]!!.children.none())
+      mosaic.cancel()
+    }
+
+  private class HashCallbackKey(val id: Int, val callback: (Int) -> Unit = {}) {
+    private var calls = 0
+
+    override fun hashCode(): Int {
+      callback(++calls)
+      return id
+    }
+
+    override fun equals(other: Any?): Boolean = other is HashCallbackKey && id == other.id
   }
 
   private class CallbackKey(val id: Int, val onFirstHash: (() -> Unit)? = null) {
