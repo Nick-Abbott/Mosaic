@@ -13,7 +13,7 @@ private fun missingKeyError(key: CanvasKey<*>): Nothing = throw MosaicMissingKey
 class CanvasBuilder internal constructor(
   private val inheritedRuntimeConfig: MosaicRuntimeConfig = MosaicRuntimeConfig.EMPTY,
 ) {
-  @PublishedApi internal val bindings = mutableMapOf<CanvasKey<*>, Stub<*>>()
+  @PublishedApi internal val bindings = mutableMapOf<CanvasKey<*>, SingleBinding<*>>()
   private var runtimeConfigBuilder: MosaicRuntimeConfig.Builder? = null
 
   internal fun configureRuntime(): MosaicRuntimeConfig.Builder =
@@ -31,7 +31,7 @@ class CanvasBuilder internal constructor(
   fun <T : Any> single(
     key: CanvasKey<T>,
     ctor: suspend CanvasFactory.() -> T,
-  ) = check(bindings.put(key, SingleStub(ctor)) == null) { "Duplicate binding for $key" }
+  ) = check(bindings.put(key, SingleBinding(ctor)) == null) { "Duplicate binding for $key" }
 
   /**
    * Registers a singleton dependency in the canvas.
@@ -52,28 +52,34 @@ class CanvasBuilder internal constructor(
  * This class handles the initialization of all registered dependencies and manages
  * their lifecycle, including cleanup of locally owned [AutoCloseable] instances when the canvas is closed.
  *
- * @param bindings Map of dependency keys to their stub implementations
+ * @param bindings Map of dependency keys to their construction-time bindings
  * @param parent Optional parent canvas for dependency resolution fallback
  */
 class CanvasFactory internal constructor(
-  private val bindings: Map<CanvasKey<*>, Stub<*>>,
+  private val bindings: Map<CanvasKey<*>, SingleBinding<*>>,
   private val parent: Canvas? = null,
 ) {
   private val closeables = mutableListOf<AutoCloseable>()
 
-  /**
-   * Builds the final [Canvas] by initializing all registered dependencies.
-   */
-  internal suspend fun build(runtimeConfig: MosaicRuntimeConfig = MosaicRuntimeConfig.EMPTY): Canvas {
-    val providers =
-      bindings.mapValues { (_, binding) ->
-        val provider = binding.toProvider(this)
-        val instance = provider.get()
-        if (instance is AutoCloseable) closeables.add(instance)
-        provider
-      }
-    return Canvas(providers, closeables.toList(), parent, runtimeConfig)
+  internal fun created(instance: Any) {
+    if (instance is AutoCloseable) synchronized(closeables) { closeables.add(instance) }
   }
+
+  /** Builds eagerly; failure closes successfully constructed local values in reverse creation order. */
+  @Suppress("TooGenericExceptionCaught")
+  internal suspend fun build(runtimeConfig: MosaicRuntimeConfig = MosaicRuntimeConfig.EMPTY): Canvas =
+    try {
+      val instances = bindings.mapValues { (_, binding) -> binding.create(this) }
+      Canvas(instances, instances.values.filterIsInstance<AutoCloseable>(), parent, runtimeConfig)
+    } catch (failure: Throwable) {
+      val owned = synchronized(closeables) { closeables.toList() }
+      owned.asReversed().forEach { closeable ->
+        runCatching { closeable.close() }.onFailure { cleanup ->
+          if (cleanup !== failure) failure.addSuppressed(cleanup)
+        }
+      }
+      throw failure
+    }
 
   /**
    * Creates a dependency instance during the canvas building phase.
@@ -87,7 +93,7 @@ class CanvasFactory internal constructor(
    */
   suspend fun <T : Any> paint(key: CanvasKey<T>): T {
     @Suppress("UNCHECKED_CAST")
-    val local = bindings[key] as Stub<T>?
+    val local = bindings[key] as SingleBinding<T>?
     if (local != null) return local.create(this)
     return parent?.sourceOr(key) ?: missingKeyError(key)
   }

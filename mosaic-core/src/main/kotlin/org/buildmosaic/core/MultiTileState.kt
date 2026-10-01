@@ -16,6 +16,10 @@ internal class KeyReservation<K : Any, V>(
 /** Runtime-owned work detached as one batch; contributor state follows exactly this batch. */
 internal class PendingBatch<K : Any, V>(val provenance: BatchProvenance?) {
   val reservations = ArrayList<KeyReservation<K, V>>()
+
+  // Lifecycle fields are owned exclusively by MultiTileState under its monitor.
+  var draining = false
+  var contributed = 0
   var handoff: CompletableDeferred<Unit>? = null
   var failure: Throwable? = null
 
@@ -48,7 +52,6 @@ internal class PendingBatch<K : Any, V>(val provenance: BatchProvenance?) {
   }
 
   fun abandon(failure: Throwable) {
-    this.failure = null
     reservations.forEach { it.provenance?.abandon() }
     provenance?.abandon()
     failValues(failure)
@@ -66,25 +69,51 @@ internal class MultiTileState<K : Any, V>(private val provenance: ExecutionProve
   private var pending: PendingBatch<K, V>? = null
 
   fun enqueue(reservation: KeyReservation<K, V>): PendingBatch<K, V>? {
-    var handoff: CompletableDeferred<Unit>? = null
-    var abandoned: PendingBatch<K, V>? = null
+    var drainer: PendingBatch<K, V>? = null
     val scheduled =
       synchronized(monitor) {
         val previous = pending
-        // Publish ownership and work before calling a reentrant provider.
         val current = previous ?: PendingBatch<K, V>(provenance?.batch()).also { pending = it }
+        // Publish work and the sole drainer before any provider callback can reenter.
         current.reservations.add(reservation)
-        reservation.provenance?.let { current.provenance?.contribute(it) }
-        if (current.provenance?.collecting != true) {
-          if (current.failure != null) abandoned = detach(current)
-          handoff = current.handoff
-          current.handoff = null
+        if (current.provenance != null && !current.draining) {
+          current.draining = true
+          drainer = current
         }
-        if (previous == null && pending === current) current else null
+        if (previous == null) current else null
       }
-    abandoned?.let { it.abandon(checkNotNull(it.failure)) }
-    handoff?.complete(Unit)
+    drainer?.let { drain(it) }
     return scheduled
+  }
+
+  /** Reentrant/concurrent contributors only enqueue; one drainer calls the provider outside the monitor. */
+  private fun drain(batch: PendingBatch<K, V>) {
+    while (true) {
+      var handoff: CompletableDeferred<Unit>? = null
+      var abandoned: Throwable? = null
+      val next =
+        synchronized(monitor) {
+          check(pending === batch && batch.draining) { "Invalid contributor ownership" }
+          if (batch.failure != null || batch.contributed == batch.reservations.size) {
+            batch.draining = false
+            handoff = batch.handoff
+            batch.handoff = null
+            if (batch.failure != null) {
+              abandoned = batch.failure
+              detach(batch)
+            }
+            null
+          } else {
+            batch.reservations[batch.contributed++]
+          }
+        }
+      if (next == null) {
+        abandoned?.let { batch.abandon(it) }
+        handoff?.complete(Unit)
+        return
+      }
+      next.provenance?.let { batch.provenance?.contribute(it) }
+    }
   }
 
   suspend fun takePending(expected: PendingBatch<K, V>): PendingBatch<K, V>? {
@@ -92,8 +121,7 @@ internal class MultiTileState<K : Any, V>(private val provenance: ExecutionProve
       val handoff =
         synchronized(monitor) {
           if (pending !== expected) return null
-          if (expected.provenance?.collecting != true) return detach(expected)
-          // Only synchronous callback reentry reaches this while the monitor is held.
+          if (!expected.draining) return detach(expected)
           expected.handoff ?: CompletableDeferred<Unit>().also { expected.handoff = it }
         }
       handoff.await()
@@ -107,10 +135,9 @@ internal class MultiTileState<K : Any, V>(private val provenance: ExecutionProve
     val abandoned =
       synchronized(monitor) {
         if (pending !== expected) return
-        if (expected.provenance?.collecting == true) {
+        if (expected.draining) {
           // Wait until accumulator callbacks return before abandoning their state.
           if (expected.failure == null) expected.failure = failure
-          expected.provenance.requestAbandonment()
           return
         }
         detach(expected)
@@ -119,7 +146,7 @@ internal class MultiTileState<K : Any, V>(private val provenance: ExecutionProve
   }
 
   private fun detach(expected: PendingBatch<K, V>): PendingBatch<K, V> {
-    check(pending === expected && expected.provenance?.collecting != true) { "Invalid pending batch handoff" }
+    check(pending === expected && !expected.draining) { "Invalid pending batch handoff" }
     pending = null
     return expected
   }

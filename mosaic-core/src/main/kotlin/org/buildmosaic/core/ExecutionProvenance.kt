@@ -22,8 +22,7 @@ internal class ExecutionProvenance(provider: MosaicInstrumentation) {
   }
 
   fun reuse(producer: ProducerReference) {
-    val caller = currentExecution() ?: return
-    calls.invoke { caller.execution.dependency(producer) }
+    currentExecution()?.dependency(producer)
   }
 
   fun batch(): BatchProvenance = BatchProvenance(calls)
@@ -31,7 +30,7 @@ internal class ExecutionProvenance(provider: MosaicInstrumentation) {
   fun startSingle(
     name: String?,
     reservation: ReservationProvenance,
-  ): ExecutionOwner? {
+  ): ObservedExecution? {
     val caller = reservation.takeCaller()
     val owner = observe(calls.invoke { calls.provider.startSingle(name, caller) })
     publish(reservation.producer, owner)
@@ -42,29 +41,20 @@ internal class ExecutionProvenance(provider: MosaicInstrumentation) {
     name: String?,
     size: Int,
     batch: BatchProvenance,
-  ): ExecutionOwner? = observe(batch.start(name, size))
+  ): ObservedExecution? = observe(batch.start(name, size))
 
   fun publish(
     producer: ProducerReference,
-    owner: ExecutionOwner?,
+    owner: ObservedExecution?,
   ) {
     val identity = owner?.identity
     if (identity == null) producer.abandon() else producer.publish(identity)
   }
 
-  fun context(owner: ExecutionOwner): CoroutineContext =
-    if (owner.identity == null) EmptyCoroutineContext else calls.context(owner.execution) + owner
+  private fun observe(execution: MosaicInstrumentation.Execution?): ObservedExecution? =
+    execution?.let { ObservedExecution(calls, it) }
 
-  fun complete(owner: ExecutionOwner) {
-    val completion = checkNotNull(owner.completion) { "Execution ended without completion" }
-    calls.invoke { owner.execution.complete(completion) }
-  }
-
-  private fun observe(execution: MosaicInstrumentation.Execution?): ExecutionOwner? =
-    execution?.let { ExecutionOwner(calls, it, calls.invoke { it.identity }) }
-
-  private fun currentExecution(): ExecutionOwner? =
-    ExecutionOwner.current.get()?.takeIf { it.active && it.calls.provider === calls.provider }
+  private fun currentExecution(): ObservedExecution? = ObservedExecution.currentFor(calls.provider)
 }
 
 /** Caller state lives only until contribution/start; cache entries retain just the producer. */
@@ -80,45 +70,24 @@ internal class ReservationProvenance(
   }
 }
 
-/** Mutated under the runtime's pending-batch monitor; owns no keys, values, scheduling, or cache. */
+/** Provider accumulator translation; the runtime serializes calls and decides handoff/abandonment. */
 internal class BatchProvenance(private val calls: InstrumentationCalls) {
-  private val waiting = ArrayDeque<ReservationProvenance>()
   private var initialized = false
   private var collector: MosaicInstrumentation.Batch? = null
-  private var terminal = false
-  private var abandoning = false
-  var collecting = false
-    private set
 
   fun contribute(reservation: ReservationProvenance) {
-    waiting.addLast(reservation)
-    if (collecting) return
-    collecting = true
-    try {
-      // Runtime ownership is already published. Synchronous reentry queues rather than recursing.
-      if (!initialized) {
-        initialized = true
-        collector = calls.invoke { calls.provider.createBatch() }
-      }
-      while (waiting.isNotEmpty() && !abandoning) {
-        val caller = waiting.removeFirst().takeCaller()
-        collector?.let { calls.invoke { it.contribute(caller) } }
-      }
-    } finally {
-      collecting = false
+    if (!initialized) {
+      initialized = true
+      collector = calls.invoke { calls.provider.createBatch() }
     }
-  }
-
-  fun requestAbandonment() {
-    abandoning = true
+    val caller = reservation.takeCaller()
+    collector?.let { calls.invoke { it.contribute(caller) } }
   }
 
   fun start(
     name: String?,
     size: Int,
   ): MosaicInstrumentation.Execution? {
-    check(!collecting && !terminal) { "Invalid contributor handoff" }
-    terminal = true
     val accumulator = collector.also { collector = null } ?: return null
     val execution = calls.invoke { accumulator.start(name, size) }
     if (execution == null) calls.invoke { accumulator.abandon() }
@@ -126,30 +95,38 @@ internal class BatchProvenance(private val calls: InstrumentationCalls) {
   }
 
   fun abandon() {
-    check(!collecting && !terminal) { "Invalid contributor abandonment" }
-    terminal = true
-    waiting.forEach { it.takeCaller() }
-    waiting.clear()
     val accumulator = collector.also { collector = null }
     if (accumulator != null) calls.invoke { accumulator.abandon() }
   }
 }
 
-internal class ExecutionOwner(
-  val calls: InstrumentationCalls,
-  val execution: MosaicInstrumentation.Execution,
-  val identity: MosaicInstrumentation.ExecutionIdentity?,
-) : ThreadContextElement<ExecutionOwner?> {
-  companion object Key : CoroutineContext.Key<ExecutionOwner> {
-    val current = ThreadLocal<ExecutionOwner?>()
+/** Owns observed identity, guarded context, actual completion, and exactly-once provider finalization. */
+internal class ObservedExecution(
+  private val calls: InstrumentationCalls,
+  private val execution: MosaicInstrumentation.Execution,
+) : ThreadContextElement<ObservedExecution?> {
+  companion object Key : CoroutineContext.Key<ObservedExecution> {
+    private val current = ThreadLocal<ObservedExecution?>()
+
+    fun currentFor(provider: MosaicInstrumentation): ObservedExecution? =
+      current.get()?.takeIf { it.active && it.calls.provider === provider }
   }
 
-  @Volatile var active = true
-  var completion: ExecutionCompletion? = null
-    private set
+  val identity = calls.invoke { execution.identity }
+
+  @Volatile private var active = true
+  private var completion: ExecutionCompletion? = null
+  private var finalized = false
   override val key: CoroutineContext.Key<*> = Key
 
+  fun context(): CoroutineContext = if (identity == null) EmptyCoroutineContext else calls.context(execution) + this
+
+  fun dependency(producer: ProducerReference) {
+    calls.invoke { execution.dependency(producer) }
+  }
+
   fun completed(failure: Throwable?) {
+    active = false
     if (completion != null) return
     val outcome =
       when (failure) {
@@ -160,12 +137,20 @@ internal class ExecutionOwner(
     completion = ExecutionCompletion(outcome, failure?.javaClass?.name, System.nanoTime())
   }
 
-  override fun updateThreadContext(context: CoroutineContext): ExecutionOwner? =
+  /** Called after the execution context has exited and application results have been published. */
+  fun finish() {
+    if (finalized) return
+    val recorded = checkNotNull(completion) { "Execution ended without completion" }
+    finalized = true
+    calls.invoke { execution.complete(recorded) }
+  }
+
+  override fun updateThreadContext(context: CoroutineContext): ObservedExecution? =
     current.get().also { current.set(if (active) this else null) }
 
   override fun restoreThreadContext(
     context: CoroutineContext,
-    oldState: ExecutionOwner?,
+    oldState: ObservedExecution?,
   ) {
     if (oldState == null) current.remove() else current.set(oldState)
   }

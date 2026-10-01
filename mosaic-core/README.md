@@ -175,6 +175,11 @@ application Canvas for long-lived services and close it at shutdown; scope child
 Canvases explicitly when they own resources. Creating a Mosaic does not close
 its Canvas for you.
 
+If eager construction fails or is cancelled, Mosaic closes successfully created
+local `AutoCloseable` bindings in reverse creation order, including bindings
+resolved through `paint`. Parent resources remain owned by the parent. The
+original construction failure is preserved; cleanup failures are suppressed on it.
+
 For build-time checks within supported boundaries, see the optional
 [analysis plugin](../mosaic-gradle-plugin/README.md). It can report proven missing
 bindings and unverifiable paths, not guarantee every dynamic lookup.

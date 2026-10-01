@@ -152,7 +152,7 @@ open class MosaicImpl(
   /** Fail application values inside the observed context, before coroutine stack recovery can copy exceptions. */
   @Suppress("TooGenericExceptionCaught")
   private suspend fun executeWork(
-    owner: ExecutionOwner?,
+    owner: ObservedExecution?,
     failValues: (Throwable) -> Unit,
     body: suspend () -> Unit,
   ) {
@@ -162,18 +162,15 @@ open class MosaicImpl(
       } catch (failure: Throwable) {
         owner?.completed(failure)
         failValues(failure)
-      } finally {
-        owner?.active = false
       }
     }
     try {
-      if (owner == null) runBody() else withContext(checkNotNull(provenance).context(owner)) { runBody() }
+      if (owner == null) runBody() else withContext(owner.context()) { runBody() }
     } catch (failure: Throwable) {
       owner?.completed(failure)
       failValues(failure)
     } finally {
-      owner?.active = false
-      if (owner != null) checkNotNull(provenance).complete(owner)
+      owner?.finish()
     }
   }
 }

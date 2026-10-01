@@ -12,8 +12,8 @@
 | `Canvas.sourceOr(KClass, qualifier)` / `sourceOr(CanvasKey)` / reified `sourceOr<T>()` | S for known identity, optional lookup on the receiver Canvas. U for dynamic type/qualifier/key. |
 | `CanvasKey(KClass, qualifier)`, immutable local alias, immutable top-level declaration | S: a value with runtime `KClass` identity and exact nullable qualifier. Top-level cross-file references use the frozen declaration fact. Binary references use only a producer-exported fact; absent or incompatible facts are U. `copy`/destructuring/equality are O: arbitrary data-class value manipulation is beyond the stable-key subset. |
 | `CanvasBuilder.single(CanvasKey, ctor)` / reified `single<T>(qualifier, ctor)` | S for known identity: register before eager construction, defer `ctor` until construction. U for dynamic key/qualifier. A foreign builder receiver is U. |
-| `CanvasFactory.paint(CanvasKey)` / reified `paint<T>(qualifier)` | S for known identity: local registration first, then parent fallback at provider-construction time. U for dynamic key/qualifier or escaped factory. |
-| `canvas(build)` / `canvas(parent, build)` / named parent | S: evaluate supplied parent once, before builder registration and provider construction; no child binding can satisfy parent-expression work. Unknown parent is U unless local bindings prove the lookup. |
+| `CanvasFactory.paint(CanvasKey)` / reified `paint<T>(qualifier)` | S for known identity: local registration first, then parent fallback during eager dependency construction. U for dynamic key/qualifier or escaped factory. |
+| `canvas(build)` / `canvas(parent, build)` / named parent | S: evaluate supplied parent once, before builder registration and dependency construction; no child binding can satisfy parent-expression work. Unknown parent is U unless local bindings prove the lookup. |
 | `Canvas.withLayer(build)` | S: receiver evaluated once as parent, child has local-first/parent-fallback resolution. |
 | `Canvas.create()` | S: produces Mosaic bound to exactly that Canvas; the shared runtime prepares optional execution provenance from separate durable configuration once at construction. |
 | `CanvasBuilder.installInstrumentation`, `MosaicInstrumentation`, `ProducerReference`, `ExecutionCompletion` | O: supported integration-author runtime APIs, separate from Canvas dependency bindings. Provider callbacks retain the existing conservative callback boundary; installation grants no DI binding. |
@@ -25,7 +25,7 @@
 | `Mosaic.compose(MultiTile, Collection)` / `composeAsync(MultiTile, Collection)` | S: evaluate both arguments; empty skips body, obvious nonempty executes body, unknown collection retains both paths. No arbitrary collection-content inference. |
 | `Mosaic.compose(MultiTile, singleKey)` / `composeAsync(MultiTile, singleKey)` | S: evaluate both arguments; always nonempty. |
 | `Canvas.close` | O: resource lifecycle, not Canvas availability. `Canvas` constructor and `CanvasBuilder`/`CanvasFactory` constructors/build method are I (`internal`). |
-| `Stub.create/toProvider`, `SingleStub` constructor, `Provider.get`, `Single` constructor/get, `MosaicDI` | I: internal Canvas implementation types; not callable by library users. |
+| `SingleBinding` constructor/create | I: internal Canvas construction state; not callable by library users. |
 | `CanvasKey.toString` and generated value methods | O: formatting/value operations, with no Canvas lookup/register/paint contract. General user overrides and collection callbacks remain existing conservative boundaries. |
 
 ## Fixture coverage
@@ -33,7 +33,7 @@
 `PublicApiCoverageTest` selects many roots from one source family to cover
 required and optional lookups through Mosaic, `Mosaic.canvas`, Canvas, aliases,
 and dynamic receivers. It crosses reified, KClass, and CanvasKey identities with
-qualifiers, aliases, parent expressions, layers, providers, and Tile and
+qualifiers, aliases, parent expressions, layers, constructors, and Tile and
 MultiTile execution forms. Binary key exports use a separately compiled
 producer. The compiler scenario index records additional execution and unknown
 boundary fixtures; analysis-core tests own evaluator semantics.

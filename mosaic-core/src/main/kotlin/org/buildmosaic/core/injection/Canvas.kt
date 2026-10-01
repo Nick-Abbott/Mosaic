@@ -32,7 +32,7 @@ data class CanvasKey<T : Any>(val type: KClass<T>, val qualifier: String? = null
  * configuration and Canvas construction.
  */
 class Canvas internal constructor(
-  private val providers: Map<CanvasKey<*>, Provider<*>>,
+  private val instances: Map<CanvasKey<*>, Any>,
   private val closeables: List<AutoCloseable>,
   private val parent: Canvas?,
   internal val runtimeConfig: MosaicRuntimeConfig,
@@ -84,10 +84,7 @@ class Canvas internal constructor(
    */
   @Suppress("UNCHECKED_CAST")
   fun <T : Any> sourceOr(key: CanvasKey<T>): T? {
-    val provider = providers[key] ?: return parent?.sourceOr(key)
-    return when (provider) {
-      is Single -> provider.get() as T
-    }
+    return (instances[key] ?: return parent?.sourceOr(key)) as T
   }
 
   /**
