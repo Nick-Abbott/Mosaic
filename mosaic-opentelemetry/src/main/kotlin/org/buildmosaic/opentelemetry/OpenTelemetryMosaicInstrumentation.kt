@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit
  * Limits apply to each execution/batch. Zero disables the corresponding links/subscriptions.
  * [onCallbackFailure] receives adapter failures only and must return promptly; its failures are isolated.
  */
-class OpenTelemetryMosaicInstrumentation(
+internal class OpenTelemetryMosaicInstrumentation(
   openTelemetry: OpenTelemetry,
   private val maxDependencyLinks: Int = DEFAULT_LIMIT,
   private val maxContributorLinks: Int = DEFAULT_LIMIT,

@@ -12,10 +12,11 @@ import io.opentelemetry.sdk.trace.samplers.Sampler
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.runBlocking
 import org.buildmosaic.core.Mosaic
+import org.buildmosaic.core.injection.Canvas
+import org.buildmosaic.core.injection.canvas
 import org.buildmosaic.core.injection.create
 import org.buildmosaic.core.singleTile
-import org.buildmosaic.opentelemetry.OpenTelemetryMosaicInstrumentation
-import org.buildmosaic.opentelemetry.create
+import org.buildmosaic.opentelemetry.tracing
 import org.openjdk.jmh.annotations.Benchmark
 import org.openjdk.jmh.annotations.Level
 import org.openjdk.jmh.annotations.OperationsPerInvocation
@@ -29,7 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger
 @State(Scope.Thread)
 open class TracingState {
   @JvmField @Param("ordinary", "noop", "unsampled", "recording") var mode: String = ""
-  private var instrumentation: OpenTelemetryMosaicInstrumentation? = null
+  private lateinit var applicationCanvas: Canvas
   private var sdk: OpenTelemetrySdk? = null
 
   @Setup(Level.Trial)
@@ -45,10 +46,12 @@ open class TracingState {
       }
       else -> error("Unknown tracing mode: $mode")
     }
-    instrumentation = telemetry?.let(::OpenTelemetryMosaicInstrumentation)
+    applicationCanvas = runBlocking {
+      canvas { if (telemetry != null) tracing { telemetry } }
+    }
   }
 
-  fun request(): Mosaic = instrumentation?.let { emptyCanvas.create(it) } ?: emptyCanvas.create()
+  fun request(): Mosaic = applicationCanvas.create()
 
   @TearDown(Level.Trial)
   fun close() { sdk?.close() }

@@ -1,3 +1,5 @@
+@file:OptIn(org.buildmosaic.core.instrumentation.ExperimentalMosaicInstrumentation::class)
+
 package org.buildmosaic.core.injection
 
 import org.buildmosaic.core.Mosaic
@@ -110,4 +112,7 @@ inline fun <reified T : Any> Canvas.sourceOr(): T? = sourceOr(T::class)
  *
  * @return An instance of [Mosaic] scoped to the [Canvas]
  */
-fun Canvas.create(): Mosaic = MosaicImpl(this)
+fun Canvas.create(): Mosaic {
+  val instrumentation = (this as? MosaicCanvas)?.instrumentation
+  return if (instrumentation == null) MosaicImpl(this) else MosaicImpl.instrumented(this, instrumentation)
+}

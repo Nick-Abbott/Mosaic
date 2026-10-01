@@ -13,11 +13,16 @@ import io.opentelemetry.sdk.trace.data.SpanData
 import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor
 import io.opentelemetry.sdk.trace.samplers.Sampler
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.withContext
+import org.buildmosaic.core.Mosaic
 import org.buildmosaic.core.MosaicImpl
 import org.buildmosaic.core.injection.Canvas
 import org.buildmosaic.core.injection.CanvasKey
+import org.buildmosaic.core.injection.canvas
+import org.buildmosaic.core.injection.create
 import org.buildmosaic.core.instrumentation.ExperimentalMosaicInstrumentation
 import org.buildmosaic.core.instrumentation.MosaicInstrumentation
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -55,19 +60,21 @@ internal class TelemetryFixture(
   private val mosaics = mutableListOf<MosaicImpl>()
   val spans: List<SpanData> get() = exporter.finishedSpanItems
 
-  fun mosaic(
+  suspend fun mosaic(
     dispatcher: CoroutineDispatcher,
     adapter: MosaicInstrumentation = instrumentation,
     canvas: Canvas = emptyCanvas,
   ): MosaicImpl {
     val mosaic =
-      if (adapter === instrumentation) {
-        canvas.create(instrumentation, dispatcher) as MosaicImpl
+      if (adapter === instrumentation && dispatcher === Dispatchers.Default) {
+        canvas(canvas) { tracing { telemetry } }.create()
       } else {
         MosaicImpl.instrumented(canvas, adapter, dispatcher)
       }
-    return mosaic.also { mosaics.add(it) }
+    return track(mosaic)
   }
+
+  fun track(mosaic: Mosaic): MosaicImpl = (mosaic as MosaicImpl).also { mosaics.add(it) }
 
   suspend fun <T> root(block: suspend (Span) -> T): T {
     val root = tracer.spanBuilder("Root").setNoParent().setSpanKind(SpanKind.SERVER).startSpan()
@@ -131,4 +138,8 @@ internal fun assertPrivate(
     assertTrue(it.events.isEmpty(), "Adapter must not record exceptions or application events")
     assertTrue(it.status.description.isEmpty())
   }
+}
+
+internal suspend fun MosaicImpl.awaitExecutions() {
+  coroutineContext[Job]!!.children.toList().forEach { it.join() }
 }

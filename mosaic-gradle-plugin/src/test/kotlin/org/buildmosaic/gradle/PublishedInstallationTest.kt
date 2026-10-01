@@ -17,6 +17,29 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
+class PublishedRuntimeInstallationTest {
+  @Test
+  fun `published runtime supports Canvas tracing DSL`() {
+    val repositoryRoot = File(System.getProperty("user.dir")).parentFile
+    val version =
+      repositoryRoot.resolve("gradle.properties").readLines()
+        .first { it.startsWith("mosaic.version=") }.substringAfter('=')
+    val workspace = Files.createTempDirectory("mosaic-tracing-install-").toFile()
+    val maven = workspace.resolve("maven")
+    run(
+      repositoryRoot,
+      ":mosaic-core:publishAllPublicationsToInstallTestRepository",
+      ":mosaic-test:publishAllPublicationsToInstallTestRepository",
+      ":mosaic-opentelemetry:publishAllPublicationsToInstallTestRepository",
+      ":mosaic-bom:publishAllPublicationsToInstallTestRepository",
+      "-Pmosaic.installTestRepository=${maven.absolutePath}",
+    )
+    verifyOpenTelemetryPublication(maven, version)
+    verifyRuntimeConsumer(workspace, maven, version, useBom = false, kotlinVersion = "2.3.0")
+    verifyRuntimeConsumer(workspace, maven, version, useBom = true)
+  }
+}
+
 /** Proves that the real publications install through the external plugins DSL. */
 class PublishedInstallationTest {
   @Test
@@ -148,9 +171,6 @@ class PublishedInstallationTest {
     assertEquals("prototype-10", summary.toolVersion)
     assertTrue(summary.module.callables.any { it.id == "app.entry()" && it.effects.isNotEmpty() })
     JarFile(consumer.resolve("build/libs/app-99.0.0.jar")).use { assertTrue(it.getEntry(SUMMARY_PATH) != null) }
-
-    verifyRuntimeConsumer(workspace, maven, version, useBom = false, kotlinVersion = "2.3.0")
-    verifyRuntimeConsumer(workspace, maven, version, useBom = true)
   }
 }
 
@@ -193,13 +213,13 @@ private fun verifyRuntimeConsumer(
       import kotlinx.coroutines.test.runTest
       import org.buildmosaic.core.singleTile
       import org.buildmosaic.core.injection.canvas
-      import org.buildmosaic.opentelemetry.OpenTelemetryMosaicInstrumentation
-      import org.buildmosaic.opentelemetry.create
+      import org.buildmosaic.core.injection.create
+      import org.buildmosaic.opentelemetry.tracing
       import io.opentelemetry.api.OpenTelemetry
-      import kotlinx.coroutines.test.StandardTestDispatcher
       import org.buildmosaic.test.TestMosaicBuilder
       import kotlin.test.Test
       import kotlin.test.assertEquals
+      import kotlin.test.assertFailsWith
 
       class TileTest {
         @Test fun composes() = runTest {
@@ -208,9 +228,13 @@ private fun verifyRuntimeConsumer(
           val mosaic = TestMosaicBuilder(this).withMockTile(input, "published").build()
           mosaic.assertEquals(response, "PUBLISHED")
         }
+        @Test fun requiresGlobalProviderDuringSetup() = runTest {
+          assertFailsWith<IllegalStateException> { canvas { tracing() } }
+        }
         @Test fun tracesUsingApplicationInstance() = runTest {
-          val instrumentation = OpenTelemetryMosaicInstrumentation(OpenTelemetry.noop())
-          val mosaic = canvas {}.create(instrumentation, StandardTestDispatcher(testScheduler))
+          val applicationCanvas = canvas { tracing { OpenTelemetry.noop() } }
+          val requestCanvas = applicationCanvas.withLayer {}
+          val mosaic = requestCanvas.create()
           assertEquals(7, mosaic.compose(singleTile { 7 }))
         }
       }

@@ -1,6 +1,9 @@
+@file:OptIn(org.buildmosaic.core.instrumentation.ExperimentalMosaicInstrumentation::class)
+
 package org.buildmosaic.core.injection
 
 import org.buildmosaic.core.exception.MosaicMissingKeyException
+import org.buildmosaic.core.instrumentation.MosaicInstrumentation
 
 private fun missingKeyError(key: CanvasKey<*>): Nothing = throw MosaicMissingKeyException(key)
 
@@ -12,6 +15,8 @@ private fun missingKeyError(key: CanvasKey<*>): Nothing = throw MosaicMissingKey
  */
 class CanvasBuilder internal constructor() {
   @PublishedApi internal val bindings = mutableMapOf<CanvasKey<*>, Stub<*>>()
+  internal var instrumentation: MosaicInstrumentation? = null
+  internal var installingInstrumentation = false
 
   /**
    * Registers a singleton dependency in the canvas.
@@ -56,7 +61,7 @@ class CanvasFactory internal constructor(
   /**
    * Builds the final [MosaicCanvas] by initializing all registered dependencies.
    */
-  internal suspend fun build(): MosaicCanvas {
+  internal suspend fun build(instrumentation: MosaicInstrumentation? = null): MosaicCanvas {
     val providers =
       bindings.mapValues { (_, binding) ->
         val provider = binding.toProvider(this)
@@ -64,7 +69,7 @@ class CanvasFactory internal constructor(
         if (instance is AutoCloseable) closeables.add(instance)
         provider
       }
-    return MosaicCanvas(providers, closeables.toList(), parent)
+    return MosaicCanvas(providers, closeables.toList(), parent, instrumentation)
   }
 
   /**
@@ -108,6 +113,7 @@ class MosaicCanvas internal constructor(
   private val providers: Map<CanvasKey<*>, Provider<*>>,
   private val closeables: List<AutoCloseable>,
   private val parent: Canvas? = null,
+  internal val instrumentation: MosaicInstrumentation? = null,
 ) : Canvas, AutoCloseable {
   @Suppress("UNCHECKED_CAST")
   override fun <T : Any> sourceOr(key: CanvasKey<T>): T? {
@@ -145,4 +151,7 @@ class MosaicCanvas internal constructor(
 suspend fun canvas(
   parent: Canvas? = null,
   build: CanvasBuilder.() -> Unit,
-): MosaicCanvas = CanvasFactory(CanvasBuilder().apply(build).bindings, parent).build()
+): MosaicCanvas {
+  val builder = CanvasBuilder().apply { instrumentation = (parent as? MosaicCanvas)?.instrumentation }.apply(build)
+  return CanvasFactory(builder.bindings, parent).build(builder.instrumentation)
+}
