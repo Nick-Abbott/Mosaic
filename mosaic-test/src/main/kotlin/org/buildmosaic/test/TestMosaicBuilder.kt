@@ -58,7 +58,7 @@ import kotlin.reflect.KClass
  */
 @Suppress("LargeClass")
 class TestMosaicBuilder(testContext: TestScope) {
-  private val canvas = MockCanvas()
+  private val canvasSources = CanvasSources()
   private var dispatcher = StandardTestDispatcher(testContext.testScheduler)
 
   private val mockTileCache: MutableMap<Tile<*>, Tile<*>> = mutableMapOf()
@@ -290,7 +290,7 @@ class TestMosaicBuilder(testContext: TestScope) {
     obj: V,
   ): TestMosaicBuilder =
     apply {
-      canvas.register(clazz, obj)
+      canvasSources.register(clazz, obj)
     }
 
   /**
@@ -329,7 +329,7 @@ class TestMosaicBuilder(testContext: TestScope) {
     obj: V,
   ): TestMosaicBuilder =
     apply {
-      canvas.register(clazz, qualifier, obj)
+      canvasSources.register(clazz, qualifier, obj)
     }
 
   /**
@@ -370,7 +370,7 @@ class TestMosaicBuilder(testContext: TestScope) {
     obj: T,
   ): TestMosaicBuilder =
     apply {
-      canvas.register(key, obj)
+      canvasSources.register(key, obj)
     }
 
   /**
@@ -387,7 +387,7 @@ class TestMosaicBuilder(testContext: TestScope) {
    *   .build()
    * ```
    */
-  fun build(): TestMosaic = TestMosaic(canvas, mockTileCache, mockMultiTileCache, dispatcher)
+  fun build(): TestMosaic = TestMosaic(canvasSources.build(), mockTileCache, mockMultiTileCache, dispatcher)
 }
 
 fun TestScope.mosaicBuilder() = TestMosaicBuilder(this)

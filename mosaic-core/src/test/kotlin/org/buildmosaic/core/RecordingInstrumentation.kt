@@ -1,14 +1,12 @@
-@file:OptIn(ExperimentalMosaicInstrumentation::class)
-
 package org.buildmosaic.core
 
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asContextElement
+import kotlinx.coroutines.runBlocking
 import org.buildmosaic.core.injection.Canvas
-import org.buildmosaic.core.injection.CanvasKey
+import org.buildmosaic.core.injection.canvas
 import org.buildmosaic.core.instrumentation.ExecutionCompletion
-import org.buildmosaic.core.instrumentation.ExperimentalMosaicInstrumentation
 import org.buildmosaic.core.instrumentation.MosaicInstrumentation
 import org.buildmosaic.core.instrumentation.ProducerReference
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -20,10 +18,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotSame
 import kotlin.test.assertTrue
 
-internal val emptyCanvas =
-  object : Canvas {
-    override fun <T : Any> sourceOr(key: CanvasKey<T>): T? = null
-  }
+internal val emptyCanvas = runBlocking { canvas {} }
 
 // Coroutine debug stack recovery may copy an exception with the original as its cause at await.
 internal fun assertApplicationFailure(
@@ -178,7 +173,6 @@ internal class RecordingInstrumentation(
 }
 
 /** Existing runtime scenarios are inherited unchanged by instrumented variants. */
-@OptIn(ExperimentalMosaicInstrumentation::class)
 open class RuntimeBehaviorTest {
   protected open val instrumentation: MosaicInstrumentation? = null
 
@@ -191,22 +185,18 @@ open class RuntimeBehaviorTest {
     } ?: MosaicImpl(canvas, dispatcher)
 }
 
-@OptIn(ExperimentalMosaicInstrumentation::class)
 class InstrumentedMosaicBehaviorTest : MosaicTest() {
   override val instrumentation: MosaicInstrumentation = RecordingInstrumentation()
 }
 
-@OptIn(ExperimentalMosaicInstrumentation::class)
 class InstrumentedConcurrencyBehaviorTest : MosaicConcurrencyTest() {
   override val instrumentation: MosaicInstrumentation = RecordingInstrumentation()
 }
 
-@OptIn(ExperimentalMosaicInstrumentation::class)
 class InstrumentedCoalescingBehaviorTest : MultiTileCoalescingTest() {
   override val instrumentation: MosaicInstrumentation = RecordingInstrumentation()
 }
 
-@OptIn(ExperimentalMosaicInstrumentation::class)
 class InstrumentedDslBehaviorTest : TileDslTest() {
   override val instrumentation: MosaicInstrumentation = RecordingInstrumentation()
 }

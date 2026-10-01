@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalMosaicInstrumentation::class)
-
 package org.buildmosaic.core.instrumentation
 
 import kotlinx.coroutines.ThreadContextElement

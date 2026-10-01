@@ -180,10 +180,31 @@ private fun verifyRuntimeConsumer(
       """
       import kotlinx.coroutines.test.runTest
       import org.buildmosaic.core.singleTile
+      import org.buildmosaic.core.source
+      import org.buildmosaic.core.injection.*
+      import org.buildmosaic.core.instrumentation.*
       import org.buildmosaic.test.TestMosaicBuilder
       import kotlin.test.Test
 
+      class Provider : MosaicInstrumentation {
+        var starts = 0
+        override fun captureCaller(execution: MosaicInstrumentation.ExecutionIdentity?) = null
+        override fun startSingle(name: String?, caller: MosaicInstrumentation.CallerContext?): MosaicInstrumentation.Execution? {
+          starts++
+          return null
+        }
+        override fun createBatch() = null
+        override fun onCallbackFailure(failure: Throwable) = error("unexpected callback failure")
+      }
       class TileTest {
+        @Test fun installedIntegration() = runTest {
+          val provider = Provider()
+          val application: Canvas = canvas { installInstrumentation { provider }; single<String> { "published" } }
+          val request: Canvas = application.withLayer { single<Int> { 7 } }
+          val response = singleTile { source<String>() + source<Int>() }
+          kotlin.test.assertEquals("published7", request.create().compose(response))
+          kotlin.test.assertEquals(1, provider.starts)
+        }
         @Test fun composes() = runTest {
           val input = singleTile { "original" }
           val response = singleTile { compose(input).uppercase() }

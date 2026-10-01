@@ -19,19 +19,18 @@ package org.buildmosaic.test
 import kotlinx.coroutines.test.runTest
 import org.buildmosaic.core.injection.CanvasKey
 import kotlin.test.Test
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 
-class MockCanvasTest {
-  private val canvas = MockCanvas()
+class CanvasSourcesTest {
+  private val sources = CanvasSources()
 
   @Test
   fun `register and retrieve without qualifier`() {
     val service = TestService("test")
-    canvas.register(TestService::class, service)
+    sources.register(TestService::class, service)
 
-    val retrieved = canvas.source(TestService::class)
+    val retrieved = sources.build().source(TestService::class)
     assertSame(service, retrieved)
   }
 
@@ -40,11 +39,11 @@ class MockCanvasTest {
     val primaryService = TestService("primary")
     val secondaryService = TestService("secondary")
 
-    canvas.register(TestService::class, "primary", primaryService)
-    canvas.register(TestService::class, "secondary", secondaryService)
+    sources.register(TestService::class, "primary", primaryService)
+    sources.register(TestService::class, "secondary", secondaryService)
 
-    val retrievedPrimary = canvas.source(TestService::class, "primary")
-    val retrievedSecondary = canvas.source(TestService::class, "secondary")
+    val retrievedPrimary = sources.build().source(TestService::class, "primary")
+    val retrievedSecondary = sources.build().source(TestService::class, "secondary")
 
     assertSame(primaryService, retrievedPrimary)
     assertSame(secondaryService, retrievedSecondary)
@@ -55,16 +54,16 @@ class MockCanvasTest {
     val service = TestService("keyed")
     val key = CanvasKey(TestService::class, "keyed")
 
-    canvas.register(key, service)
+    sources.register(key, service)
 
-    val retrieved = canvas.source(key)
+    val retrieved = sources.build().source(key)
     assertSame(service, retrieved)
   }
 
   @Test
   fun `sourceOr returns null for missing key`() {
     val key = CanvasKey(TestService::class, "missing")
-    val result = canvas.sourceOr(key)
+    val result = sources.build().sourceOr(key)
     assertNull(result)
   }
 
@@ -72,9 +71,9 @@ class MockCanvasTest {
   fun `sourceOr returns instance for existing key`() {
     val service = TestService("existing")
     val key = CanvasKey(TestService::class, "existing")
-    canvas.register(key, service)
+    sources.register(key, service)
 
-    val result = canvas.sourceOr(key)
+    val result = sources.build().sourceOr(key)
     assertSame(service, result)
   }
 
@@ -82,16 +81,26 @@ class MockCanvasTest {
   fun `withLayer creates layered canvas`() =
     runTest {
       val baseService = TestService("base")
-      canvas.register(TestService::class, baseService)
+      sources.register(TestService::class, baseService)
 
       val layeredCanvas =
-        canvas.withLayer {
+        sources.build().withLayer {
           // Layer configuration would go here
         }
 
-      // Verify the layered canvas is created
-      assertNotNull(layeredCanvas)
+      assertSame(baseService, layeredCanvas.source(TestService::class))
     }
+
+  @Test
+  fun `build snapshots replaced sources`() {
+    val first = TestService("first")
+    val replacement = TestService("replacement")
+    sources.register(TestService::class, first)
+    sources.register(TestService::class, replacement)
+    val built = sources.build()
+    sources.register(TestService::class, TestService("later"))
+    assertSame(replacement, built.source(TestService::class))
+  }
 
   private data class TestService(val name: String)
 }

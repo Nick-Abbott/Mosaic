@@ -5,13 +5,21 @@ import org.buildmosaic.core.exception.MosaicMissingKeyException
 private fun missingKeyError(key: CanvasKey<*>): Nothing = throw MosaicMissingKeyException(key)
 
 /**
- * Builder for constructing a [Canvas] with dependency bindings.
+ * Builder for constructing a [Canvas] with dependency bindings and durable runtime configuration.
  *
  * Use this builder to register dependencies that will be available for injection
  * in tiles and other canvas-aware components.
  */
-class CanvasBuilder internal constructor() {
+class CanvasBuilder internal constructor(
+  private val inheritedRuntimeConfig: MosaicRuntimeConfig = MosaicRuntimeConfig.EMPTY,
+) {
   @PublishedApi internal val bindings = mutableMapOf<CanvasKey<*>, Stub<*>>()
+  private var runtimeConfigBuilder: MosaicRuntimeConfig.Builder? = null
+
+  internal fun configureRuntime(): MosaicRuntimeConfig.Builder =
+    runtimeConfigBuilder ?: MosaicRuntimeConfig.Builder(inheritedRuntimeConfig).also { runtimeConfigBuilder = it }
+
+  internal fun runtimeConfig(): MosaicRuntimeConfig = runtimeConfigBuilder?.build() ?: inheritedRuntimeConfig
 
   /**
    * Registers a singleton dependency in the canvas.
@@ -56,7 +64,7 @@ class CanvasFactory internal constructor(
   /**
    * Builds the final [MosaicCanvas] by initializing all registered dependencies.
    */
-  internal suspend fun build(): MosaicCanvas {
+  internal suspend fun build(runtimeConfig: MosaicRuntimeConfig = MosaicRuntimeConfig.EMPTY): MosaicCanvas {
     val providers =
       bindings.mapValues { (_, binding) ->
         val provider = binding.toProvider(this)
@@ -64,7 +72,7 @@ class CanvasFactory internal constructor(
         if (instance is AutoCloseable) closeables.add(instance)
         provider
       }
-    return MosaicCanvas(providers, closeables.toList(), parent)
+    return MosaicCanvas(providers, closeables.toList(), parent, runtimeConfig)
   }
 
   /**
@@ -95,10 +103,11 @@ class CanvasFactory internal constructor(
 }
 
 /**
- * Production implementation of [Canvas] that provides dependency injection capabilities.
+ * Production implementation of [Canvas] carrying dependencies and durable Mosaic runtime configuration.
  *
  * This canvas implementation supports hierarchical dependency resolution through parent canvases
- * and automatic lifecycle management of [AutoCloseable] dependencies.
+ * and automatic lifecycle management of [AutoCloseable] dependencies. Runtime configuration is
+ * inherited separately from dependency bindings and is not available through source lookup.
  *
  * @param providers Map of initialized dependency providers
  * @param closeables List of closeable dependencies for cleanup
@@ -108,6 +117,7 @@ class MosaicCanvas internal constructor(
   private val providers: Map<CanvasKey<*>, Provider<*>>,
   private val closeables: List<AutoCloseable>,
   private val parent: Canvas? = null,
+  internal val runtimeConfig: MosaicRuntimeConfig = MosaicRuntimeConfig.EMPTY,
 ) : Canvas, AutoCloseable {
   @Suppress("UNCHECKED_CAST")
   override fun <T : Any> sourceOr(key: CanvasKey<T>): T? {
@@ -129,10 +139,10 @@ class MosaicCanvas internal constructor(
  * Creates a new [MosaicCanvas] using the canvas DSL.
  *
  * This is the primary way to create a canvas with dependency bindings. The canvas
- * supports hierarchical dependency resolution and automatic lifecycle management.
+ * supports hierarchical dependency resolution, inherited runtime configuration, and automatic lifecycle management.
  *
  * @param parent Optional parent canvas for fallback dependency resolution
- * @param build DSL block for configuring dependency bindings
+ * @param build DSL block for configuring dependency bindings and runtime settings
  * @return A fully initialized [MosaicCanvas]
  *
  * ```kotlin
@@ -145,4 +155,8 @@ class MosaicCanvas internal constructor(
 suspend fun canvas(
   parent: Canvas? = null,
   build: CanvasBuilder.() -> Unit,
-): MosaicCanvas = CanvasFactory(CanvasBuilder().apply(build).bindings, parent).build()
+): MosaicCanvas {
+  val inheritedConfig = parent?.runtimeConfig ?: MosaicRuntimeConfig.EMPTY
+  val builder = CanvasBuilder(inheritedConfig).apply(build)
+  return CanvasFactory(builder.bindings, parent).build(builder.runtimeConfig())
+}

@@ -159,6 +159,10 @@ suspend fun handleRequest(applicationCanvas: Canvas, userId: String): String =
   }
 ```
 
+In 0.6 development, `Canvas` is a sealed interface with Mosaic-owned
+implementations. Continue using `Canvas` as a public type and construct it with
+`canvas` or `withLayer`.
+
 `canvas` eagerly constructs bindings. A child layer resolves local bindings
 first, then falls back to its parent. Overrides do not rewire services already
 constructed by the parent.
@@ -281,10 +285,21 @@ requirements and configuration.
 
 ## Runtime instrumentation SPI
 
-An experimental
+The supported
 [`MosaicInstrumentation`](src/main/kotlin/org/buildmosaic/core/instrumentation/MosaicInstrumentation.kt)
 integration SPI observes actual execution, reuse, and batching. Normal composition
-does not require it. Its KDoc defines the API, lifecycle, and privacy contract.
+uses the Canvas DSL or an integration-specific DSL. Integration authors implement
+`MosaicInstrumentation` and use `CanvasBuilder.installInstrumentation { provider }`.
+`ProducerReference` and `ExecutionCompletion` are also integration-author APIs.
+Their KDoc defines the lifecycle and privacy contract.
+
+Installation is separate from dependency bindings. One provider can be installed
+per effective Canvas hierarchy; descendants inherit the same immutable runtime
+configuration. Local, inherited, and reentrant duplicates fail before another
+provider is created. A failed provider leaves configuration unchanged. Registering
+a provider with `single` does not enable instrumentation, and runtime settings
+cannot be retrieved through `source`, `sourceOr`, or `paint`. Canvas does not own
+provider shutdown. Execution-scoped state belongs to the runtime integration.
 
 ## 🌐 **Framework Integration**
 

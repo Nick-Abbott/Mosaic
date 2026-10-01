@@ -10,7 +10,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.buildmosaic.core.exception.MosaicMissingMultiTileResultException
 import org.buildmosaic.core.injection.Canvas
-import org.buildmosaic.core.instrumentation.ExperimentalMosaicInstrumentation
 import org.buildmosaic.core.instrumentation.MosaicInstrumentation
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.CoroutineContext
@@ -29,8 +28,10 @@ open class MosaicImpl(
   dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : Mosaic, CoroutineScope {
   companion object {
-    /** Creates a Mosaic using the optional provider SPI. Ordinary constructors retain the direct path. */
-    @ExperimentalMosaicInstrumentation
+    /**
+     * Integration-author API creating a Mosaic with runtime instrumentation.
+     * Ordinary constructors retain the direct path.
+     */
     fun instrumented(
       canvas: Canvas,
       instrumentation: MosaicInstrumentation,

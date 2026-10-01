@@ -20,13 +20,18 @@ data class CanvasKey<T : Any>(val type: KClass<T>, val qualifier: String? = null
 }
 
 /**
- * Interface for dependency injection in Mosaic.
+ * Dependencies and inherited runtime configuration for Mosaic.
  *
  * Provides a mechanism to retrieve dependencies by their class type.
  * This is used internally by the [Mosaic] class to support dependency injection
- * in DSL tile functions.
+ * in DSL tile functions. Canvas layers created with [canvas] also carry durable Mosaic runtime
+ * settings separately from application bindings; those settings are used by [create].
+ *
+ * Mosaic owns all implementations. Consumers use [Canvas] as a public type and construct it
+ * through [canvas] or [withLayer]. Framework integrations should extend [CanvasBuilder]
+ * configuration and Canvas construction.
  */
-interface Canvas {
+sealed interface Canvas {
   /**
    * Retrieves an instance of the registered object of the specified type and qualifier
    *
@@ -80,7 +85,7 @@ interface Canvas {
    * This does not modify the parent in any way. Child bindings are constructed eagerly;
    * a child constructor can use [CanvasFactory.paint] to resolve local bindings first and
    * then fall back to the parent. Child overrides do not rewire services already created
-   * by the parent.
+   * by the parent. Durable runtime configuration is inherited from Mosaic Canvas parents.
    *
    * @param build A block of code registering all sources for your [Canvas] layer
    */
@@ -106,8 +111,18 @@ inline fun <reified T : Any> Canvas.source(): T = source(T::class)
 inline fun <reified T : Any> Canvas.sourceOr(): T? = sourceOr(T::class)
 
 /**
- * Creates a new [Mosaic] instance
+ * Creates a new [Mosaic] instance using this Canvas's inherited runtime configuration.
  *
  * @return An instance of [Mosaic] scoped to the [Canvas]
  */
-fun Canvas.create(): Mosaic = MosaicImpl(this)
+fun Canvas.create(): Mosaic {
+  val instrumentation = runtimeConfig.instrumentation
+  return if (instrumentation == null) MosaicImpl(this) else MosaicImpl.instrumented(this, instrumentation)
+}
+
+/** Exhaustive access to settings on Mosaic-owned Canvas implementations. */
+internal val Canvas.runtimeConfig: MosaicRuntimeConfig
+  get() =
+    when (this) {
+      is MosaicCanvas -> runtimeConfig
+    }

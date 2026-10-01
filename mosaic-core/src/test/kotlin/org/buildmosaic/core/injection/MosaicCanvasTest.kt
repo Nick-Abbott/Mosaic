@@ -50,17 +50,6 @@ class MosaicCanvasTest {
     }
   }
 
-  class CustomCanvas(private val service: TestService) : Canvas {
-    var lookupCount = 0
-      private set
-
-    @Suppress("UNCHECKED_CAST")
-    override fun <T : Any> sourceOr(key: CanvasKey<T>): T? {
-      lookupCount++
-      return if (key == CanvasKey(TestService::class)) service as T else null
-    }
-  }
-
   @Test
   fun `should register and retrieve a single dependency`() =
     runTest {
@@ -179,7 +168,7 @@ class MosaicCanvasTest {
     }
 
   @Test
-  fun `should paint through ancestors and custom Canvas parents`() =
+  fun `should paint through ancestors and Canvas typed parents`() =
     runTest {
       val grandparentService = TestServiceImpl("grandparent-service")
       val nearestService = TestServiceImpl("nearest-service")
@@ -195,15 +184,14 @@ class MosaicCanvasTest {
 
       assertEquals("nearest-service", childCanvas.source<TestRepository>().getData())
 
-      val customService = TestServiceImpl("custom-service")
-      val customParent = CustomCanvas(customService)
-      val customChild =
-        canvas(customParent) {
+      val service = TestServiceImpl("typed-parent-service")
+      val typedParent: Canvas = canvas { single<TestService> { service } }
+      val typedChild =
+        canvas(typedParent) {
           single<TestRepository> { TestRepositoryImpl(paint<TestService>().getValue()) }
         }
 
-      assertEquals("custom-service", customChild.source<TestRepository>().getData())
-      assertEquals(1, customParent.lookupCount)
+      assertEquals("typed-parent-service", typedChild.source<TestRepository>().getData())
     }
 
   @Test
@@ -248,10 +236,10 @@ class MosaicCanvasTest {
       assertEquals(requestedKey, missingException.key)
 
       var constructorContinued = false
-      val customParent = CustomCanvas(TestServiceImpl("parent"))
+      val typedParent: Canvas = canvas { single<TestService> { TestServiceImpl("parent") } }
       val failure =
         assertFailsWith<IllegalStateException> {
-          canvas(customParent) {
+          canvas(typedParent) {
             single<TestRepository> {
               paint<TestService>()
               constructorContinued = true
@@ -263,7 +251,6 @@ class MosaicCanvasTest {
 
       assertEquals("local failure", failure.message)
       assertEquals(false, constructorContinued)
-      assertEquals(0, customParent.lookupCount)
     }
 
   @Test
