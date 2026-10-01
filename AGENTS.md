@@ -22,6 +22,17 @@ analysis tooling.
   [technical-docs](.agents/skills/technical-docs/SKILL.md). Route by reader purpose;
   use both when a change spans both audiences.
 
+## Architecture skills
+
+- When designing or materially restructuring a module, interface, or ownership
+  model, especially foundational or public behavior, use
+  [codebase-design](.agents/skills/codebase-design/SKILL.md).
+- After a substantial feature/refactor is behaviorally correct, use
+  [zero-tech-debt](.agents/skills/zero-tech-debt/SKILL.md) to check whether its
+  final shape still reflects the historical route taken to get there.
+
+Neither skill is required for routine edits or authorizes unrelated cleanup.
+
 ## Analysis invariants
 
 - Support exactly Kotlin compiler and Gradle plugin 2.4.20. Reject unsupported
