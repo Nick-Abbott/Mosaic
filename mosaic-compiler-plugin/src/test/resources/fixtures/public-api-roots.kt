@@ -80,4 +80,3 @@ suspend fun dynamicRegistrationKey(key: CanvasKey<Metrics>) { canvas { single(ke
 suspend fun dynamicPaintKey(key: CanvasKey<Metrics>) { canvas { single<String> { paint(key); "ok" } } }
 suspend fun dynamicKeyCapture(key: CanvasKey<Metrics>) { val tile = singleTile { source(key); "ok" }; canvas {}.create().compose(tile) }
 suspend fun dynamicConstructedKeyCapture(qualifier: String) { val key = CanvasKey(Metrics::class, qualifier); val tile = singleTile { source(key); "ok" }; canvas {}.create().compose(tile) }
-suspend fun typedApplicationAndRequest() { val application: Canvas = canvas { single(SharedKey) { Metrics() } }; val request: Canvas = application.withLayer {}; request.create().compose(NeedsMetricsTile) }

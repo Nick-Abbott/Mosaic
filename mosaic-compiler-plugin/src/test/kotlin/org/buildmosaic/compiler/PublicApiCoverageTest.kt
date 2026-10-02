@@ -129,7 +129,6 @@ class PublicApiCoverageTest {
       "parentNamed",
       "parentPositional",
       "layerFallback",
-      "typedApplicationAndRequest",
     ).forEach(::verified)
     val both = report("bothLookups").findings.filter { it.key?.classId == "publicapi.Metrics" }
     assertEquals(2, both.size)

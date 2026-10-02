@@ -20,10 +20,10 @@ class TileDslTest {
         var count = 0
       }
       val service = Service()
-      val testCanvas =
+      val mockCanvas =
         canvas { single { service } }
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(testCanvas, testDispatcher)
+      val mosaic = MosaicImpl(mockCanvas, testDispatcher)
       val tile =
         singleTile {
           val s = canvas.source<Service>()
@@ -50,10 +50,10 @@ class TileDslTest {
         }
       }
       val service = Service()
-      val testCanvas =
+      val mockCanvas =
         canvas { single { service } }
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(testCanvas, testDispatcher)
+      val mosaic = MosaicImpl(mockCanvas, testDispatcher)
       val tile =
         singleTile {
           val svc = source<Service>()
@@ -78,10 +78,10 @@ class TileDslTest {
         }
       }
       val service = Service()
-      val testCanvas =
+      val mockCanvas =
         canvas { single { service } }
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(testCanvas, testDispatcher)
+      val mosaic = MosaicImpl(mockCanvas, testDispatcher)
       val tile =
         multiTile { ids ->
           val svc = source<Service>()
@@ -110,10 +110,10 @@ class TileDslTest {
         }
       }
       val service = Service()
-      val testCanvas =
+      val mockCanvas =
         canvas { single { service } }
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(testCanvas, testDispatcher)
+      val mosaic = MosaicImpl(mockCanvas, testDispatcher)
       val tile =
         perKeyTile<String, String> { id ->
           val svc = source<Service>()
@@ -146,10 +146,10 @@ class TileDslTest {
         }
       }
       val service = Service(this)
-      val testCanvas =
+      val mockCanvas =
         canvas { single { service } }
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(testCanvas, testDispatcher)
+      val mosaic = MosaicImpl(mockCanvas, testDispatcher)
       val tile =
         chunkedMultiTile<String, String>(2) { ids ->
           val svc = source<Service>()

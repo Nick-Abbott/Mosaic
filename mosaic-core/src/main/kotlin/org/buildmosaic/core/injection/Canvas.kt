@@ -91,9 +91,9 @@ class Canvas internal constructor(
    */
   suspend fun withLayer(build: CanvasBuilder.() -> Unit): Canvas = canvas(this, build)
 
-  /** Closes local resources in binding order, continuing after failures. Parent resources are unaffected. */
+  /** Closes local resources in reverse creation order, continuing after failures. Parent resources are unaffected. */
   override fun close() {
-    closeables.forEach { closeable ->
+    closeables.asReversed().forEach { closeable ->
       runCatching { closeable.close() }
         .onFailure { failure -> System.err.println("Close hook failed: ${failure.message}") }
     }

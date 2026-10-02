@@ -59,6 +59,8 @@ class CanvasFactory internal constructor(
     if (instance is AutoCloseable) synchronized(closeables) { closeables.add(instance) }
   }
 
+  private fun createdResources(): List<AutoCloseable> = synchronized(closeables) { closeables.toList() }
+
   /** Resolves all bindings, transferring local resource ownership only after successful construction. */
   @Suppress("TooGenericExceptionCaught")
   internal suspend fun build(): Canvas {
@@ -66,10 +68,9 @@ class CanvasFactory internal constructor(
       currentCoroutineContext().ensureActive()
       val instances = bindings.mapValues { (_, binding) -> binding.create(this) }
       currentCoroutineContext().ensureActive()
-      return Canvas(instances, instances.values.filterIsInstance<AutoCloseable>(), parent)
+      return Canvas(instances, createdResources(), parent)
     } catch (failure: Throwable) {
-      val created = synchronized(closeables) { closeables.toList() }
-      created.asReversed().forEach { resource ->
+      createdResources().asReversed().forEach { resource ->
         runCatching { resource.close() }.onFailure { cleanupFailure ->
           if (cleanupFailure !== failure) failure.addSuppressed(cleanupFailure)
         }

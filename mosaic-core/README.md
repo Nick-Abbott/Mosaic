@@ -157,7 +157,8 @@ It stores resolved dependencies and owns its local resources.
 
 `canvas` eagerly constructs bindings. A child layer resolves local bindings
 first, then falls back to its parent. Overrides do not rewire services already
-constructed by the parent.
+constructed by the parent. Concurrent `paint` calls share one construction;
+recursive construction fails with a circular-dependency error.
 
 ### **Resource ownership**
 
@@ -166,7 +167,8 @@ constructed by the parent.
 its locally created `AutoCloseable` bindings, not parent resources. Keep an
 application Canvas for long-lived services and close it at shutdown; scope child
 Canvases explicitly when they own resources. Creating a Mosaic does not close
-its Canvas for you. Normal cleanup follows binding registration order and continues
+its Canvas for you. Local resources are closed in reverse successful creation order,
+including dependencies created early through `paint`. Cleanup continues
 after close failures, reporting those failures to standard error.
 
 If construction fails or is cancelled, successfully created local `AutoCloseable`

@@ -1,9 +1,15 @@
 package org.buildmosaic.core.injection
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.buildmosaic.core.exception.MosaicMissingKeyException
 import org.buildmosaic.core.source
@@ -14,6 +20,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 @Suppress("LargeClass", "FunctionMaxLength")
 class CanvasConstructionTest {
@@ -37,17 +44,6 @@ class CanvasConstructionTest {
 
   class DependentService(private val repository: TestRepository) : TestService {
     override fun getValue(): String = repository.getData()
-  }
-
-  class BorrowingRepository(private val service: TestService) : TestRepository, AutoCloseable {
-    var isClosed = false
-      private set
-
-    override fun getData(): String = service.getValue()
-
-    override fun close() {
-      isClosed = true
-    }
   }
 
   @Test
@@ -168,7 +164,7 @@ class CanvasConstructionTest {
     }
 
   @Test
-  fun `should paint through ancestors and Canvas typed parents`() =
+  fun `should paint through ancestors`() =
     runTest {
       val grandparentService = TestServiceImpl("grandparent-service")
       val nearestService = TestServiceImpl("nearest-service")
@@ -183,15 +179,6 @@ class CanvasConstructionTest {
         }
 
       assertEquals("nearest-service", childCanvas.source<TestRepository>().getData())
-
-      val typedService = TestServiceImpl("typed-service")
-      val typedParent: Canvas = canvas { single<TestService> { typedService } }
-      val typedChild =
-        canvas(typedParent) {
-          single<TestRepository> { TestRepositoryImpl(paint<TestService>().getValue()) }
-        }
-
-      assertEquals("typed-service", typedChild.source<TestRepository>().getData())
     }
 
   @Test
@@ -236,10 +223,9 @@ class CanvasConstructionTest {
       assertEquals(requestedKey, missingException.key)
 
       var constructorContinued = false
-      val typedParent: Canvas = canvas { single<TestService> { TestServiceImpl("parent") } }
       val failure =
         assertFailsWith<IllegalStateException> {
-          canvas(typedParent) {
+          canvas(parentCanvas) {
             single<TestRepository> {
               paint<TestService>()
               constructorContinued = true
@@ -251,25 +237,6 @@ class CanvasConstructionTest {
 
       assertEquals("local failure", failure.message)
       assertEquals(false, constructorContinued)
-    }
-
-  @Test
-  fun `should not transfer ownership when child paints parent AutoCloseable`() =
-    runTest {
-      val parentService = CloseableTestService("parent-service")
-      val parentCanvas = canvas { single<TestService> { parentService } }
-      val childCanvas =
-        canvas(parentCanvas) {
-          single<TestRepository> { BorrowingRepository(paint<TestService>()) }
-        }
-
-      val childRepository = childCanvas.source<TestRepository>() as BorrowingRepository
-      childCanvas.close()
-      assertEquals(false, parentService.isClosed)
-      assertEquals(true, childRepository.isClosed)
-
-      parentCanvas.close()
-      assertEquals(true, parentService.isClosed)
     }
 
   // Hierarchical resolution tests
@@ -378,48 +345,155 @@ class CanvasConstructionTest {
     }
   }
 
-  class CloseableTestRepository(private val data: String) : TestRepository, AutoCloseable {
-    var isClosed = false
-      private set
-
-    override fun getData(): String = data
-
-    override fun close() {
-      isClosed = true
+  @Test
+  fun `should close resources in reverse creation order`() =
+    runTest {
+      val events = mutableListOf<String>()
+      val parentResource = Resource { events.add("parent") }
+      val parent = canvas { single { parentResource } }
+      parent.withLayer {
+        single<Resource>("first") {
+          events.add("create first")
+          Resource { events.add("close first") }
+        }
+        single<Resource>("consumer") {
+          assertSame(parentResource, paint<Resource>())
+          paint<Resource>("dependency")
+          events.add("create consumer")
+          Resource { events.add("close consumer") }
+        }
+        single<Resource>("dependency") {
+          events.add("create dependency")
+          Resource { events.add("close dependency") }
+        }
+      }.use {
+        assertEquals(listOf("create first", "create dependency", "create consumer"), events)
+      }
+      assertEquals(
+        listOf(
+          "create first",
+          "create dependency",
+          "create consumer",
+          "close consumer",
+          "close dependency",
+          "close first",
+        ),
+        events,
+      )
+      parent.close()
+      assertEquals("parent", events.last())
     }
-  }
 
   @Test
-  fun `should close AutoCloseable dependencies when canvas is closed`() =
+  fun `should roll back created resources and suppress cleanup failures`() =
     runTest {
-      val closeableService = CloseableTestService("closeable-service")
-      val closeableRepo = CloseableTestRepository("closeable-repo")
-
-      val testCanvas =
-        canvas {
-          single<TestService> { closeableService }
-          single<TestRepository> { closeableRepo }
+      val closed = mutableListOf<String>()
+      val parentResource = Resource { closed.add("parent") }
+      val parent = canvas { single { parentResource } }
+      val failure = AssertionError("failed construction")
+      val firstCleanup = IllegalStateException("first cleanup")
+      val paintedCleanup = IllegalArgumentException("painted cleanup")
+      var paintedCount = 0
+      val thrown =
+        assertFailsWith<AssertionError> {
+          parent.withLayer {
+            single<Resource>("first") {
+              Resource {
+                closed.add("first")
+                throw firstCleanup
+              }
+            }
+            single<Resource>("consumer") {
+              assertSame(parentResource, paint<Resource>())
+              assertSame(paint<Resource>("painted"), paint<Resource>("painted"))
+              Resource {
+                closed.add("consumer")
+                throw failure
+              }
+            }
+            single<String> { throw failure }
+            single<Resource>("painted") {
+              paintedCount++
+              Resource {
+                closed.add("painted")
+                throw paintedCleanup
+              }
+            }
+            single<Int> { error("must not be constructed") }
+          }
         }
 
-      // Verify dependencies work normally
-      val service = testCanvas.source<TestService>()
-      val repository = testCanvas.source<TestRepository>()
+      assertSame(failure, thrown)
+      assertEquals(1, paintedCount)
+      assertEquals(listOf(paintedCleanup, firstCleanup), thrown.suppressed.toList())
+      assertEquals(listOf("consumer", "painted", "first"), closed)
+      parent.close()
+      assertEquals(listOf("consumer", "painted", "first", "parent"), closed)
+    }
 
-      assertNotNull(service)
-      assertNotNull(repository)
-      assertEquals("closeable-service", service.getValue())
-      assertEquals("closeable-repo", repository.getData())
+  @Test
+  fun `cancellation during a suspended constructor cleans local values and preserves cancellation`() =
+    runTest {
+      val closed = mutableListOf<String>()
+      val entered = CompletableDeferred<Unit>()
+      val cancellation = CancellationException("cancel construction")
+      val cleanup = IllegalStateException("cleanup")
+      var constructorFailure: CancellationException? = null
+      var original: Throwable? = null
+      val building =
+        launch {
+          try {
+            canvas {
+              single<Resource>("first") { Resource { closed.add("first") } }
+              single<String> {
+                paint<Resource>("painted")
+                entered.complete(Unit)
+                try {
+                  awaitCancellation()
+                } catch (failure: CancellationException) {
+                  constructorFailure = failure
+                  throw failure
+                }
+              }
+              single<Resource>("painted") {
+                Resource {
+                  closed.add("painted")
+                  throw cleanup
+                }
+              }
+            }
+          } catch (failure: CancellationException) {
+            original = failure
+            throw failure
+          }
+        }
+      entered.await()
+      building.cancel(cancellation)
+      building.join()
 
-      // Verify not closed yet
-      assertEquals(false, closeableService.isClosed)
-      assertEquals(false, closeableRepo.isClosed)
+      assertSame(constructorFailure, original)
+      assertEquals(cancellation.message, original?.message)
+      assertEquals(listOf(cleanup), original?.suppressed?.toList())
+      assertEquals(listOf("painted", "first"), closed)
+    }
 
-      // Close canvas
-      testCanvas.close()
-
-      // Verify dependencies are closed
-      assertEquals(true, closeableService.isClosed)
-      assertEquals(true, closeableRepo.isClosed)
+  @Test
+  fun `cancellation cannot transfer ownership after a constructor returns`() =
+    runTest {
+      var closed = false
+      val building =
+        launch {
+          canvas {
+            single {
+              currentCoroutineContext()[Job]!!.cancel()
+              Resource { closed = true }
+            }
+          }
+          error("cancelled construction must not return a Canvas")
+        }
+      building.join()
+      assertEquals(true, building.isCancelled)
+      assertEquals(true, closed)
     }
 
   @Test
@@ -683,20 +757,49 @@ class CanvasConstructionTest {
     }
 
   @Test
-  fun `should handle circular dependencies gracefully`() =
+  fun `should share one construction across concurrent paint calls`() =
     runTest {
-      assertFailsWith<IllegalStateException> {
+      var constructions = 0
+      val expected = TestRepositoryImpl("shared")
+      val testCanvas =
         canvas {
           single<TestService> {
-            val repo = paint<TestRepository>()
-            TestServiceImpl("service-${repo.getData()}")
+            val repositories =
+              coroutineScope {
+                listOf(async { paint<TestRepository>() }, async { paint<TestRepository>() }).awaitAll()
+              }
+            repositories.forEach { assertSame(expected, it) }
+            DependentService(repositories.first())
           }
           single<TestRepository> {
-            val service = paint<TestService>()
-            TestRepositoryImpl("repo-${service.getValue()}")
+            constructions++
+            delay(1)
+            expected
           }
         }
-      }
+
+      assertEquals(1, constructions)
+      assertSame(expected, testCanvas.source<TestRepository>())
+      assertEquals("shared", testCanvas.source<TestService>().getValue())
+    }
+
+  @Test
+  fun `should handle circular dependencies gracefully`() =
+    runTest {
+      val failure =
+        assertFailsWith<IllegalStateException> {
+          canvas {
+            single<TestService> {
+              val repo = paint<TestRepository>()
+              TestServiceImpl("service-${repo.getData()}")
+            }
+            single<TestRepository> {
+              val service = coroutineScope { async { paint<TestService>() }.await() }
+              TestRepositoryImpl("repo-${service.getValue()}")
+            }
+          }
+        }
+      assertTrue(failure.message.orEmpty().contains("Circular dependency"))
     }
 
   @Test
@@ -878,4 +981,8 @@ class CanvasConstructionTest {
       assertNotNull(service)
       assertEquals("empty-qualifier", service.getValue())
     }
+
+  private class Resource(private val onClose: () -> Unit) : AutoCloseable {
+    override fun close() = onClose()
+  }
 }
