@@ -9,8 +9,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
-import org.buildmosaic.core.injection.Canvas
-import org.buildmosaic.core.injection.CanvasKey
+import org.buildmosaic.core.injection.canvas
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -26,9 +25,7 @@ import kotlin.test.assertTrue
 @Suppress("LargeClass")
 class MultiTileCoalescingTest {
   private val emptyCanvas =
-    object : Canvas {
-      override fun <T : Any> sourceOr(key: CanvasKey<T>): T? = null
-    }
+    runBlocking { canvas {} }
 
   @Test fun pendingSiblingsCoalesceAndSharePlaceholders() =
     runTest {
