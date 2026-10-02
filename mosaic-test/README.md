@@ -87,6 +87,11 @@ You can also register a service fake by class with
 provide the inputs used by real blocks; replacing a Tile bypasses its own
 Canvas reads.
 
+`build()` captures the supplied sources in a Canvas. Later source registrations
+on the builder affect subsequent builds. The built Canvas owns supplied
+`AutoCloseable` sources; close it with `testMosaic.canvas.close()` or `use` when
+the test owns resources.
+
 ## 🔧 **Mock MultiTile results**
 
 Supply a result map for requested keys, then test the consumer's calculation:

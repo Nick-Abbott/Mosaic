@@ -20,13 +20,17 @@ data class CanvasKey<T : Any>(val type: KClass<T>, val qualifier: String? = null
 }
 
 /**
- * Interface for dependency injection in Mosaic.
+ * Resolved dependencies and locally owned resources for Mosaic.
  *
  * Provides a mechanism to retrieve dependencies by their class type.
  * This is used internally by the [Mosaic] class to support dependency injection
- * in DSL tile functions.
+ * in DSL tile functions. Construct a Canvas with [canvas] or [withLayer].
  */
-interface Canvas {
+class Canvas internal constructor(
+  private val instances: Map<CanvasKey<*>, Any>,
+  private val closeables: List<AutoCloseable>,
+  private val parent: Canvas? = null,
+) : AutoCloseable {
   /**
    * Retrieves an instance of the registered object of the specified type and qualifier
    *
@@ -72,7 +76,8 @@ interface Canvas {
    * @param key the key the object is registered under
    * @return The registered object
    */
-  fun <T : Any> sourceOr(key: CanvasKey<T>): T?
+  @Suppress("UNCHECKED_CAST")
+  fun <T : Any> sourceOr(key: CanvasKey<T>): T? = instances[key] as T? ?: parent?.sourceOr(key)
 
   /**
    * A DSL method to create another layer on your [Canvas]
@@ -84,7 +89,15 @@ interface Canvas {
    *
    * @param build A block of code registering all sources for your [Canvas] layer
    */
-  suspend fun withLayer(build: CanvasBuilder.() -> Unit): MosaicCanvas = canvas(this, build)
+  suspend fun withLayer(build: CanvasBuilder.() -> Unit): Canvas = canvas(this, build)
+
+  /** Closes local resources in binding order, continuing after failures. Parent resources are unaffected. */
+  override fun close() {
+    closeables.forEach { closeable ->
+      runCatching { closeable.close() }
+        .onFailure { failure -> System.err.println("Close hook failed: ${failure.message}") }
+    }
+  }
 }
 
 /**

@@ -7,8 +7,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
-import org.buildmosaic.core.injection.Canvas
-import org.buildmosaic.core.injection.CanvasKey
+import org.buildmosaic.core.injection.canvas
 import org.buildmosaic.core.injection.source
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -21,18 +20,10 @@ class TileDslTest {
         var count = 0
       }
       val service = Service()
-      val mockCanvas =
-        object : Canvas {
-          override fun <T : Any> sourceOr(key: CanvasKey<T>): T? {
-            @Suppress("UNCHECKED_CAST")
-            return when (key.type) {
-              Service::class -> service as T
-              else -> null
-            }
-          }
-        }
+      val testCanvas =
+        canvas { single { service } }
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(mockCanvas, testDispatcher)
+      val mosaic = MosaicImpl(testCanvas, testDispatcher)
       val tile =
         singleTile {
           val s = canvas.source<Service>()
@@ -59,18 +50,10 @@ class TileDslTest {
         }
       }
       val service = Service()
-      val mockCanvas =
-        object : Canvas {
-          override fun <T : Any> sourceOr(key: CanvasKey<T>): T? {
-            @Suppress("UNCHECKED_CAST")
-            return when (key.type) {
-              Service::class -> service as T
-              else -> null
-            }
-          }
-        }
+      val testCanvas =
+        canvas { single { service } }
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(mockCanvas, testDispatcher)
+      val mosaic = MosaicImpl(testCanvas, testDispatcher)
       val tile =
         singleTile {
           val svc = source<Service>()
@@ -95,18 +78,10 @@ class TileDslTest {
         }
       }
       val service = Service()
-      val mockCanvas =
-        object : Canvas {
-          override fun <T : Any> sourceOr(key: CanvasKey<T>): T? {
-            @Suppress("UNCHECKED_CAST")
-            return when (key.type) {
-              Service::class -> service as T
-              else -> null
-            }
-          }
-        }
+      val testCanvas =
+        canvas { single { service } }
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(mockCanvas, testDispatcher)
+      val mosaic = MosaicImpl(testCanvas, testDispatcher)
       val tile =
         multiTile { ids ->
           val svc = source<Service>()
@@ -135,18 +110,10 @@ class TileDslTest {
         }
       }
       val service = Service()
-      val mockCanvas =
-        object : Canvas {
-          override fun <T : Any> sourceOr(key: CanvasKey<T>): T? {
-            @Suppress("UNCHECKED_CAST")
-            return when (key.type) {
-              Service::class -> service as T
-              else -> null
-            }
-          }
-        }
+      val testCanvas =
+        canvas { single { service } }
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(mockCanvas, testDispatcher)
+      val mosaic = MosaicImpl(testCanvas, testDispatcher)
       val tile =
         perKeyTile<String, String> { id ->
           val svc = source<Service>()
@@ -179,18 +146,10 @@ class TileDslTest {
         }
       }
       val service = Service(this)
-      val mockCanvas =
-        object : Canvas {
-          override fun <T : Any> sourceOr(key: CanvasKey<T>): T? {
-            @Suppress("UNCHECKED_CAST")
-            return when (key.type) {
-              Service::class -> service as T
-              else -> null
-            }
-          }
-        }
+      val testCanvas =
+        canvas { single { service } }
       val testDispatcher = StandardTestDispatcher(testScheduler)
-      val mosaic = MosaicImpl(mockCanvas, testDispatcher)
+      val mosaic = MosaicImpl(testCanvas, testDispatcher)
       val tile =
         chunkedMultiTile<String, String>(2) { ids ->
           val svc = source<Service>()

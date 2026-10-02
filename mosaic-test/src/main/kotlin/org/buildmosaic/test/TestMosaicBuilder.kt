@@ -17,12 +17,14 @@
 package org.buildmosaic.test
 
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import org.buildmosaic.core.Mosaic
 import org.buildmosaic.core.MultiTile
 import org.buildmosaic.core.Tile
 import org.buildmosaic.core.injection.CanvasKey
+import org.buildmosaic.core.injection.canvas
 import org.buildmosaic.core.multiTile
 import org.buildmosaic.core.singleTile
 import kotlin.jvm.JvmName
@@ -58,7 +60,7 @@ import kotlin.reflect.KClass
  */
 @Suppress("LargeClass")
 class TestMosaicBuilder(testContext: TestScope) {
-  private val canvas = MockCanvas()
+  private val sources = mutableMapOf<CanvasKey<*>, Any>()
   private var dispatcher = StandardTestDispatcher(testContext.testScheduler)
 
   private val mockTileCache: MutableMap<Tile<*>, Tile<*>> = mutableMapOf()
@@ -290,7 +292,7 @@ class TestMosaicBuilder(testContext: TestScope) {
     obj: V,
   ): TestMosaicBuilder =
     apply {
-      canvas.register(clazz, obj)
+      sources[CanvasKey(clazz)] = obj
     }
 
   /**
@@ -329,7 +331,7 @@ class TestMosaicBuilder(testContext: TestScope) {
     obj: V,
   ): TestMosaicBuilder =
     apply {
-      canvas.register(clazz, qualifier, obj)
+      sources[CanvasKey(clazz, qualifier)] = obj
     }
 
   /**
@@ -370,7 +372,7 @@ class TestMosaicBuilder(testContext: TestScope) {
     obj: T,
   ): TestMosaicBuilder =
     apply {
-      canvas.register(key, obj)
+      sources[key] = obj
     }
 
   /**
@@ -387,7 +389,19 @@ class TestMosaicBuilder(testContext: TestScope) {
    *   .build()
    * ```
    */
-  fun build(): TestMosaic = TestMosaic(canvas, mockTileCache, mockMultiTileCache, dispatcher)
+  fun build(): TestMosaic {
+    // Supplied values need no suspending construction; keep the test builder API synchronous.
+    val builtCanvas =
+      runBlocking {
+        canvas {
+          sources.forEach { (key, value) ->
+            @Suppress("UNCHECKED_CAST")
+            single(key as CanvasKey<Any>) { value }
+          }
+        }
+      }
+    return TestMosaic(builtCanvas, mockTileCache, mockMultiTileCache, dispatcher)
+  }
 }
 
 fun TestScope.mosaicBuilder() = TestMosaicBuilder(this)

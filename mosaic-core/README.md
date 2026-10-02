@@ -130,13 +130,12 @@ built Canvas. Continuing with `UserIdKey` from the quick start:
 
 ```kotlin
 import org.buildmosaic.core.injection.Canvas
-import org.buildmosaic.core.injection.MosaicCanvas
 
 class GreetingService(private val prefix: String) {
   fun greet(userId: String): String = "$prefix, $userId!"
 }
 
-suspend fun createApplicationCanvas(): MosaicCanvas = canvas {
+suspend fun createApplicationCanvas(): Canvas = canvas {
   single<String>("greetingPrefix") { "Welcome" }
   single<GreetingService> { GreetingService(paint<String>("greetingPrefix")) }
 }
@@ -153,19 +152,28 @@ suspend fun handleRequest(applicationCanvas: Canvas, userId: String): String =
   }
 ```
 
+`Canvas` is a final Mosaic-owned class, constructed with `canvas` or `withLayer`.
+It stores resolved dependencies and owns its local resources.
+
 `canvas` eagerly constructs bindings. A child layer resolves local bindings
 first, then falls back to its parent. Overrides do not rewire services already
 constructed by the parent.
 
 ### **Resource ownership**
 
-The concrete `MosaicCanvas` implements `AutoCloseable`; the `Canvas` interface
-does not. Cleanup requires calling `close()` on that concrete instance, using
+`Canvas` implements `AutoCloseable`. Cleanup requires calling `close()`, using
 `use`, or arranging an equivalent application shutdown hook. Closing it closes
 its locally created `AutoCloseable` bindings, not parent resources. Keep an
 application Canvas for long-lived services and close it at shutdown; scope child
 Canvases explicitly when they own resources. Creating a Mosaic does not close
-its Canvas for you.
+its Canvas for you. Normal cleanup follows binding registration order and continues
+after close failures, reporting those failures to standard error.
+
+If construction fails or is cancelled, successfully created local `AutoCloseable`
+bindings are closed in reverse creation order, including dependencies resolved
+early through `paint`. Parent resources are left open. Cleanup failures are
+suppressed on the original construction failure. A constructor is responsible
+for resources it allocates before failing to return a value.
 
 For build-time checks within supported boundaries, see the optional
 [analysis plugin](../mosaic-gradle-plugin/README.md). It can report proven missing

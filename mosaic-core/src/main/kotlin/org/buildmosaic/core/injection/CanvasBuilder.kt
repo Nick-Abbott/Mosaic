@@ -1,5 +1,7 @@
 package org.buildmosaic.core.injection
 
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import org.buildmosaic.core.exception.MosaicMissingKeyException
 
 private fun missingKeyError(key: CanvasKey<*>): Nothing = throw MosaicMissingKeyException(key)
@@ -11,7 +13,7 @@ private fun missingKeyError(key: CanvasKey<*>): Nothing = throw MosaicMissingKey
  * in tiles and other canvas-aware components.
  */
 class CanvasBuilder internal constructor() {
-  @PublishedApi internal val bindings = mutableMapOf<CanvasKey<*>, Stub<*>>()
+  internal val bindings = mutableMapOf<CanvasKey<*>, SingleBinding<*>>()
 
   /**
    * Registers a singleton dependency in the canvas.
@@ -23,7 +25,7 @@ class CanvasBuilder internal constructor() {
   fun <T : Any> single(
     key: CanvasKey<T>,
     ctor: suspend CanvasFactory.() -> T,
-  ) = check(bindings.put(key, SingleStub(ctor)) == null) { "Duplicate binding for $key" }
+  ) = check(bindings.put(key, SingleBinding(ctor)) == null) { "Duplicate binding for $key" }
 
   /**
    * Registers a singleton dependency in the canvas.
@@ -39,32 +41,41 @@ class CanvasBuilder internal constructor() {
 }
 
 /**
- * Factory for creating [MosaicCanvas] instances from dependency bindings.
+ * Factory for creating [Canvas] instances from dependency bindings.
  *
  * This class handles the initialization of all registered dependencies and manages
  * their lifecycle, including cleanup of locally owned [AutoCloseable] instances when the canvas is closed.
  *
- * @param bindings Map of dependency keys to their stub implementations
+ * @param bindings Map of dependency keys to their construction state
  * @param parent Optional parent canvas for dependency resolution fallback
  */
 class CanvasFactory internal constructor(
-  private val bindings: Map<CanvasKey<*>, Stub<*>>,
+  private val bindings: Map<CanvasKey<*>, SingleBinding<*>>,
   private val parent: Canvas? = null,
 ) {
   private val closeables = mutableListOf<AutoCloseable>()
 
-  /**
-   * Builds the final [MosaicCanvas] by initializing all registered dependencies.
-   */
-  internal suspend fun build(): MosaicCanvas {
-    val providers =
-      bindings.mapValues { (_, binding) ->
-        val provider = binding.toProvider(this)
-        val instance = provider.get()
-        if (instance is AutoCloseable) closeables.add(instance)
-        provider
+  internal fun created(instance: Any) {
+    if (instance is AutoCloseable) synchronized(closeables) { closeables.add(instance) }
+  }
+
+  /** Resolves all bindings, transferring local resource ownership only after successful construction. */
+  @Suppress("TooGenericExceptionCaught")
+  internal suspend fun build(): Canvas {
+    try {
+      currentCoroutineContext().ensureActive()
+      val instances = bindings.mapValues { (_, binding) -> binding.create(this) }
+      currentCoroutineContext().ensureActive()
+      return Canvas(instances, instances.values.filterIsInstance<AutoCloseable>(), parent)
+    } catch (failure: Throwable) {
+      val created = synchronized(closeables) { closeables.toList() }
+      created.asReversed().forEach { resource ->
+        runCatching { resource.close() }.onFailure { cleanupFailure ->
+          if (cleanupFailure !== failure) failure.addSuppressed(cleanupFailure)
+        }
       }
-    return MosaicCanvas(providers, closeables.toList(), parent)
+      throw failure
+    }
   }
 
   /**
@@ -79,7 +90,7 @@ class CanvasFactory internal constructor(
    */
   suspend fun <T : Any> paint(key: CanvasKey<T>): T {
     @Suppress("UNCHECKED_CAST")
-    val local = bindings[key] as Stub<T>?
+    val local = bindings[key] as SingleBinding<T>?
     if (local != null) return local.create(this)
     return parent?.sourceOr(key) ?: missingKeyError(key)
   }
@@ -95,45 +106,14 @@ class CanvasFactory internal constructor(
 }
 
 /**
- * Production implementation of [Canvas] that provides dependency injection capabilities.
- *
- * This canvas implementation supports hierarchical dependency resolution through parent canvases
- * and automatic lifecycle management of [AutoCloseable] dependencies.
- *
- * @param providers Map of initialized dependency providers
- * @param closeables List of closeable dependencies for cleanup
- * @param parent Optional parent canvas for fallback dependency resolution
- */
-class MosaicCanvas internal constructor(
-  private val providers: Map<CanvasKey<*>, Provider<*>>,
-  private val closeables: List<AutoCloseable>,
-  private val parent: Canvas? = null,
-) : Canvas, AutoCloseable {
-  @Suppress("UNCHECKED_CAST")
-  override fun <T : Any> sourceOr(key: CanvasKey<T>): T? {
-    if (key !in providers) return parent?.sourceOr(key)
-    return when (val provider = providers[key]!!) {
-      is Single -> provider.get() as T
-    }
-  }
-
-  override fun close() {
-    closeables.forEach { closeable ->
-      runCatching { closeable.close() }
-        .onFailure { e -> System.err.println("Close hook failed: ${e.message}") }
-    }
-  }
-}
-
-/**
- * Creates a new [MosaicCanvas] using the canvas DSL.
+ * Creates a new [Canvas] using the canvas DSL.
  *
  * This is the primary way to create a canvas with dependency bindings. The canvas
  * supports hierarchical dependency resolution and automatic lifecycle management.
  *
  * @param parent Optional parent canvas for fallback dependency resolution
  * @param build DSL block for configuring dependency bindings
- * @return A fully initialized [MosaicCanvas]
+ * @return A fully initialized [Canvas]
  *
  * ```kotlin
  * val canvas = canvas {
@@ -145,4 +125,4 @@ class MosaicCanvas internal constructor(
 suspend fun canvas(
   parent: Canvas? = null,
   build: CanvasBuilder.() -> Unit,
-): MosaicCanvas = CanvasFactory(CanvasBuilder().apply(build).bindings, parent).build()
+): Canvas = CanvasFactory(CanvasBuilder().apply(build).bindings, parent).build()

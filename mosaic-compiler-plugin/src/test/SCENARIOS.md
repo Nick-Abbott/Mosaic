@@ -78,7 +78,7 @@ eligibility/target → execution → continuing result. IR temporaries carry ord
 | Top-level/final | EC discard | EC aliases | IrShape actuals | IrShape helper | EC prefixes |
 | Member | relay fixture | EC ordered receiver | enterprise template | enterprise handle | EC virtual method |
 | Getter/setter | EC getters | stored property | receiver boundaries | initialization fixtures | EC virtual getter |
-| Constructor | defaults fixture | stored domain | enterprise concrete receiver | domain construction | U for custom Canvas implementations; runtime Canvas constructor not public |
+| Constructor | defaults fixture | stored domain | enterprise concrete receiver | domain construction | I: Canvas is final with an internal constructor; DSL consumers compile normally |
 | Template/hook | slot fixture | ordinary call adapter | enterprise concrete receiver | enterprise response | same call adapter; arbitrary factory dispatch U |
 
 Eligibility controls: direct V (enterprise/final); unsupported receiver U
