@@ -11,6 +11,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import org.buildmosaic.core.exception.MosaicMissingKeyException
 import org.buildmosaic.core.source
 import org.buildmosaic.core.sourceOr
@@ -21,6 +22,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 @Suppress("LargeClass", "FunctionMaxLength")
 class CanvasConstructionTest {
@@ -784,22 +786,55 @@ class CanvasConstructionTest {
     }
 
   @Test
-  fun `should handle circular dependencies gracefully`() =
+  fun `should reject circular dependencies between concurrent sibling constructors`() =
     runTest {
+      val serviceStarted = CompletableDeferred<Unit>()
+      val repositoryStarted = CompletableDeferred<Unit>()
       val failure =
         assertFailsWith<IllegalStateException> {
-          canvas {
-            single<TestService> {
-              val repo = paint<TestRepository>()
-              TestServiceImpl("service-${repo.getData()}")
-            }
-            single<TestRepository> {
-              val service = coroutineScope { async { paint<TestService>() }.await() }
-              TestRepositoryImpl("repo-${service.getValue()}")
+          withTimeout(1.seconds) {
+            canvas {
+              single<String> {
+                coroutineScope {
+                  listOf(async { paint<TestService>() }, async { paint<TestRepository>() }).awaitAll()
+                }
+                "root"
+              }
+              single<TestService> {
+                serviceStarted.complete(Unit)
+                repositoryStarted.await()
+                DependentService(paint<TestRepository>())
+              }
+              single<TestRepository> {
+                repositoryStarted.complete(Unit)
+                serviceStarted.await()
+                TestRepositoryImpl(paint<TestService>().getValue())
+              }
             }
           }
         }
-      assertTrue(failure.message.orEmpty().contains("Circular dependency"))
+      assertTrue(failure.message.orEmpty().contains("Circular dependency"), failure.toString())
+    }
+
+  @Test
+  fun `should reject recursive dependencies through a child coroutine`() =
+    runTest {
+      val failure =
+        assertFailsWith<IllegalStateException> {
+          withTimeout(1.seconds) {
+            canvas {
+              single<TestService> {
+                val repo = paint<TestRepository>()
+                TestServiceImpl("service-${repo.getData()}")
+              }
+              single<TestRepository> {
+                val service = coroutineScope { async { paint<TestService>() }.await() }
+                TestRepositoryImpl("repo-${service.getValue()}")
+              }
+            }
+          }
+        }
+      assertTrue(failure.message.orEmpty().contains("Circular dependency"), failure.toString())
     }
 
   @Test

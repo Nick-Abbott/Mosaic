@@ -1,11 +1,8 @@
 package org.buildmosaic.core.injection
 
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlin.coroutines.AbstractCoroutineContextElement
-import kotlin.coroutines.CoroutineContext
 
 /** Memoizes one binding while the eager dependency graph is being constructed. */
 internal class SingleBinding<T : Any>(private val ctor: suspend CanvasFactory.() -> T) {
@@ -13,16 +10,15 @@ internal class SingleBinding<T : Any>(private val ctor: suspend CanvasFactory.()
 
   @Volatile private lateinit var instance: T
 
+  fun instanceOrNull(): T? = if (::instance.isInitialized) instance else null
+
   @Suppress("TooGenericExceptionCaught")
   suspend fun create(canvas: CanvasFactory): T {
-    if (::instance.isInitialized) return instance
-    val path = currentCoroutineContext()[ConstructionPath]
-    check(path?.contains(this) != true) { "Circular dependency detected during initialization" }
     return initLock.withLock {
       if (::instance.isInitialized) return instance
       var constructorFailure: Throwable? = null
       try {
-        withContext(ConstructionPath(this@SingleBinding, path)) {
+        withContext(canvas.constructionContext(this@SingleBinding)) {
           try {
             // Record ownership before a cancelled context can discard the returned value.
             ctor(canvas).also {
@@ -40,14 +36,4 @@ internal class SingleBinding<T : Any>(private val ctor: suspend CanvasFactory.()
       }
     }
   }
-}
-
-/** Recursive ancestry is inherited by child coroutines; concurrent siblings have independent paths. */
-private class ConstructionPath(
-  private val binding: SingleBinding<*>,
-  private val parent: ConstructionPath?,
-) : AbstractCoroutineContextElement(Key) {
-  companion object Key : CoroutineContext.Key<ConstructionPath>
-
-  fun contains(candidate: SingleBinding<*>): Boolean = binding === candidate || parent?.contains(candidate) == true
 }

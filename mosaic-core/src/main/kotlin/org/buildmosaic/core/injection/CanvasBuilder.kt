@@ -3,6 +3,9 @@ package org.buildmosaic.core.injection
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import org.buildmosaic.core.exception.MosaicMissingKeyException
+import java.util.IdentityHashMap
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
 
 private fun missingKeyError(key: CanvasKey<*>): Nothing = throw MosaicMissingKeyException(key)
 
@@ -54,6 +57,11 @@ class CanvasFactory internal constructor(
   private val parent: Canvas? = null,
 ) {
   private val closeables = mutableListOf<AutoCloseable>()
+  private val dependencies = IdentityHashMap<SingleBinding<*>, MutableList<SingleBinding<*>>>()
+  private val constructionKey = object : CoroutineContext.Key<ConstructingBinding> {}
+
+  internal fun constructionContext(binding: SingleBinding<*>): CoroutineContext =
+    ConstructingBinding(binding, constructionKey)
 
   internal fun created(instance: Any) {
     if (instance is AutoCloseable) synchronized(closeables) { closeables.add(instance) }
@@ -61,12 +69,46 @@ class CanvasFactory internal constructor(
 
   private fun createdResources(): List<AutoCloseable> = synchronized(closeables) { closeables.toList() }
 
+  /** Tracks outstanding local resolutions, including requests from concurrent child constructors. */
+  private suspend fun <T : Any> create(binding: SingleBinding<T>): T {
+    val owner = currentCoroutineContext()[constructionKey]?.binding
+    synchronized(dependencies) {
+      binding.instanceOrNull()?.let { return it }
+      if (owner != null) {
+        check(!dependsOn(binding, owner)) { "Circular dependency detected during initialization" }
+        // Keep duplicate requests until every caller has finished waiting.
+        dependencies.getOrPut(owner) { mutableListOf() }.add(binding)
+      }
+    }
+    try {
+      return binding.create(this)
+    } finally {
+      if (owner != null) {
+        synchronized(dependencies) {
+          val requests = dependencies.getValue(owner)
+          requests.remove(binding)
+          if (requests.isEmpty()) dependencies.remove(owner)
+        }
+      }
+    }
+  }
+
+  private fun dependsOn(
+    binding: SingleBinding<*>,
+    target: SingleBinding<*>,
+    visited: MutableSet<SingleBinding<*>> = mutableSetOf(),
+  ): Boolean {
+    if (binding === target) return true
+    if (!visited.add(binding)) return false
+    return dependencies[binding].orEmpty().any { dependsOn(it, target, visited) }
+  }
+
   /** Resolves all bindings, transferring local resource ownership only after successful construction. */
   @Suppress("TooGenericExceptionCaught")
   internal suspend fun build(): Canvas {
     try {
       currentCoroutineContext().ensureActive()
-      val instances = bindings.mapValues { (_, binding) -> binding.create(this) }
+      val instances = bindings.mapValues { (_, binding) -> create(binding) }
       currentCoroutineContext().ensureActive()
       return Canvas(instances, createdResources(), parent)
     } catch (failure: Throwable) {
@@ -92,7 +134,7 @@ class CanvasFactory internal constructor(
   suspend fun <T : Any> paint(key: CanvasKey<T>): T {
     @Suppress("UNCHECKED_CAST")
     val local = bindings[key] as SingleBinding<T>?
-    if (local != null) return local.create(this)
+    if (local != null) return create(local)
     return parent?.sourceOr(key) ?: missingKeyError(key)
   }
 
@@ -105,6 +147,12 @@ class CanvasFactory internal constructor(
    */
   suspend inline fun <reified T : Any> paint(qualifier: String? = null): T = paint(CanvasKey(T::class, qualifier))
 }
+
+/** Child coroutines inherit the current constructor for each factory, including across nested Canvas builds. */
+private class ConstructingBinding(
+  val binding: SingleBinding<*>,
+  key: CoroutineContext.Key<ConstructingBinding>,
+) : AbstractCoroutineContextElement(key)
 
 /**
  * Creates a new [Canvas] using the canvas DSL.
