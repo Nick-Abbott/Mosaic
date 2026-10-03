@@ -6,18 +6,16 @@ existing OpenTelemetry traces.
 
 ## Setup
 
-Add the adapter to your Kotlin/JVM application. Set the `mosaicVersion` Gradle
-property to the Mosaic release version used by your project:
+Add the adapter to your Kotlin/JVM application. Replace `VERSION` with your
+chosen Mosaic release version:
 
 ```kotlin
-val mosaicVersion: String by project
-
 repositories {
   mavenCentral()
 }
 
 dependencies {
-  implementation("org.buildmosaic:mosaic-opentelemetry:$mosaicVersion")
+  implementation("org.buildmosaic:mosaic-opentelemetry:VERSION")
 }
 ```
 
