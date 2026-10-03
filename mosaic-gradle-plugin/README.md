@@ -182,6 +182,6 @@ Both plugins bundle the internal analysis-core implementation they need;
 `mosaic-analysis-core` is not published separately. The compiler plugin remains
 a separate artifact loaded through Kotlin Gradle Plugin's standard
 `getPluginArtifact()` resolution. These analysis artifacts are not application
-dependencies or BOM entries. The root `release` task publishes the five Mosaic
+dependencies or BOM entries. The root `release` task publishes the six Mosaic
 modules to Maven Central, then submits the Gradle plugin through the Plugin
 Portal. Local installation tests use a temporary Maven repository.

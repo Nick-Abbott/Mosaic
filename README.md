@@ -168,7 +168,8 @@ val applicationCanvas = canvas {
 ```
 
 The optional adapter creates one span per SingleTile execution or MultiTile batch,
-using delegated Tile names such as `OrderTile`.
+using property names captured by delegated declarations such as
+`val OrderTile by singleTile { ... }`. Unnamed Tiles use `Mosaic single` or `Mosaic multi`.
 Links show shared producers and additional batch callers; cache hits create no new
 spans. Your application owns sampling and export, and Mosaic records no keys,
 results, or exception messages automatically.
@@ -217,8 +218,8 @@ product keys. Mosaic fetched all 24 distinct products once, using one or two
 backend batches across 40 samples.
 
 Timings depend on hardware and JVM. These application measurements apply to the
-source revision in the report; the [0.6.0 runtime check](docs/releases/0.6.0.md#runtime-cost)
-measures the execution changes separately.
+source revision in the report; the [0.6.0 runtime comparison](docs/releases/0.6.0.md#runtime-cost)
+separately measures isolated operations against released 0.5.0.
 [Performance evidence, workloads, and measurement limits →](performance/README.md)
 
 ## 🌐 **Bring Your HTTP Framework**

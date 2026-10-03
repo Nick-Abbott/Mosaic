@@ -74,9 +74,8 @@ Across the measured points, paired median RSS differences ranged from −7.0 to
 direct and 477.6 MiB Mosaic, with a paired difference of +8.1 MiB.
 
 RSS includes the JVM, heap, server, and application; it is not live-object size
-or allocation/request. Both variants use a fixed 512 MiB initial heap, so these
-figures are not directly comparable with the older 64 MiB-initial-heap results.
-Process residency varies, and RSS counters are approximate.
+or allocation/request. Both variants use a fixed 512 MiB initial heap. Process
+residency varies, and RSS counters are approximate.
 
 Across 20 startup pairs, direct median startup was **332.1 ms** and Mosaic
 **337.0 ms**. The median paired difference was **+4.9 ms**, ranging from −0.9 to
@@ -97,7 +96,7 @@ JMH measures individual operations, separately from application CPU/request:
 
 Cold SingleTile execution includes request creation; MultiTile timing excludes
 request/cache preparation. These fixtures measure elapsed operation time on this
-JVM, not HTTP latency or a runtime-only comparison with the older dataset.
+JVM, not HTTP latency.
 [Fixture boundaries and the timing profile →](../docs/performance.md#jmh-runtime-benchmarks)
 
 ### Allocation
@@ -135,10 +134,9 @@ Untimed diagnostics collected 20 samples per profile. Mosaic produced:
 | coalescing/service | 9/20 | 11/20 |
 
 Direct Kotlin made one 24-key call in every sample. Every distinct product was
-fetched exactly once in both implementations. Pre-feature diagnostics observed
-3–5 backend calls for the coalescing topology; the current dataset observes one
-or two, without deliberate batching delay. Exact batch boundaries depend on
-scheduling; deeper or externally delayed consumers can form later batches.
+fetched exactly once in both implementations, without deliberate batching delay.
+Exact batch boundaries depend on scheduling; deeper or externally delayed
+consumers can form later batches.
 
 ## Workloads
 
@@ -158,8 +156,8 @@ The `zero` profile adds no simulated service delay. The `service` profile adds
 
 Measurements used a Ryzen 9 9900X, Zulu JDK 21.0.11, G1, and Linux 7.2.7, from
 [revision `129b0c7`](https://github.com/Nick-Abbott/Mosaic/commit/129b0c73864e82047e4f8e0b861aee31e4e9dc78).
-Absolute timings depend on hardware, JVM, and workload. Changes in warmup, heap,
-processor count, JDK/kernel, and sampling settings mean these figures are not a
-runtime-only before/after comparison with the older dataset.
+Absolute timings depend on hardware, JVM, and workload. Compare datasets only
+when their hardware, warmup, heap, processor count, JDK, and sampling settings
+match; differences between environments cannot be attributed solely to Mosaic.
 
 [Detailed methodology, configuration, and reproduction →](../docs/performance.md)

@@ -33,7 +33,7 @@ dependencies {
 ```
 
 Coroutines are exposed by `mosaic-core`. For runtime dependency alignment with
-`mosaic-test`, see the optional [BOM guide](../mosaic-bom/README.md).
+`mosaic-test` and optional `mosaic-opentelemetry`, see the [BOM guide](../mosaic-bom/README.md).
 
 ### **Bind input, compose, and use the result**
 
@@ -284,19 +284,17 @@ requirements and configuration.
 
 ## 🔍 **Execution Observation**
 
-Integrations can observe actual Tile executions and MultiTile batches through
-`org.buildmosaic.core.observation.ExecutionObserver`, installed with
-`CanvasBuilder.installExecutionObserver`. Child Canvases inherit the installation.
-The runtime owns execution, caching, batching, cancellation, and completion;
-observers receive metadata, caller context, and producer relationships.
+Use the optional [OpenTelemetry adapter](../mosaic-opentelemetry/README.md) to see
+actual Tile executions, MultiTile batches, and shared-work relationships in your
+application's traces. Configure tracing on the application Canvas; request layers
+inherit it. Cache hits create no new execution spans.
 
-Callbacks run synchronously, must return promptly, and can run concurrently.
-Failures are isolated from Tile results. Completion describes the execution scope,
-including attached children, even if its result was published earlier. Mosaic
-supplies delegated names and structural data, excluding keys, values, Canvas
-contents, and raw exceptions. See the SPI KDoc for context restoration and token
-ownership guarantees, or use the supported
-[OpenTelemetry adapter](../mosaic-opentelemetry/README.md) for tracing.
+Observation covers the execution scope, including attached children, even if a
+result was published earlier. Observation failures are isolated from Tile results;
+Mosaic retains ownership of execution, caching, batching, and cancellation.
+Custom integration authors can use the
+[execution observation SPI KDoc](src/main/kotlin/org/buildmosaic/core/observation/ExecutionObserver.kt)
+for callback, context restoration, and token ownership contracts.
 
 ## 🌐 **Framework Integration**
 
