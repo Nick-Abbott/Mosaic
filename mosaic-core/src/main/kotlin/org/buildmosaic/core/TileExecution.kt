@@ -8,10 +8,10 @@ import org.buildmosaic.core.observation.ObservedExecution
 import kotlin.coroutines.EmptyCoroutineContext
 
 /**
- * The structured scope of one admitted Tile invocation, with optional observation.
- * Results may publish inside the body; its attached children still own context and determine final
- * completion. This boundary preserves original body failures across coroutine stack recovery, settles
- * failed application work, and finalizes observation only after the scope has exited.
+ * Runs admitted Tile work in its Mosaic-owned launch, adding a scope to install or clear observation.
+ * Observed completion includes attached children even when the body publishes its result earlier.
+ * Without observation to install or clear, work runs directly in the launch. Tile bodies can use
+ * coroutineScope for structured child work.
  */
 @Suppress("TooGenericExceptionCaught")
 internal suspend inline fun executeTile(
@@ -24,13 +24,18 @@ internal suspend inline fun executeTile(
     observation?.context
       ?: if (ObservedExecution.current() != null) ObservedExecution.unobservedContext else EmptyCoroutineContext
   try {
-    withContext(context) {
-      try {
-        currentCoroutineContext().ensureActive()
-        applicationFailure = block()
-      } catch (failure: Throwable) {
-        applicationFailure = failure
-        fail(failure)
+    if (observation == null && context === EmptyCoroutineContext) {
+      currentCoroutineContext().ensureActive()
+      applicationFailure = block()
+    } else {
+      withContext(context) {
+        try {
+          currentCoroutineContext().ensureActive()
+          applicationFailure = block()
+        } catch (failure: Throwable) {
+          applicationFailure = failure
+          fail(failure)
+        }
       }
     }
     observation?.recordCompletion(applicationFailure)

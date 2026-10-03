@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ThreadContextElement
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -114,6 +115,40 @@ class ExecutionContextTest {
       assertNull(observer.ambient.get())
       observer.executions.drop(1).forEach {
         assertSame(observer.executions.first().identity, it.start.contributors.initiating.execution)
+      }
+    }
+
+  @Test fun unobservedMosaicClearsAndRestoresCallerAttribution() =
+    runBlocking {
+      val observer = RecordingObserver()
+      val observed = MosaicImpl(canvas { installExecutionObserver { observer } }, Dispatchers.Unconfined)
+      val unobserved = MosaicImpl(canvas {}, Dispatchers.Unconfined)
+      try {
+        val leaf = singleTile { 11 }
+        val result =
+          observed.compose(
+            singleTile {
+              val parent = ObservedExecution.current()
+              assertTrue(parent != null)
+              val value =
+                unobserved.compose(
+                  singleTile {
+                    assertNull(ObservedExecution.current())
+                    observed.compose(leaf)
+                  },
+                )
+              assertSame(parent, ObservedExecution.current())
+              value
+            },
+          )
+        assertEquals(11, result)
+        assertEquals(2, observer.executions.size)
+        assertTrue(observer.executions.first().dependencies.isEmpty())
+        assertNull(observer.executions.last().start.contributors.initiating.execution)
+        assertNull(ObservedExecution.current())
+      } finally {
+        observed.cancel()
+        unobserved.cancel()
       }
     }
 
