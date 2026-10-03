@@ -9,6 +9,7 @@ pluginManagement {
 
 include("mosaic-core")
 include("mosaic-test")
+include("mosaic-opentelemetry")
 include("mosaic-bom")
 include("mosaic-analysis-core")
 include("mosaic-compiler-plugin")
