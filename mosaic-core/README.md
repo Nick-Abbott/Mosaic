@@ -163,9 +163,9 @@ recursive construction fails with a circular-dependency error.
 `Canvas` implements `AutoCloseable`. Layers that only bind values need no explicit
 closing. When a Canvas owns `AutoCloseable` bindings, call `close()`, use `use`,
 or arrange an equivalent application shutdown hook. Closing it closes
-its locally created `AutoCloseable` bindings, not parent resources. Keep an
-application Canvas for long-lived services and close it at shutdown; scope child
-Canvases explicitly when they own resources. Creating a Mosaic does not close
+its locally created `AutoCloseable` bindings, not parent resources. Close an
+application Canvas with owned resources at shutdown; scope child Canvases
+explicitly when they own resources. Creating a Mosaic does not close
 its Canvas for you. Local resources are closed in reverse successful creation order,
 including dependencies created early through `paint`. Cleanup continues
 after close failures, reporting those failures to standard error.
