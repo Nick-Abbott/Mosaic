@@ -241,6 +241,22 @@ creates a different cache identity. Calling `Canvas.create()` creates a fresh
 Mosaic and cache; sharing a Canvas does not share tile results across Mosaics.
 Create a Mosaic per request to keep reuse scoped to that request.
 
+## Execution observation integrations
+
+Integration authors can install one supported
+[ExecutionObserver](src/main/kotlin/org/buildmosaic/core/observation/ExecutionObserver.kt)
+with `CanvasBuilder.installExecutionObserver { createObserver() }`. Descendant
+Canvases inherit that installation; duplicate installation fails before another
+factory runs. Runtime configuration is separate from dependency bindings, and
+the application owns provider shutdown.
+
+The observer receives actual executions, bounded caller contributions, cached
+producer relationships, and structural completion data. Keys, result values,
+Canvas contents, and exception details are not supplied. Callbacks run
+synchronously and must return promptly without waiting for Mosaic progress.
+The integration owns asynchronous export and finalization. The SPI KDoc defines
+context restoration, subscription races, callback reentry, and privacy rules.
+
 ## 🌐 **Framework Integration**
 
 The example applications use the same [order tile library](../examples/tile-library).

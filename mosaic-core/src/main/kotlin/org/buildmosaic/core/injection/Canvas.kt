@@ -2,6 +2,7 @@ package org.buildmosaic.core.injection
 
 import org.buildmosaic.core.Mosaic
 import org.buildmosaic.core.MosaicImpl
+import org.buildmosaic.core.MosaicRuntimeConfig
 import org.buildmosaic.core.exception.MosaicMissingKeyException
 import kotlin.reflect.KClass
 
@@ -30,6 +31,7 @@ class Canvas internal constructor(
   private val instances: Map<CanvasKey<*>, Any>,
   private val closeables: List<AutoCloseable>,
   private val parent: Canvas? = null,
+  internal val runtimeConfig: MosaicRuntimeConfig = MosaicRuntimeConfig.EMPTY,
 ) : AutoCloseable {
   /**
    * Retrieves an instance of the registered object of the specified type and qualifier
