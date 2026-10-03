@@ -31,6 +31,13 @@ mixed guide can keep distinct sections; a small addition does not require a spli
 
 ## Find the narrowest useful home
 
+Supported/public API does not automatically belong in a README. Documentation
+prominence should follow the user-facing abstraction hierarchy. Keep low-level
+extension and integration-author SPIs in API KDoc or dedicated integration-author
+docs unless ordinary application developers need them directly. READMEs should
+remain compelling product and usage pages, not catalogs of every supported API;
+lead with the higher-level consumer API when one exists or is planned.
+
 1. Read applicable AGENTS.md instructions, the root README for orientation, the
    entire target document, and relevant neighboring module READMEs and docs.
    Notice their structure, naming, links, terminology, tone, and example style.

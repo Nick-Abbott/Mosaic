@@ -2,7 +2,9 @@ package org.buildmosaic.core.injection
 
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import org.buildmosaic.core.MosaicRuntimeConfig
 import org.buildmosaic.core.exception.MosaicMissingKeyException
+import org.buildmosaic.core.observation.ExecutionObserver
 import java.util.IdentityHashMap
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
@@ -15,8 +17,31 @@ private fun missingKeyError(key: CanvasKey<*>): Nothing = throw MosaicMissingKey
  * Use this builder to register dependencies that will be available for injection
  * in tiles and other canvas-aware components.
  */
-class CanvasBuilder internal constructor() {
+class CanvasBuilder internal constructor(inheritedConfig: MosaicRuntimeConfig = MosaicRuntimeConfig.EMPTY) {
   internal val bindings = mutableMapOf<CanvasKey<*>, SingleBinding<*>>()
+  private var observerState =
+    if (inheritedConfig.executionObserver == null) ObserverState.ABSENT else ObserverState.CONFIGURED
+  private var runtimeConfig = inheritedConfig
+
+  // The supported installation extension lives with the integration SPI, outside the Canvas DSL members.
+  internal fun configureExecutionObserver(factory: () -> ExecutionObserver) {
+    check(observerState == ObserverState.ABSENT) { "Execution observer already installed or installing" }
+    observerState = ObserverState.INSTALLING
+    try {
+      val observer = checkNotNull(factory()) { "Execution observer factory returned null" }
+      runtimeConfig = runtimeConfig.copy(executionObserver = observer)
+      observerState = ObserverState.CONFIGURED
+    } finally {
+      if (observerState == ObserverState.INSTALLING) observerState = ObserverState.ABSENT
+    }
+  }
+
+  internal fun configuration(): MosaicRuntimeConfig {
+    check(observerState != ObserverState.INSTALLING) { "Execution observer installation is incomplete" }
+    return runtimeConfig
+  }
+
+  private enum class ObserverState { ABSENT, INSTALLING, CONFIGURED }
 
   /**
    * Registers a singleton dependency in the canvas.
@@ -55,6 +80,7 @@ class CanvasBuilder internal constructor() {
 class CanvasFactory internal constructor(
   private val bindings: Map<CanvasKey<*>, SingleBinding<*>>,
   private val parent: Canvas? = null,
+  private val runtimeConfig: MosaicRuntimeConfig = MosaicRuntimeConfig.EMPTY,
 ) {
   private val closeables = mutableListOf<AutoCloseable>()
   private val dependencies = IdentityHashMap<SingleBinding<*>, MutableList<SingleBinding<*>>>()
@@ -110,7 +136,7 @@ class CanvasFactory internal constructor(
       currentCoroutineContext().ensureActive()
       val instances = bindings.mapValues { (_, binding) -> create(binding) }
       currentCoroutineContext().ensureActive()
-      return Canvas(instances, createdResources(), parent)
+      return Canvas(instances, createdResources(), parent, runtimeConfig)
     } catch (failure: Throwable) {
       createdResources().asReversed().forEach { resource ->
         runCatching { resource.close() }.onFailure { cleanupFailure ->
@@ -174,4 +200,7 @@ private class ConstructingBinding(
 suspend fun canvas(
   parent: Canvas? = null,
   build: CanvasBuilder.() -> Unit,
-): Canvas = CanvasFactory(CanvasBuilder().apply(build).bindings, parent).build()
+): Canvas {
+  val builder = CanvasBuilder(parent?.runtimeConfig ?: MosaicRuntimeConfig.EMPTY).apply(build)
+  return CanvasFactory(builder.bindings, parent, builder.configuration()).build()
+}
