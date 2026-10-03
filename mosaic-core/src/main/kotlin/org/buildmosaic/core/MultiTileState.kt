@@ -4,7 +4,6 @@ import kotlinx.coroutines.CompletableDeferred
 import org.buildmosaic.core.observation.CallerSnapshot
 import org.buildmosaic.core.observation.Contributors
 import org.buildmosaic.core.observation.ProducerPublication
-import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 
 internal class CacheEntry<V>(val result: CompletableDeferred<V>, val producer: ProducerPublication?)
@@ -47,7 +46,7 @@ internal class MultiTileState<K : Any, V> {
 /** Accepted work is complete even when its observation metadata is truncated. */
 internal class PendingBatch<K : Any, V> {
   val groups = mutableListOf<ReservationGroup<K, V>>()
-  private val callers = mutableListOf<CallerSnapshot>()
+  private var callers: MutableList<CallerSnapshot>? = null
   private var contributorCount = 0L
 
   // Called only under the pending monitor. No keys or provider tokens are hashed/compared here.
@@ -57,23 +56,26 @@ internal class PendingBatch<K : Any, V> {
   ) {
     groups.add(group)
     contributorCount++
-    if (caller != null && callers.size < Contributors.RETAINED_CONTRIBUTORS) callers.add(caller)
+    if (caller != null) {
+      val retained = callers ?: mutableListOf<CallerSnapshot>().also { callers = it }
+      if (retained.size < Contributors.RETAINED_CONTRIBUTORS) retained.add(caller)
+    }
   }
 
   fun takeContributors(): Contributors? {
-    if (callers.isEmpty()) return null
+    val retained = callers ?: return null
     val description =
       Contributors(
-        callers.first(),
-        Collections.unmodifiableList(ArrayList(callers.drop(1))),
+        retained.first(),
+        retained.drop(1),
         contributorCount,
       )
-    callers.clear()
+    callers = null
     return description
   }
 
   fun fail(failure: Throwable) {
-    callers.clear()
+    callers = null
     groups.forEach { group -> group.winners.forEach { (_, entry) -> entry.result.completeExceptionally(failure) } }
     groups.forEach { it.producer?.abandon() }
   }

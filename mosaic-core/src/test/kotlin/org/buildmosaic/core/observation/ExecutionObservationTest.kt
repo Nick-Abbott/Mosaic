@@ -42,7 +42,7 @@ class ExecutionObservationTest {
       assertEquals(1, observer.executions.size)
     }
 
-  @Test fun raceLoserDoesNotCaptureOrExecute() =
+  @Test fun reuseDuringCaptureDoesNotCaptureOrExecuteAgain() =
     runBlocking {
       val observer = RecordingObserver()
       val mosaic = MosaicImpl(canvas { installExecutionObserver { observer } }, Dispatchers.Default)
@@ -244,6 +244,53 @@ class ExecutionObservationTest {
       assertEquals(1, recording.executions[0].dependencies.size)
       val producer = recording.executions[0].dependencies.single()
       assertEquals(UnavailableReason.NOT_OBSERVED, assertIs<ProducerResolution.Unavailable>(producer.resolution).reason)
+    }
+
+  @Test fun unrelatedObserversDoNotExchangeOpaqueRelationships() =
+    runTest {
+      val first = RecordingObserver()
+      val second = RecordingObserver()
+      val foreign = object : ExecutionIdentity {}
+      var receivedAmbient: ExecutionIdentity? = null
+      second.captureHook = { receivedAmbient = first.ambient.get() }
+      val secondObserver =
+        object : ExecutionObserver by second {
+          override fun onStart(start: ExecutionStart): StartedObservation {
+            val started = second.onStart(start)
+            return StartedObservation(started.callbacks, foreign, started.context)
+          }
+        }
+      val a = MosaicImpl(canvas { installExecutionObserver { first } }, Dispatchers.Unconfined)
+      val b = MosaicImpl(canvas { installExecutionObserver { secondObserver } }, Dispatchers.Unconfined)
+      val shared = singleTile { 7 }
+      assertEquals(7, a.compose(singleTile { b.compose(shared) }))
+      assertTrue(first.executions.single().dependencies.isEmpty())
+      assertNull(second.executions.single().start.contributors.initiating.execution)
+      assertIs<TestCaller>(second.executions.single().start.contributors.initiating.context)
+      assertSame(first.executions.single().identity, receivedAmbient)
+      // Reusing an already published foreign producer must also remain isolated.
+      assertEquals(7, a.compose(singleTile { b.compose(shared) }))
+      assertTrue(first.executions.last().dependencies.isEmpty())
+      assertEquals(8, b.compose(singleTile { a.compose(singleTile { 8 }) }))
+      assertNull(first.executions.last().start.contributors.initiating.execution)
+      assertTrue(second.executions.last().dependencies.isEmpty())
+    }
+
+  @Test fun sharedObserverPreservesCrossMosaicRelationships() =
+    runTest {
+      val observer = RecordingObserver()
+      val configuration = canvas { installExecutionObserver { observer } }
+      val a = MosaicImpl(configuration, Dispatchers.Unconfined)
+      val b = MosaicImpl(configuration, Dispatchers.Unconfined)
+      val shared = singleTile { 8 }
+      assertEquals(8, a.compose(singleTile { b.compose(shared) }))
+      val parent = observer.executions.first()
+      val child = observer.executions.last()
+      assertSame(parent.identity, child.start.contributors.initiating.execution)
+      assertSame(
+        child.identity,
+        assertIs<ProducerResolution.Published>(parent.dependencies.single().resolution).identity,
+      )
     }
 
   @Test fun metricsObserverNeedsNeitherIdentityNorContext() =

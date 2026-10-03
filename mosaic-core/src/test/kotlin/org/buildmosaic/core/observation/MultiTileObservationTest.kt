@@ -2,6 +2,7 @@ package org.buildmosaic.core.observation
 
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -12,11 +13,13 @@ import org.buildmosaic.core.injection.canvas
 import org.buildmosaic.core.multiTile
 import org.buildmosaic.core.singleTile
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.CyclicBarrier
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotSame
@@ -26,6 +29,48 @@ import kotlin.test.assertTrue
 
 @Suppress("LargeClass")
 class MultiTileObservationTest {
+  @Test fun reservationRaceLoserReleasesPlaceholder() =
+    runTest {
+      val observer = RecordingObserver()
+      val mosaic = MosaicImpl(canvas { installExecutionObserver { observer } }, StandardTestDispatcher(testScheduler))
+      val barrier = CyclicBarrier(2)
+      val hashes = ThreadLocal<Int>()
+      val key =
+        object {
+          override fun hashCode(): Int {
+            hashes.get()?.let { count ->
+              hashes.set(count + 1)
+              // Both initial reads miss before either putIfAbsent can publish its candidate.
+              if (count == 1) barrier.await(5, TimeUnit.SECONDS)
+            }
+            return 1
+          }
+        }
+      val tile = multiTile<Any, Int> { keys -> keys.associateWith { 9 } }
+      val first = AtomicReference<Deferred<Int>>()
+      val second = AtomicReference<Deferred<Int>>()
+      val failure = AtomicReference<Throwable?>()
+      val workers =
+        listOf(first, second).map { result ->
+          thread {
+            hashes.set(0)
+            runCatching { result.set(mosaic.composeAsync(tile, key)) }.onFailure { failure.set(it) }
+          }
+        }
+      workers.forEach { it.join(5_000) }
+      assertTrue(workers.none { it.isAlive })
+      assertNull(failure.get())
+      assertSame(first.get(), second.get())
+      assertEquals(1, observer.captures)
+      // Exactly the winning placeholder and its pending launch remain attached to Mosaic.
+      assertEquals(2, checkNotNull(mosaic.coroutineContext[Job]).children.count())
+      testScheduler.runCurrent()
+      assertEquals(9, first.get().await())
+      assertEquals(1, observer.executions.size)
+      assertEquals(1, observer.executions.single().start.contributors.totalCount)
+      assertTrue(observer.failures.isEmpty())
+    }
+
   @Test fun overlappingReservationsPublishBeforeCapture() =
     runTest {
       val observer = RecordingObserver()
@@ -52,6 +97,30 @@ class MultiTileObservationTest {
       assertEquals(2, assertIs<TestCaller>(start.contributors.initiating.context).number)
       assertEquals(1, assertIs<TestCaller>(start.contributors.additional.single().context).number)
     }
+
+  @Test fun callerProjectionPreservesImmutableMetadata() {
+    val originalCaller = CallerSnapshot(TestIdentity(1), TestCaller(1))
+    val input = MutableList(63) { originalCaller }
+    val original = ExecutionStart(ExecutionKind.MULTI, 100, Contributors(originalCaller, input, 100), 123)
+    input.clear()
+    val projectedIdentity = TestIdentity(2)
+    val projected = original.mapCallers { it.copy(execution = projectedIdentity, context = null) }
+    assertEquals(original.kind, projected.kind)
+    assertEquals(original.batchSize, projected.batchSize)
+    assertEquals(original.startedAtNanos, projected.startedAtNanos)
+    assertEquals(100, projected.contributors.totalCount)
+    assertTrue(projected.contributors.truncated)
+    assertEquals(63, projected.contributors.additional.size)
+    (listOf(projected.contributors.initiating) + projected.contributors.additional).forEach {
+      assertSame(projectedIdentity, it.execution)
+      assertNull(it.context)
+    }
+    assertSame(originalCaller, original.contributors.initiating)
+    assertEquals(63, original.contributors.additional.size)
+    assertFailsWith<UnsupportedOperationException> {
+      (projected.contributors.additional as MutableList).clear()
+    }
+  }
 
   @Test fun reservationGroupsResolveToOneBatchIdentity() =
     runTest {

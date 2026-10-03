@@ -1,15 +1,21 @@
 package org.buildmosaic.core.observation
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ThreadContextElement
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import org.buildmosaic.core.MosaicImpl
 import org.buildmosaic.core.injection.canvas
+import org.buildmosaic.core.multiTile
 import org.buildmosaic.core.singleTile
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -25,6 +31,48 @@ import kotlin.test.assertTrue
 
 @Suppress("LargeClass")
 class ExecutionContextTest {
+  @Test fun ownedChildrenKeepObservationAfterResult() =
+    runTest {
+      for (kind in ExecutionKind.entries) {
+        val observer = RecordingObserver()
+        val mosaic = MosaicImpl(canvas { installExecutionObserver { observer } }, StandardTestDispatcher(testScheduler))
+        val gate = CompletableDeferred<Unit>()
+        var childContext: ExecutionIdentity? = null
+        val work: suspend () -> Int = {
+          CoroutineScope(currentCoroutineContext()).launch {
+            gate.await()
+            childContext = observer.ambient.get()
+            mosaic.compose(singleTile { 1 })
+            error("owned child failed after publication")
+          }
+          42
+        }
+        val result =
+          when (kind) {
+            ExecutionKind.SINGLE -> mosaic.composeAsync(singleTile { work() })
+            ExecutionKind.MULTI -> mosaic.composeAsync(multiTile<Int, Int> { keys -> keys.associateWith { work() } }, 1)
+          }
+        result.invokeOnCompletion { mosaic.composeAsync(singleTile { 2 }) }
+        testScheduler.runCurrent()
+        assertEquals(42, result.await())
+        val execution = observer.executions.first()
+        assertNull(execution.completion)
+        assertNull(observer.executions[1].start.contributors.initiating.execution)
+        val releasedAt = System.nanoTime()
+        gate.complete(Unit)
+        testScheduler.runCurrent()
+        assertSame(execution.identity, childContext)
+        assertSame(execution.identity, observer.executions[2].start.contributors.initiating.execution)
+        assertEquals(1, execution.dependencies.size)
+        val completion = checkNotNull(execution.completion)
+        assertEquals(ExecutionOutcome.FAILURE, completion.outcome)
+        assertEquals(IllegalStateException::class.java.name, completion.exceptionClassName)
+        assertTrue(completion.completedAtNanos >= releasedAt)
+        assertEquals(42, result.await())
+        assertTrue(observer.failures.isEmpty())
+      }
+    }
+
   @Test fun nestedAndParallelWorkKeepContext() =
     runBlocking {
       val observer = RecordingObserver()

@@ -1,5 +1,7 @@
 package org.buildmosaic.core.observation
 
+import java.util.Collections
+
 /** Opaque integration-owned caller snapshot. Prefer immutable, lightweight snapshots. */
 interface CallerContext
 
@@ -17,7 +19,10 @@ interface ExecutionIdentity
  * contents, request identifiers, or Throwable objects. Integrations control their own token contents.
  * Callback reentry uses normal composition, but does not inherit the surrounding core execution
  * relationship. Provider ambient context is left intact; nested actual executions establish their own
- * core relationship. Mosaic neither hashes nor compares provider tokens.
+ * core relationship. Caller identities and producer dependencies are forwarded only between Mosaics
+ * sharing this exact observer instance. Independently installed observers exchange no core tokens;
+ * capturing an integration's own ambient context remains independent. Mosaic neither hashes nor
+ * compares provider tokens.
  */
 interface ExecutionObserver {
   /** Called only after winning reservations are visible, before acceptance/scheduling. */
@@ -43,8 +48,10 @@ interface ExecutionObservation {
   fun onDependency(producer: ProducerReference) {}
 
   /**
-   * Called once after application results settle and execution context exits. Unresolved producers do
-   * not delay this notification. External finalization may retain the actual completion timestamp.
+   * Called once after the execution scope, including attached child coroutines, finishes and its
+   * context exits. Results may already be published; a later child failure cannot replace them.
+   * Unresolved producers do not delay this notification. External finalization may retain the actual
+   * completion timestamp.
    */
   fun onComplete(completion: ExecutionCompletion)
 }
@@ -64,7 +71,13 @@ fun interface ExecutionContext {
 class CallerSnapshot internal constructor(
   val execution: ExecutionIdentity?,
   val context: CallerContext?,
-)
+) {
+  /** Projects opaque tokens for an integration composing existing observers. */
+  fun copy(
+    execution: ExecutionIdentity? = this.execution,
+    context: CallerContext? = this.context,
+  ): CallerSnapshot = CallerSnapshot(execution, context)
+}
 
 /**
  * First accepted caller plus at most 63 additional callers, in acceptance order, without deduplication.
@@ -73,9 +86,10 @@ class CallerSnapshot internal constructor(
  */
 class Contributors internal constructor(
   val initiating: CallerSnapshot,
-  val additional: List<CallerSnapshot>,
+  additional: List<CallerSnapshot>,
   val totalCount: Long,
 ) {
+  val additional: List<CallerSnapshot> = Collections.unmodifiableList(ArrayList(additional))
   val truncated: Boolean get() = totalCount > RETAINED_CONTRIBUTORS
 
   internal companion object {
@@ -89,7 +103,20 @@ class ExecutionStart internal constructor(
   val batchSize: Int?,
   val contributors: Contributors,
   val startedAtNanos: Long,
-)
+) {
+  /**
+   * Projects every retained caller without changing structural data, order, counts, or truncation.
+   * The returned description owns an immutable copy. The transform runs synchronously in the caller;
+   * it is integration code, with no Mosaic lock held.
+   */
+  fun mapCallers(transform: (CallerSnapshot) -> CallerSnapshot): ExecutionStart =
+    ExecutionStart(
+      kind,
+      batchSize,
+      Contributors(transform(contributors.initiating), contributors.additional.map(transform), contributors.totalCount),
+      startedAtNanos,
+    )
+}
 
 enum class ExecutionKind { SINGLE, MULTI }
 

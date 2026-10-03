@@ -2,6 +2,8 @@ package org.buildmosaic.core.observation
 
 /** The lock commits state only. Neither token equality nor callbacks run inside it. */
 internal class ProducerPublication(private val calls: ObservationCalls) : ProducerReference {
+  fun belongsTo(owner: ObservationCalls): Boolean = calls.sharesObserver(owner)
+
   private val monitor = Any()
   private var started = false
   private var terminal: ProducerResolution? = null

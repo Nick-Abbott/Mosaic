@@ -3,9 +3,11 @@ package org.buildmosaic.core.observation
 /** No application work or scheduling belongs here. */
 internal class ObservationCalls(private val observer: ExecutionObserver) {
   fun capture(): CallerSnapshot {
-    val identity = ObservedExecution.current()?.identity
+    val identity = ObservedExecution.current()?.takeIf { it.belongsTo(this) }?.identity
     return CallerSnapshot(identity, guarded(CallbackOperation.CAPTURE) { observer.captureCaller() })
   }
+
+  fun sharesObserver(other: ObservationCalls): Boolean = observer === other.observer
 
   // A successful null opts out; an absent Result means the guarded start callback failed.
   fun start(start: ExecutionStart): Result<StartedObservation?>? =

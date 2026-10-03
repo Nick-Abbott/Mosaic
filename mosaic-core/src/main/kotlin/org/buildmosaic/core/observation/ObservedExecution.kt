@@ -18,12 +18,12 @@ internal class ObservedExecution(
   private var completion: ExecutionCompletion? = null
   private val finished = AtomicBoolean()
 
-  fun dependency(producer: ProducerReference) {
-    if (active) calls.guarded(CallbackOperation.DEPENDENCY) { observation.callbacks.onDependency(producer) }
-  }
+  fun belongsTo(owner: ObservationCalls): Boolean = calls.sharesObserver(owner)
 
-  fun deactivate() {
-    active = false
+  fun dependency(producer: ProducerPublication) {
+    if (active && producer.belongsTo(calls)) {
+      calls.guarded(CallbackOperation.DEPENDENCY) { observation.callbacks.onDependency(producer) }
+    }
   }
 
   fun recordCompletion(failure: Throwable?) {

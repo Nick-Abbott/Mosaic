@@ -1,5 +1,6 @@
 package org.buildmosaic.core
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -18,7 +19,6 @@ import org.buildmosaic.core.observation.ExecutionStart
 import org.buildmosaic.core.observation.ObservationCalls
 import org.buildmosaic.core.observation.ObservedExecution
 import org.buildmosaic.core.observation.ProducerPublication
-import org.buildmosaic.core.observation.ProducerReference
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
@@ -66,7 +66,7 @@ open class MosaicImpl(
     if (keys.isEmpty()) return emptyMap()
     val state = multiStates.computeIfAbsent(tile) { MultiTileState<K, V>() } as MultiTileState<K, V>
     val result = HashMap<K, Deferred<V>>(keys.size)
-    val consumed = if (observation != null) ArrayList<ProducerReference>() else null
+    val consumed = if (observation != null) ArrayList<ProducerPublication>() else null
     val winners = ArrayList<Pair<K, CacheEntry<V>>>()
     var producer: ProducerPublication? = null
     try {
@@ -160,10 +160,9 @@ open class MosaicImpl(
           {
             entry.result.completeExceptionally(it)
           },
-        ) { execution ->
+        ) {
           val value = tile.block(this@MosaicImpl)
-          execution?.recordCompletion(null)
-          entry.result.complete(value)
+          ObservedExecution.withoutCaller { entry.result.complete(value) }
           null
         }
       }.invokeOnCompletion { failure ->
@@ -210,19 +209,18 @@ open class MosaicImpl(
         batch.takeContributors()?.let { ExecutionStart(ExecutionKind.MULTI, keys.size, it, System.nanoTime()) },
         batch.groups.mapNotNull { it.producer },
         batch::fail,
-      ) { execution ->
+      ) {
         val values = tile.block(this@MosaicImpl, keys)
         var missing: Throwable? = null
         batch.groups.forEach { group ->
           group.winners.forEach { (key, entry) ->
             val value = values[key]
-            execution?.deactivate()
             if (value != null) {
-              entry.result.complete(value)
+              ObservedExecution.withoutCaller { entry.result.complete(value) }
             } else {
               val failure = NoSuchElementException("Batch result missing key $key")
               missing = missing ?: failure
-              entry.result.completeExceptionally(failure)
+              ObservedExecution.withoutCaller { entry.result.completeExceptionally(failure) }
             }
           }
         }
@@ -238,7 +236,7 @@ open class MosaicImpl(
     start: ExecutionStart?,
     producers: List<ProducerPublication>,
     fail: (Throwable) -> Unit,
-    block: suspend (ObservedExecution?) -> Throwable?,
+    block: suspend () -> Throwable?,
   ) {
     currentCoroutineContext().ensureActive()
     if (producers.isNotEmpty()) {
@@ -260,19 +258,19 @@ open class MosaicImpl(
       withContext(context) {
         try {
           currentCoroutineContext().ensureActive()
-          applicationFailure = block(execution)
-          execution?.recordCompletion(applicationFailure)
+          applicationFailure = block()
         } catch (failure: Throwable) {
           applicationFailure = failure
-          execution?.recordCompletion(failure)
-          fail(failure)
+          ObservedExecution.withoutCaller { fail(failure) }
         }
       }
+      // Scope completion includes attached children, independently of earlier result publication.
+      execution?.recordCompletion(applicationFailure)
     } catch (failure: Throwable) {
-      // Preserve the original failure rather than a coroutine stack-recovery copy.
-      val original = applicationFailure ?: failure
+      // Keep original body failures; cancellation may instead be caused by a failing child.
+      val original = applicationFailure?.takeUnless { it is CancellationException } ?: failure
       execution?.recordCompletion(original)
-      fail(original)
+      ObservedExecution.withoutCaller { fail(original) }
     } finally {
       execution?.finish()
     }
