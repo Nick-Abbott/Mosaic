@@ -29,7 +29,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
-@Suppress("LargeClass")
+@Suppress("LargeClass") // Keep coroutine propagation and restoration scenarios together.
 class ExecutionContextTest {
   @Test fun ownedChildrenKeepObservationAfterResult() =
     runTest {
@@ -117,7 +117,7 @@ class ExecutionContextTest {
       }
     }
 
-  @Suppress("LongMethod")
+  @Suppress("LongMethod") // Keep both threads and their restoration choreography visible in one test.
   @Test
   fun overlappingUpdatesUsePerInstallationTokens() {
     val ambient = ThreadLocal<String?>()

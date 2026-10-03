@@ -27,7 +27,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
-@Suppress("LargeClass")
+@Suppress("LargeClass") // Related batch/concurrency scenarios share the same recording fixtures.
 class MultiTileObservationTest {
   @Test fun reservationRaceLoserReleasesPlaceholder() =
     runTest {

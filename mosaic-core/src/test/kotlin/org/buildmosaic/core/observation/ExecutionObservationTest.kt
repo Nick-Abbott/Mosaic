@@ -25,7 +25,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
-@Suppress("LargeClass", "TooManyFunctions")
+@Suppress("LargeClass", "TooManyFunctions") // Keep each independently named lifecycle scenario in this suite.
 class ExecutionObservationTest {
   @Test fun publicationPrecedesSameTileCaptureReentry() =
     runTest {

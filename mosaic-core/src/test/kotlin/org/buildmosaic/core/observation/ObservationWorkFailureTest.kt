@@ -1,5 +1,6 @@
 package org.buildmosaic.core.observation
 
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -7,10 +8,13 @@ import org.buildmosaic.core.MosaicImpl
 import org.buildmosaic.core.injection.canvas
 import org.buildmosaic.core.multiTile
 import org.buildmosaic.core.singleTile
+import kotlin.coroutines.CoroutineContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class ObservationWorkFailureTest {
@@ -22,6 +26,43 @@ class ObservationWorkFailureTest {
 
     override fun equals(other: Any?): Boolean = other is Key && number == other.number
   }
+
+  @Test fun inlinePreparationDoesNotBorrowCallerExecution() =
+    runTest {
+      val observer = RecordingObserver()
+      val dispatcher =
+        object : CoroutineDispatcher() {
+          override fun dispatch(
+            context: CoroutineContext,
+            block: Runnable,
+          ) = block.run()
+        }
+      val mosaic = MosaicImpl(canvas { installExecutionObserver { observer } }, dispatcher)
+      val leaf = singleTile { 7 }
+      val preparation = singleTile { compose(leaf) }
+      var prepare = false
+      val key =
+        object {
+          override fun hashCode(): Int {
+            if (prepare) {
+              prepare = false
+              mosaic.composeAsync(preparation)
+            }
+            return 1
+          }
+        }
+      val batch = multiTile<Any, Int> { keys -> keys.associateWith { 42 } }
+      observer.captureHook = { if (observer.captures == 2) prepare = true }
+      assertEquals(42, mosaic.compose(singleTile { compose(batch, key) }))
+      val parent = observer.executions.first()
+      val prepared = observer.executions[1]
+      val nested = observer.executions[2]
+      assertNull(prepared.start.contributors.initiating.execution)
+      assertSame(prepared.identity, nested.start.contributors.initiating.execution)
+      assertEquals(1, parent.dependencies.size)
+      assertEquals(1, prepared.dependencies.size)
+      assertTrue(observer.failures.isEmpty())
+    }
 
   @Test fun keyPreparationFailureAbandonsOrigin() =
     runTest {

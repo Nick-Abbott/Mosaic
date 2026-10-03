@@ -23,17 +23,13 @@ class CanvasBuilder internal constructor(inheritedConfig: MosaicRuntimeConfig = 
     if (inheritedConfig.executionObserver == null) ObserverState.ABSENT else ObserverState.CONFIGURED
   private var runtimeConfig = inheritedConfig
 
-  /**
-   * Installs one supported execution observer for this Canvas and all descendants. Local, inherited,
-   * and reentrant duplicates fail before another factory executes. Failed factories leave configuration
-   * unchanged. This is independent of DI; Canvas never owns observer/provider shutdown.
-   */
-  fun installExecutionObserver(factory: () -> ExecutionObserver) {
+  // The supported installation extension lives with the integration SPI, outside the Canvas DSL members.
+  internal fun configureExecutionObserver(factory: () -> ExecutionObserver) {
     check(observerState == ObserverState.ABSENT) { "Execution observer already installed or installing" }
     observerState = ObserverState.INSTALLING
     try {
       val observer = checkNotNull(factory()) { "Execution observer factory returned null" }
-      runtimeConfig = MosaicRuntimeConfig(observer)
+      runtimeConfig = runtimeConfig.copy(executionObserver = observer)
       observerState = ObserverState.CONFIGURED
     } finally {
       if (observerState == ObserverState.INSTALLING) observerState = ObserverState.ABSENT

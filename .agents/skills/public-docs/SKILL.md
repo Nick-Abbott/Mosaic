@@ -56,6 +56,13 @@ concrete evidence to make an evaluating developer want to investigate further.
 
 ## Placement and Mosaic's house style
 
+Public/supported status alone does not earn an API README prominence. Follow the
+user-facing abstraction hierarchy: showcase the consumer capability, and keep
+low-level extension or integration-author SPIs in KDoc or dedicated author docs
+unless ordinary users need them directly. READMEs are product/usage pages, not
+catalogs of every supported API. A future higher-level consumer API should be
+introduced through that API, not by promoting its low-level installation plumbing.
+
 Use progressive disclosure: demonstrate, then link. Give a representative concrete
 example or proof before sending the reader to the canonical guide for depth. Do
 not replace every useful example with a link or duplicate full walkthroughs.

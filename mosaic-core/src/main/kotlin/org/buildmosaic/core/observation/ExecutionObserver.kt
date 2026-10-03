@@ -1,5 +1,6 @@
 package org.buildmosaic.core.observation
 
+import org.buildmosaic.core.injection.CanvasBuilder
 import java.util.Collections
 
 /** Opaque integration-owned caller snapshot. Prefer immutable, lightweight snapshots. */
@@ -136,3 +137,13 @@ class CallbackFailure internal constructor(
 )
 
 enum class CallbackOperation { CAPTURE, START, DEPENDENCY, COMPLETE, INSTALL, RESTORE, PRODUCER_LISTENER }
+
+/**
+ * Integration-author installation hook, separate from the ordinary Canvas dependency DSL.
+ * Installs one supported observer for this Canvas and all descendants. Local, inherited, and reentrant
+ * duplicates fail before another factory executes. Failed factories leave configuration unchanged.
+ * Canvas never owns provider shutdown. Import this extension from the observation package explicitly.
+ */
+fun CanvasBuilder.installExecutionObserver(factory: () -> ExecutionObserver) {
+  configureExecutionObserver(factory)
+}
