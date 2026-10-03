@@ -2,14 +2,13 @@
 
 ## Purpose
 
-Current 0.6 development of this build-tooling module is a read-only Kotlin
-2.4.20 K2 compiler plugin; published 0.5.0 uses Kotlin 2.2.10. It uses
+This build-tooling module is a read-only Kotlin 2.4.20 K2 compiler plugin. It uses
 `CompilerPluginRegistrar` and `IrGenerationExtension` before IR lowering. It
 does not transform Kotlin or run Mosaic code. The Gradle plugin installs it into the normal Kotlin/JVM `main`
 compilation through Kotlin’s compiler-subplugin API. It emits per-source internal
 shards for the files Kotlin recompiles. `extractMosaicMain` assembles the complete
 module summary without a second compiler invocation. Standalone complete-output
-mode remains for compiler fixtures.
+mode supports compiler fixtures.
 
 ## Supported semantic boundary
 
@@ -65,15 +64,10 @@ internal incremental state, keyed by paths relative to `src/main/kotlin`; they
 are not a public metadata format. After an incremental IR invocation, the
 compiler plugin removes obsolete shard files. A current-source manifest selects
 only current shards for assembly, including when Kotlin has no sources and does
-not invoke the plugin. The discovery path stays stable; the explicit header governs
-compatibility. Current development format 3 uses `analysis-contract-2` semantics
-and Kotlin 2.4.20. Published 0.5.0 summaries record Kotlin 2.2.10 and must be
-regenerated for current development analysis.
-The producer version is `prototype-10`. Unpublished prototype-7 snapshots are
-rejected and must be regenerated. The payload checksum covers the canonical
-module, stable key exports, provenance limitations, and binary locators; it detects corruption,
-not producer trust. See the analysis-core README for the wire format and
-compatibility policy.
+not invoke the plugin. The summary header determines compatibility; see the
+[accepted metadata contract](../mosaic-analysis-core/README.md#binary-metadata).
+Regenerate incompatible dependency summaries with the supported Mosaic analysis
+toolchain before consuming them.
 
 Only analysis-core applies the Kotlin serialization compiler plugin to generate
 the serializers. The packaged compiler plugin includes the serialization
@@ -134,5 +128,4 @@ a top-level val alone is no proof.
 source-to-contract fidelity, while Gradle TestKit tests check wiring, packaging,
 and invalidation. Put a regression's decisive assertion at the cheapest layer
 that exposes it, and extend a relevant compiled fixture before adding another
-compiler or build invocation. Retain distinct failure guarantees rather than
-each historical test wrapper.
+compiler or build invocation. Keep distinct failure guarantees covered.

@@ -20,9 +20,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
-import org.buildmosaic.core.injection.Canvas
-import org.buildmosaic.core.injection.CanvasKey
+import org.buildmosaic.core.injection.canvas
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.collections.mapValues
@@ -38,9 +38,7 @@ class MosaicConcurrencyTest {
   @BeforeTest
   fun setUp() {
     val emptyCanvas =
-      object : Canvas {
-        override fun <T : Any> sourceOr(key: CanvasKey<T>): T? = null
-      }
+      runBlocking { canvas {} }
     mosaic = MosaicImpl(emptyCanvas)
   }
 

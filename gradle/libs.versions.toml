@@ -5,6 +5,9 @@ ktlint = "13.1.0"
 detekt = "1.23.8"
 kover = "0.9.11"
 coroutines = "1.11.0"
+opentelemetry = "1.66.0"
+# Official coroutine context extension used by interoperability tests only.
+opentelemetry-kotlin = "1.65.0"
 serialization = "1.11.0"
 mockk = "1.14.5"
 ksp = "2.3.12"
@@ -13,6 +16,10 @@ maven-publish = "0.34.0"
 plugin-publish = "2.0.0"
 
 [libraries]
+opentelemetry-api = { module = "io.opentelemetry:opentelemetry-api", version.ref = "opentelemetry" }
+opentelemetry-sdk = { module = "io.opentelemetry:opentelemetry-sdk", version.ref = "opentelemetry" }
+opentelemetry-sdk-testing = { module = "io.opentelemetry:opentelemetry-sdk-testing", version.ref = "opentelemetry" }
+opentelemetry-kotlin = { module = "io.opentelemetry:opentelemetry-extension-kotlin", version.ref = "opentelemetry-kotlin" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }

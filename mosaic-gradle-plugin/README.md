@@ -2,20 +2,20 @@
 
 ## Installation
 
-Current 0.6 development of `org.buildmosaic.analysis` supports pure Kotlin/JVM
+`org.buildmosaic.analysis` supports pure Kotlin/JVM
 `main` sources under `src/main/kotlin` with Kotlin Gradle plugin and compiler
-**2.4.20 only**. The latest published release, **0.5.0**, requires **2.2.10 only**.
+**2.4.20 only**.
 It is build tooling: it does not apply Kotlin or add Mosaic application runtime
 dependencies. Add Maven Central to plugin and dependency repositories. Install
-version 0.5.0 with:
+version 0.6.0 with:
 
 ```kotlin
 import org.buildmosaic.gradle.MosaicAnalysisEnforcement
 import org.buildmosaic.gradle.MosaicAnalysisRole
 
 plugins {
-  kotlin("jvm") version "2.2.10"
-  id("org.buildmosaic.analysis") version "0.5.0"
+  kotlin("jvm") version "2.4.20"
+  id("org.buildmosaic.analysis") version "0.6.0"
 }
 
 mosaicAnalysis {
@@ -44,7 +44,7 @@ mosaicAnalysis {
 }
 ```
 
-The current development Gradle plugin uses Kotlin 2.4.20’s
+The Gradle plugin uses Kotlin 2.4.20’s
 `KotlinCompilerPluginSupportPlugin` API to resolve the same-version
 `mosaic-compiler-plugin` artifact for the `main` Kotlin/JVM
 compilation. No compiler JAR path or application dependency is needed. The
@@ -95,7 +95,7 @@ focused diagram and analyzer findings for each discovered or explicit root,
 including uncertainty and the selected receiver; LIBRARY graphs show the
 overview only. Missing or unverified
 requirements appear in the report without failing graph generation; invalid
-roots, summaries, and conflicting selected owners still fail. The diagrams
+roots, summaries, and conflicting selected owners fail. The diagrams
 describe possible static relationships, not runtime traces, execution order,
 timing, call counts, or exact MultiTile batches.
 
@@ -106,7 +106,7 @@ selected dependency summaries, so it launches no separate compiler process.
 
 ## Incremental and cache behavior
 
-Dependency contract invalidation remains separate from source compilation.
+Dependency contract invalidation is separate from source compilation.
 Verification reads the raw summary resource copied by a cacheable per-JAR
 artifact transform. A dependency Mosaic contract change reruns verification
 without forcing unchanged application source extraction. A JAR without the
@@ -155,10 +155,9 @@ capability-bearing initialization marked unknown. If the referenced constructor
 summary is absent, verification is unknown. Referenced stored-property reads
 likewise retain initialization work. This is not a general model of JVM class
 initialization or exception safety. Used user defaults with unavailable binary
-expressions and Mosaic extension-helper calls remain unknown. The metadata is
-format 3 with `analysis-contract-2`; summaries from older extractor versions
-are rejected because they may have omitted accessor or constructor-default
-effects or conflated array keys.
+expressions and Mosaic extension-helper calls remain unknown. Dependency summaries
+must satisfy the [metadata compatibility contract](../mosaic-analysis-core/README.md#binary-metadata);
+regenerate incompatible summaries with the supported Mosaic analysis toolchain.
 
 ## Supported project boundary
 
@@ -182,6 +181,6 @@ Both plugins bundle the internal analysis-core implementation they need;
 `mosaic-analysis-core` is not published separately. The compiler plugin remains
 a separate artifact loaded through Kotlin Gradle Plugin's standard
 `getPluginArtifact()` resolution. These analysis artifacts are not application
-dependencies or BOM entries. The root `release` task publishes the five Mosaic
+dependencies or BOM entries. The root `release` task publishes the six Mosaic
 modules to Maven Central, then submits the Gradle plugin through the Plugin
 Portal. Local installation tests use a temporary Maven repository.

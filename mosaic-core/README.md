@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/Nick-Abbott/Mosaic/workflows/Test%20Badge/badge.svg)](https://github.com/Nick-Abbott/Mosaic/actions?query=workflow%3A%22Test+Badge%22)
 [![Build](https://github.com/Nick-Abbott/Mosaic/workflows/Build%20Badge/badge.svg)](https://github.com/Nick-Abbott/Mosaic/actions?query=workflow%3A%22Build+Badge%22)
-[![Kotlin (development)](https://img.shields.io/badge/kotlin%20(dev)-2.4.20-blue.svg)](https://kotlinlang.org)
+[![Kotlin](https://img.shields.io/badge/kotlin-2.4.20-blue.svg)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](../LICENSE)
 
 **Compose backend responses from small, reusable Tiles.**
@@ -18,26 +18,22 @@ Canvas dependencies, batching, and caching. For isolated tile tests, use the
 The runtime libraries target JVM 17 and require Java 17 or later. This repository
 builds with a JDK 21 toolchain; the runnable framework examples also use JDK 21.
 
-Mosaic 0.5.0 remains the latest published release and is built with Kotlin 2.2.10.
-Its published dependencies use stdlib 2.2.10 and coroutines 1.10.2. The exact
-Kotlin 2.2.10 restriction applies to its optional
-[analysis plugin](../mosaic-gradle-plugin/README.md).
-
-Current 0.6 development uses Kotlin 2.4.20 with language/API level 2.4. Development
-runtime artifacts are tested with Kotlin 2.3.0 consumers and use stdlib 2.4.20 and
-coroutines 1.11.0; recompiling against them requires Kotlin 2.3.0 or later.
-Development analysis requires exactly Kotlin compiler and Gradle plugin 2.4.20.
+Mosaic uses Kotlin 2.4.20 with language/API level 2.4, stdlib 2.4.20, and
+coroutines 1.11.0. Runtime artifacts are tested with Kotlin 2.3.0 consumers;
+recompiling against them requires Kotlin 2.3.0 or later. Optional
+[analysis](../mosaic-gradle-plugin/README.md) requires exactly Kotlin compiler
+and Gradle plugin 2.4.20.
 
 In an existing Kotlin/JVM project:
 
 ```kotlin
 dependencies {
-  implementation("org.buildmosaic:mosaic-core:0.5.0")
+  implementation("org.buildmosaic:mosaic-core:0.6.0")
 }
 ```
 
 Coroutines are exposed by `mosaic-core`. For runtime dependency alignment with
-`mosaic-test`, see the optional [BOM guide](../mosaic-bom/README.md).
+`mosaic-test` and optional `mosaic-opentelemetry`, see the [BOM guide](../mosaic-bom/README.md).
 
 ### **Bind input, compose, and use the result**
 
@@ -53,16 +49,14 @@ import org.buildmosaic.core.injection.canvas
 import org.buildmosaic.core.injection.create
 
 val UserIdKey = CanvasKey(String::class, "userId")
-val GreetingTile = singleTile { "Hello, ${source(UserIdKey)}!" }
+val GreetingTile by singleTile { "Hello, ${source(UserIdKey)}!" }
 
 fun main() = runBlocking {
-  canvas {
+  val applicationCanvas = canvas {}
+  val greeting = applicationCanvas.withLayer {
     single(UserIdKey) { "user-123" }
-  }.use { requestCanvas ->
-    val mosaic = requestCanvas.create()
-    val greeting = mosaic.compose(GreetingTile)
-    println(greeting) // Hello, user-123!
-  }
+  }.create().compose(GreetingTile)
+  println(greeting) // Hello, user-123!
 }
 ```
 
@@ -82,7 +76,7 @@ Import `org.buildmosaic.core.*` and the corresponding example models, services,
 and tiles.
 
 ```kotlin
-val OrderSummaryTile = singleTile {
+val OrderSummaryTile by singleTile {
   val order = composeAsync(OrderTile)
   val customer = composeAsync(CustomerTile)
   val lineItems = composeAsync(LineItemsTile)
@@ -97,7 +91,7 @@ gets product IDs and SKUs from `order.items`, starts both batches, then awaits
 each item's values:
 
 ```kotlin
-val LineItemsTile = singleTile {
+val LineItemsTile by singleTile {
   val order = compose(OrderTile)
   val productIds = order.items.map { it.productId }
   val skus = order.items.map { it.sku }
@@ -136,42 +130,51 @@ built Canvas. Continuing with `UserIdKey` from the quick start:
 
 ```kotlin
 import org.buildmosaic.core.injection.Canvas
-import org.buildmosaic.core.injection.MosaicCanvas
 
 class GreetingService(private val prefix: String) {
   fun greet(userId: String): String = "$prefix, $userId!"
 }
 
-suspend fun createApplicationCanvas(): MosaicCanvas = canvas {
+suspend fun createApplicationCanvas(): Canvas = canvas {
   single<String>("greetingPrefix") { "Welcome" }
   single<GreetingService> { GreetingService(paint<String>("greetingPrefix")) }
 }
 
-val WelcomeTile = singleTile {
+val WelcomeTile by singleTile {
   source<GreetingService>().greet(source(UserIdKey))
 }
 
 suspend fun handleRequest(applicationCanvas: Canvas, userId: String): String =
   applicationCanvas.withLayer {
     single(UserIdKey) { userId }
-  }.use { requestCanvas ->
-    requestCanvas.create().compose(WelcomeTile)
-  }
+  }.create().compose(WelcomeTile)
 ```
+
+`Canvas` is a final Mosaic-owned class, constructed with `canvas` or `withLayer`.
+It stores resolved dependencies and owns its local resources.
 
 `canvas` eagerly constructs bindings. A child layer resolves local bindings
 first, then falls back to its parent. Overrides do not rewire services already
-constructed by the parent.
+constructed by the parent. Concurrent `paint` calls share one construction;
+recursive construction fails with a circular-dependency error.
 
 ### **Resource ownership**
 
-The concrete `MosaicCanvas` implements `AutoCloseable`; the `Canvas` interface
-does not. Cleanup requires calling `close()` on that concrete instance, using
-`use`, or arranging an equivalent application shutdown hook. Closing it closes
-its locally created `AutoCloseable` bindings, not parent resources. Keep an
-application Canvas for long-lived services and close it at shutdown; scope child
-Canvases explicitly when they own resources. Creating a Mosaic does not close
-its Canvas for you.
+`Canvas` implements `AutoCloseable`. Layers that only bind values need no explicit
+closing. When a Canvas owns `AutoCloseable` bindings, call `close()`, use `use`,
+or arrange an equivalent application shutdown hook. Closing it closes
+its locally created `AutoCloseable` bindings, not parent resources. Close an
+application Canvas with owned resources at shutdown; scope child Canvases
+explicitly when they own resources. Creating a Mosaic does not close
+its Canvas for you. Local resources are closed in reverse successful creation order,
+including dependencies created early through `paint`. Cleanup continues
+after close failures, reporting those failures to standard error.
+
+If construction fails or is cancelled, successfully created local `AutoCloseable`
+bindings are closed in reverse creation order, including dependencies resolved
+early through `paint`. Parent resources are left open. Cleanup failures are
+suppressed on the original construction failure. A constructor is responsible
+for resources it allocates before failing to return a value.
 
 For build-time checks within supported boundaries, see the optional
 [analysis plugin](../mosaic-gradle-plugin/README.md). It can report proven missing
@@ -184,15 +187,15 @@ consumers keep the same composition API. These excerpts use the order example's
 services and models:
 
 ```kotlin
-val PricingBySkuTile = multiTile<String, Price> { skus ->
+val PricingBySkuTile by multiTile<String, Price> { skus ->
   PricingService.getPrices(skus.toList())
 }
 
-val PerKeyProductsTile = perKeyTile<String, Product> { productId ->
+val PerKeyProductsTile by perKeyTile<String, Product> { productId ->
   ProductService.getProducts(listOf(productId)).getValue(productId)
 }
 
-val ChunkedProductsTile = chunkedMultiTile<String, Product>(batchSize = 50) { ids ->
+val ChunkedProductsTile by chunkedMultiTile<String, Product>(batchSize = 50) { ids ->
   ProductService.getProducts(ids)
 }
 ```
@@ -207,7 +210,7 @@ scheduling and is not an API guarantee.
 
 `chunkedMultiTile` splits the resulting coalesced invocation into lists and starts
 chunks concurrently; chunk size limits request size, not request rate or
-concurrency. `perKeyTile` still fetches each key individually and concurrently.
+concurrency. `perKeyTile` fetches each key individually and concurrently.
 Return a non-null value for every requested key; a missing or null batch result
 fails that key with `NoSuchElementException`.
 
@@ -249,34 +252,33 @@ val PerKey by perKeyTile<String, Product> { id -> ProductService.getProducts(lis
 val Chunked by chunkedMultiTile<String, Product>(50) { ids -> ProductService.getProducts(ids) }
 ```
 
-`OrderTile.name` is `"OrderTile"`. The name is captured when Kotlin binds the
-property; every read returns the same Tile object and cache identity. Top-level,
-member, and local delegated properties use the same runtime behavior.
+`OrderTile.name` is `"OrderTile"`. Top-level, member, and local delegated
+properties bind a name and return the same Tile instance on every read.
 
-The first automatic binding wins. For example, `val Alias by OrderTile` returns
-the same instance, whose name remains `"OrderTile"`. An ordinary alias using `=`
-also shares its instance and name. Concurrent bindings retain the name of the
-first binding that acquires the Tile's binding lock. Names are labels, not unique
-identifiers, and never change caching or equality. The public `name` getter exposes
-this metadata for diagnostics; callers cannot assign it.
-
-The delegate operators are members of `Tile` and `MultiTile`, so importing the
-factories is enough. When code is recompiled, these members take precedence over
-custom extension delegate operators on those types.
+The first delegated name is retained: `val Alias by OrderTile` shares the same
+instance and keeps the name `"OrderTile"`. An ordinary alias using `=` also
+shares its instance and name. Names are read-only labels for diagnostics and
+tracing; they are not unique identifiers and do not change caching or equality.
+The [OpenTelemetry adapter](../mosaic-opentelemetry/README.md) uses them as span names.
 
 A Tile created with `val OrderTile = singleTile { ... }` has `name == null` until
-it is used as a delegate. The compiler plugin does not assign runtime names.
-Naming requires no `kotlin-reflect` dependency. Binding performs the name lookup
-once; inlined property reads allocate no delegate wrapper and perform no property
-lookup.
+it is used as a delegate. The optional compiler plugin does not assign runtime
+names. For analysis of delegated declarations, see the
+[compiler's supported boundaries](../mosaic-compiler-plugin/README.md#extraction-guarantees).
 
-The optional analyzer understands Mosaic-owned delegated factories within its
-supported boundaries: stable top-level properties can be exported to consumers,
-and supported local Tile values keep their deferred contracts. Arbitrary
-delegates and member-dependent Tile properties are analyzed conservatively.
-Runtime member naming works independently of analyzer support. See
-[analysis setup](../mosaic-gradle-plugin/README.md#installation) for toolchain
-requirements and configuration.
+## 🔍 **Execution Observation**
+
+Use the optional [OpenTelemetry adapter](../mosaic-opentelemetry/README.md) to see
+actual Tile executions, MultiTile batches, and shared-work relationships in your
+application's traces. Configure tracing on the application Canvas; request layers
+inherit it. Cache hits create no new execution spans.
+
+Observation covers the execution scope, including attached children, even if a
+result was published earlier. Observation failures are isolated from Tile results;
+Mosaic owns execution and shared work, caching, and batching.
+Custom integration authors can use the
+[execution observation SPI KDoc](src/main/kotlin/org/buildmosaic/core/observation/ExecutionObserver.kt)
+for callback, context restoration, and token ownership contracts.
 
 ## 🌐 **Framework Integration**
 

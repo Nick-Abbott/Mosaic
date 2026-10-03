@@ -18,8 +18,10 @@ package org.buildmosaic.test
 
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import org.buildmosaic.core.injection.CanvasKey
 import org.buildmosaic.core.multiTile
 import org.buildmosaic.core.singleTile
+import org.buildmosaic.core.source
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -242,9 +244,7 @@ class TestMosaicBuilderTest {
           .withCanvasSource(TestService::class, testService)
           .build()
 
-      // We can't directly test injection retrieval through TestMosaic,
-      // but we can verify the mosaicBuilder() accepts the injection without error
-      assertIs<TestMosaic>(testMosaic)
+      testMosaic.assertEquals(singleTile { source<TestService>() }, testService)
     }
 
   @Test
@@ -258,9 +258,23 @@ class TestMosaicBuilderTest {
           .withCanvasSource(anotherService)
           .build()
 
-      // We can't directly test injection retrieval through TestMosaic,
-      // but we can verify the mosaicBuilder() accepts the injection without error
-      assertIs<TestMosaic>(testMosaic)
+      testMosaic.assertEquals(singleTile { source<AnotherService>() }, anotherService)
+    }
+
+  @Test
+  fun `supports qualified and keyed source overloads`() =
+    runTest {
+      val key = CanvasKey(String::class, "keyed")
+      val testMosaic =
+        mosaicBuilder()
+          .withCanvasSource(String::class, "explicit", "first")
+          .withCanvasSource("reified", "second")
+          .withCanvasSource(key, "third")
+          .build()
+
+      testMosaic.assertEquals(singleTile { source<String>("explicit") }, "first")
+      testMosaic.assertEquals(singleTile { source<String>("reified") }, "second")
+      testMosaic.assertEquals(singleTile { source(key) }, "third")
     }
 
   @Test

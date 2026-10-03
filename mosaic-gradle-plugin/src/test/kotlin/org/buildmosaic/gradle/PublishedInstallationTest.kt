@@ -27,6 +27,7 @@ class PublishedInstallationTest {
       repositoryRoot,
       ":mosaic-core:publishAllPublicationsToInstallTestRepository",
       ":mosaic-test:publishAllPublicationsToInstallTestRepository",
+      ":mosaic-opentelemetry:publishAllPublicationsToInstallTestRepository",
       ":mosaic-bom:publishAllPublicationsToInstallTestRepository",
       ":mosaic-compiler-plugin:publishAllPublicationsToInstallTestRepository",
       ":mosaic-gradle-plugin:publishAllPublicationsToInstallTestRepository",
@@ -43,6 +44,7 @@ class PublishedInstallationTest {
     for (module in listOf(
       "mosaic-core",
       "mosaic-test",
+      "mosaic-opentelemetry",
       "mosaic-compiler-plugin",
       "mosaic-gradle-plugin",
     )) {
@@ -58,6 +60,14 @@ class PublishedInstallationTest {
     assertTrue(!maven.resolve("org/buildmosaic/mosaic-analysis-core").exists())
     assertTrue(bom.contains("<artifactId>mosaic-core</artifactId>"), bom)
     assertTrue(bom.contains("<artifactId>mosaic-test</artifactId>"), bom)
+    assertTrue(bom.contains("<artifactId>mosaic-opentelemetry</artifactId>"), bom)
+    val tracingPom =
+      maven.resolve(
+        "org/buildmosaic/mosaic-opentelemetry/$version/mosaic-opentelemetry-$version.pom",
+      ).readText()
+    assertTrue(tracingPom.contains("<artifactId>opentelemetry-api</artifactId>"), tracingPom)
+    assertTrue(!tracingPom.contains("opentelemetry-sdk"), tracingPom)
+    assertTrue(!tracingPom.contains("opentelemetry-extension-kotlin"), tracingPom)
     assertTrue(!bom.contains("<artifactId>mosaic-analysis-core</artifactId>"), bom)
     val pluginPom =
       maven.resolve("org/buildmosaic/mosaic-gradle-plugin/$version/mosaic-gradle-plugin-$version.pom").readText()
@@ -161,6 +171,7 @@ private fun verifyRuntimeConsumer(
   )
   val core = if (useBom) "org.buildmosaic:mosaic-core" else "org.buildmosaic:mosaic-core:$version"
   val test = if (useBom) "org.buildmosaic:mosaic-test" else "org.buildmosaic:mosaic-test:$version"
+  val tracing = if (useBom) "org.buildmosaic:mosaic-opentelemetry" else "org.buildmosaic:mosaic-opentelemetry:$version"
   val platform = if (useBom) "implementation(platform(\"org.buildmosaic:mosaic-bom:$version\"))" else ""
   consumer.resolve("build.gradle.kts").writeText(
     """
@@ -168,6 +179,7 @@ private fun verifyRuntimeConsumer(
     dependencies {
       $platform
       implementation("$core")
+      implementation("$tracing")
       testImplementation("$test")
       testImplementation(kotlin("test"))
     }
@@ -181,14 +193,23 @@ private fun verifyRuntimeConsumer(
       import kotlinx.coroutines.test.runTest
       import org.buildmosaic.core.singleTile
       import org.buildmosaic.test.TestMosaicBuilder
+      import org.buildmosaic.core.injection.canvas
+      import org.buildmosaic.core.injection.create
+      import org.buildmosaic.opentelemetry.tracing
+      import io.opentelemetry.api.OpenTelemetry
       import kotlin.test.Test
 
       class TileTest {
         @Test fun composes() = runTest {
-          val input = singleTile { "original" }
-          val response = singleTile { compose(input).uppercase() }
+          val input by singleTile { "original" }
+          val response by singleTile { compose(input).uppercase() }
           val mosaic = TestMosaicBuilder(this).withMockTile(input, "published").build()
           mosaic.assertEquals(response, "PUBLISHED")
+          kotlin.test.assertEquals("response", response.name)
+        }
+        @Test fun tracingInstalls() = runTest {
+          val configured = canvas { tracing { OpenTelemetry.noop() } }
+          kotlin.test.assertEquals("published", configured.create().compose(singleTile { "published" }))
         }
       }
       """.trimIndent(),
@@ -198,6 +219,10 @@ private fun verifyRuntimeConsumer(
   assertEquals(TaskOutcome.SUCCESS, result.task(":test")?.outcome)
   assertTrue(result.output.contains("org.buildmosaic:mosaic-core:$version"), result.output)
   assertTrue(result.output.contains("org.buildmosaic:mosaic-test:$version"), result.output)
+  assertTrue(result.output.contains("org.buildmosaic:mosaic-opentelemetry:$version"), result.output)
+  assertTrue(result.output.contains("io.opentelemetry:opentelemetry-api:"), result.output)
+  assertTrue(!result.output.contains("io.opentelemetry:opentelemetry-sdk:"), result.output)
+  assertTrue(!result.output.contains("io.opentelemetry:opentelemetry-extension-kotlin:"), result.output)
 }
 
 private fun run(

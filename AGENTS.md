@@ -8,6 +8,7 @@ analysis tooling.
 
 - `mosaic-core`: runtime Canvas, Mosaic, Tile, and MultiTile APIs.
 - `mosaic-test`: runtime tile testing support.
+- `mosaic-opentelemetry`: optional execution tracing through OpenTelemetry.
 - `mosaic-bom`: runtime dependency alignment.
 - `mosaic-analysis-core`: contract model, codec, evaluator, and policy.
 - `mosaic-compiler-plugin`: Kotlin IR to contract extraction.

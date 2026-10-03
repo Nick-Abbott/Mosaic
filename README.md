@@ -6,7 +6,7 @@
 
 [![Tests](https://github.com/Nick-Abbott/Mosaic/workflows/Test%20Badge/badge.svg)](https://github.com/Nick-Abbott/Mosaic/actions?query=workflow%3A%22Test+Badge%22)
 [![Build](https://github.com/Nick-Abbott/Mosaic/workflows/Build%20Badge/badge.svg)](https://github.com/Nick-Abbott/Mosaic/actions?query=workflow%3A%22Build+Badge%22)
-[![Kotlin (development)](https://img.shields.io/badge/kotlin%20(dev)-2.4.20-blue.svg)](https://kotlinlang.org)
+[![Kotlin](https://img.shields.io/badge/kotlin-2.4.20-blue.svg)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 **Think from the response up, not the database down.**
@@ -27,7 +27,7 @@ Tiles. A request-scoped Mosaic shares repeated Tile work automatically.
 An order page needs a summary and shipping details. That's also how you write it:
 
 ```kotlin
-val OrderPageTile = singleTile {
+val OrderPageTile by singleTile {
   val summary = composeAsync(OrderSummaryTile)
   val logistics = composeAsync(LogisticsTile)
 
@@ -42,7 +42,7 @@ The endpoint stays small even when the data behind it doesn't. The summary Tile
 builds its own part of the response:
 
 ```kotlin
-val OrderSummaryTile = singleTile {
+val OrderSummaryTile by singleTile {
   val order = composeAsync(OrderTile)
   val customer = composeAsync(CustomerTile)
   val lineItems = composeAsync(LineItemsTile)
@@ -60,7 +60,7 @@ or see [how the composition works](mosaic-core/README.md#-composition).
 The page needs line items. So does the order total:
 
 ```kotlin
-val OrderTotalTile = singleTile {
+val OrderTotalTile by singleTile {
   compose(LineItemsTile).sumOf { it.price.amount * it.quantity }
 }
 
@@ -80,7 +80,7 @@ fresh. [More on caching and identity →](mosaic-core/README.md#-caching-and-ide
 Have a bulk API? Put it behind a MultiTile:
 
 ```kotlin
-val ProductsByIdTile = multiTile<String, Product> { ids ->
+val ProductsByIdTile by multiTile<String, Product> { ids ->
   ProductService.getProducts(ids.toList())
 }
 
@@ -100,14 +100,11 @@ boundaries depend on scheduling. Choose `perKeyTile` for individual fetches or
 
 ## 🏁 **Try It**
 
-Mosaic 0.5.0 remains the latest published release. Current 0.6 development uses
-Kotlin 2.4.20.
-
 Add Mosaic to a Kotlin/JVM project:
 
 ```kotlin
 dependencies {
-  implementation("org.buildmosaic:mosaic-core:0.5.0")
+  implementation("org.buildmosaic:mosaic-core:0.6.0")
 }
 ```
 
@@ -119,7 +116,7 @@ and keeps their results. A Tile can read an input and call an ordinary service:
 
 ```kotlin
 val OrderKey = CanvasKey(String::class, "orderKey")
-val OrderTile = singleTile {
+val OrderTile by singleTile {
   OrderService.getOrder(source(OrderKey))
 }
 ```
@@ -130,12 +127,10 @@ Bind that input at the request boundary, then ask for the page:
 suspend fun orderPage(applicationCanvas: Canvas, orderId: String): OrderPage =
   applicationCanvas.withLayer {
     single(OrderKey) { orderId }
-  }.use { requestCanvas ->
-    requestCanvas.create().compose(OrderPageTile)
-  }
+  }.create().compose(OrderPageTile)
 ```
 
-Here `use` closes the request Canvas. The [complete quick start](mosaic-core/README.md#-quick-start)
+The [complete quick start](mosaic-core/README.md#-quick-start)
 covers application setup, resource ownership, and runtime requirements.
 
 ## 🗺️ **Your Code, Your Architecture**
@@ -157,11 +152,30 @@ can discover application entry points when safe and follow Tile dependencies
 across modules.
 
 It checks Canvas bindings and distinguishes **confirmed missing dependencies**
-from paths it can't verify. Released 0.5.0 analysis supports **Kotlin/JVM 2.2.10
-only**; current 0.6 development supports **2.4.20 only**. Runtime composition
+from paths it can't verify. Analysis supports **Kotlin/JVM 2.4.20 only**. Runtime composition
 doesn't depend on it. The graph shows static relationships, not runtime traces.
 
 [Set up architecture reports and verification →](mosaic-gradle-plugin/README.md)
+
+## 🔍 **See the Work That Ran**
+
+Add Mosaic execution to your existing OpenTelemetry traces:
+
+```kotlin
+val applicationCanvas = canvas {
+  tracing { openTelemetry }
+}
+```
+
+The optional adapter creates one span per SingleTile execution or MultiTile batch,
+using property names captured by delegated declarations such as
+`val OrderTile by singleTile { ... }`. Unnamed Tiles use `Mosaic single` or `Mosaic multi`.
+Links show shared producers and additional batch callers; cache hits create no new
+spans. Your application owns sampling and export, and Mosaic records no keys,
+results, or exception messages automatically.
+
+`openTelemetry` is your application's configured instance.
+[Set up tracing and see the span semantics →](mosaic-opentelemetry/README.md)
 
 ## 🧪 **Test the Composition, Skip the Services**
 
@@ -185,8 +199,8 @@ inputs, failures, and delays simulated with coroutine virtual time.
 
 ## 📈 **Measured Against Handwritten Kotlin**
 
-Against equivalent optimized Kotlin, Mosaic uses this much additional CPU
-for the same downstream work:
+In the published application benchmark, Mosaic used this much additional CPU
+against equivalent optimized Kotlin for the same downstream work:
 
 | Workload | Additional Mosaic CPU/request |
 | --- | ---: |
@@ -203,7 +217,8 @@ In the coalescing workload, six sibling Tiles independently discovered overlappi
 product keys. Mosaic fetched all 24 distinct products once, using one or two
 backend batches across 40 samples.
 
-Timings depend on hardware and JVM.
+Timings depend on hardware and JVM. These application measurements apply to the
+source revision documented in the report.
 [Performance evidence, workloads, and measurement limits →](performance/README.md)
 
 ## 🌐 **Bring Your HTTP Framework**
