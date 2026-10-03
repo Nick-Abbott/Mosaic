@@ -7,6 +7,11 @@ work where appropriate.
 
 ## Results
 
+The application and JMH tables below describe the measured source revision linked
+under [About these results](#about-these-results).
+The [0.6.0 runtime comparison](../docs/releases/0.6.0.md#runtime-cost) is a separate
+targeted check; these application tables have not been remeasured for 0.6.0.
+
 Mosaic's additional CPU cost depends on the graph:
 
 | Workload | Paired median Mosaic CPU overhead |

@@ -198,8 +198,8 @@ inputs, failures, and delays simulated with coroutine virtual time.
 
 ## 📈 **Measured Against Handwritten Kotlin**
 
-Against equivalent optimized Kotlin, Mosaic uses this much additional CPU
-for the same downstream work:
+In the published application benchmark, Mosaic used this much additional CPU
+against equivalent optimized Kotlin for the same downstream work:
 
 | Workload | Additional Mosaic CPU/request |
 | --- | ---: |
@@ -216,7 +216,9 @@ In the coalescing workload, six sibling Tiles independently discovered overlappi
 product keys. Mosaic fetched all 24 distinct products once, using one or two
 backend batches across 40 samples.
 
-Timings depend on hardware and JVM.
+Timings depend on hardware and JVM. These application measurements apply to the
+source revision in the report; the [0.6.0 runtime check](docs/releases/0.6.0.md#runtime-cost)
+measures the execution changes separately.
 [Performance evidence, workloads, and measurement limits →](performance/README.md)
 
 ## 🌐 **Bring Your HTTP Framework**
