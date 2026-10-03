@@ -34,7 +34,7 @@ identities; unsupported capability captures remain named unknown.
 | C1 | LayerSemantics alias once; CorrectnessRegression distinct constructions; ActivationInvariant per invocation; EC aliases |
 | C2 | ActivationRegression boolean swap, canvas swap |
 | C3 | PathStateRegression forwarded Boolean, separate opaque actuals |
-| C4 | IdentityAndDiscovery declaration identity; EC member-dependent Tile U and Tile getter creation arguments |
+| C4 | IdentityAndDiscovery declaration identity; DelegatedTile top-level/local factories M/V, local ordinary/delegated aliases, binary export M/V/U, arbitrary/property-reference/member/captured delegates U; EC member-dependent Tile U and Tile getter creation arguments |
 | C5 | EC unused lambda V, invoked lambda/reference, returned/conditional callable escape U; DSL fixtures |
 | D1 | EnterpriseAnalysis M/V; G binary enterprise M/V |
 | D2 | LayerSemantics ancestor/nearest, late registration, child override |
@@ -105,7 +105,7 @@ Canvas or a generic root failure. Unknown ordinary Canvas-helper arguments are
 processed by the same call plan: their work remains visible, a known missing
 lookup is required, and harmless actuals can verify.
 
-## Classifier boundary (Kotlin 2.2.10)
+## Classifier boundary (Kotlin 2.4.20)
 
 Both ordinary normalization and structural omission must use the same operation
 proof. Arguments/receivers execute before that proof; callable bodies do not
@@ -115,7 +115,7 @@ and every structural early-return category. New assertions share EC's compilatio
 | Classifier category | Evidence / expected outcome and EC roots |
 |---|---|
 | `EQEQ` | May dispatch user `equals`: `structuralEquality` U (implicit equals), `conditionalEquality` U (control). Harmless constructors isolate dispatch. Primitive/String operand proof: `primitiveEquality`, `stringEquality`, existing `harmlessControl` V. |
-| `setOf`, `mutableSetOf`, `mapOf`, `mutableMapOf` | Kotlin 2.2.10 stdlib bytecode populates sets/maps; element/key hashing/equality may call user code. `setCallbacks`, `mutableSetCallbacks`, `mapCallbacks`, `mutableMapCallbacks`, `opaqueSet` U (implicit hashCode/equals). Scalar elements/keys and statically empty inputs V: `safeCollections`, `safeMaps`, `safeSetSpread`. Map values require no hashing proof. |
+| `setOf`, `mutableSetOf`, `mapOf`, `mutableMapOf` | Kotlin 2.4.20 stdlib bytecode populates sets/maps; element/key hashing/equality may call user code. `setCallbacks`, `mutableSetCallbacks`, `mapCallbacks`, `mutableMapCallbacks`, `opaqueSet` U (implicit hashCode/equals). Scalar elements/keys and statically empty inputs V: `safeCollections`, `safeMaps`, `safeSetSpread`. Map values require no hashing proof. |
 | `error` | Stdlib bytecode invokes message `Object.toString`: `errorCallback` U (implicit toString); `errorConstant` V within Canvas-availability scope (general exceptions are excluded). |
 | Any constructor, String toString, primitive operations | Exact built-ins only; final scalar implementations do not dispatch user callbacks. Existing domain/primitive controls V. No package-prefix exemption. |
 | `less`, `greater`, `lessOrEqual`, `greaterOrEqual` | Compiler primitive comparison intrinsics; any preceding user `compareTo` is an evaluated child. Existing harmless loop/comparison V. |

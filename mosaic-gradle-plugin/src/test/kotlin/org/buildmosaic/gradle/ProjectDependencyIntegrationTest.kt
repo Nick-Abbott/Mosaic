@@ -27,7 +27,7 @@ class ProjectDependencyIntegrationTest {
       pluginManagement {
         repositories { gradlePluginPortal(); mavenCentral() }
         resolutionStrategy.eachPlugin {
-          if (requested.id.id == "org.jetbrains.kotlin.jvm") useModule("org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.10")
+          if (requested.id.id == "org.jetbrains.kotlin.jvm") useModule("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.20")
         }
       }
       rootProject.name = "project-dependency"
@@ -38,7 +38,7 @@ class ProjectDependencyIntegrationTest {
       val module = File(root, name).apply { mkdirs() }
       File(module, "build.gradle.kts").writeText(
         """
-        plugins { kotlin("jvm") version "2.2.10"; id("org.buildmosaic.analysis") }
+        plugins { kotlin("jvm") version "2.4.20"; id("org.buildmosaic.analysis") }
         group = "fixture"
         repositories {
           flatDir { dirs("${pluginJar.parentFile.invariantSeparatorsPath}") }
@@ -46,7 +46,7 @@ class ProjectDependencyIntegrationTest {
         }
         dependencies {
           implementation(files("${coreJar.invariantSeparatorsPath}"))
-          implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+          implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
           ${if (name == "consumer") "implementation(project(\":producer\"))" else ""}
         }
         mosaicAnalysis {
@@ -60,8 +60,13 @@ class ProjectDependencyIntegrationTest {
       writeText(
         """
         package producer
+        import org.buildmosaic.core.*
         import org.buildmosaic.core.injection.*
         class Metrics
+        val Single by singleTile { source<Metrics>() }
+        val Batch by multiTile<String, Metrics> { source<Metrics>(); emptyMap() }
+        val PerKey by perKeyTile<String, Metrics> { source<Metrics>() }
+        val Chunked by chunkedMultiTile<String, Metrics>(2) { source<Metrics>(); emptyMap() }
         suspend fun base(): Canvas = canvas { single<Metrics> { Metrics() } }
         """.trimIndent(),
       )
@@ -74,8 +79,15 @@ class ProjectDependencyIntegrationTest {
         import org.buildmosaic.core.*
         import org.buildmosaic.core.injection.*
         import producer.*
-        val MetricsTile = singleTile { source<Metrics>() }
-        suspend fun entry(): Metrics = base().create().compose(MetricsTile)
+        val MetricsTile by singleTile { source<Metrics>() }
+        suspend fun entry(): Metrics {
+          val mosaic = base().create()
+          mosaic.compose(Single)
+          mosaic.compose(Batch, "key")
+          mosaic.compose(PerKey, "key")
+          mosaic.compose(Chunked, "key")
+          return mosaic.compose(MetricsTile)
+        }
         """.trimIndent(),
       )
     }

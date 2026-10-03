@@ -101,10 +101,12 @@ class MultiTileObservationTest {
   @Test fun callerProjectionPreservesImmutableMetadata() {
     val originalCaller = CallerSnapshot(TestIdentity(1), TestCaller(1))
     val input = MutableList(63) { originalCaller }
-    val original = ExecutionStart(ExecutionKind.MULTI, 100, Contributors(originalCaller, input, 100), 123)
+    val original =
+      ExecutionStart(ExecutionKind.MULTI, 100, Contributors(originalCaller, input, 100), 123, "Products")
     input.clear()
     val projectedIdentity = TestIdentity(2)
     val projected = original.mapCallers { it.copy(execution = projectedIdentity, context = null) }
+    assertEquals("Products", projected.tileName)
     assertEquals(original.kind, projected.kind)
     assertEquals(original.batchSize, projected.batchSize)
     assertEquals(original.startedAtNanos, projected.startedAtNanos)

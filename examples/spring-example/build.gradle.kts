@@ -1,6 +1,6 @@
 plugins {
   kotlin("jvm")
-  id("org.jetbrains.kotlin.plugin.spring") version "2.2.10"
+  id("org.jetbrains.kotlin.plugin.spring") version "2.4.20"
   application
 }
 

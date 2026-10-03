@@ -32,7 +32,7 @@ internal class OpenTelemetryObserver(private val tracer: Tracer) : ExecutionObse
     val clock = SpanClock(start.startedAtNanos)
     val multi = start.kind == ExecutionKind.MULTI
     val builder =
-      tracer.spanBuilder(if (multi) "Mosaic multi" else "Mosaic single")
+      tracer.spanBuilder(start.tileName ?: if (multi) "Mosaic multi" else "Mosaic single")
         .setSpanKind(SpanKind.INTERNAL)
         .setParent(parent)
         .setStartTimestamp(clock.start, TimeUnit.NANOSECONDS)

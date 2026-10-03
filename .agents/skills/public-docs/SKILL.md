@@ -80,6 +80,14 @@ and optional analysis tooling distinct. Summarize performance for adoption and
 link to [application results and methodology](../../../performance/README.md);
 [runtime microbenchmarks](../../../docs/performance.md) answer a different question.
 
+Write evergreen documentation as a description of how Mosaic works now. Avoid
+“introduced in version X,” “previously,” “current development,” PR chronology,
+migration history, and before/after narration. Put release and change history in
+changelogs or release notes. Include exact dependency, toolchain, or library
+versions only when needed for installation, compatibility, configuration, or
+operation. In broader docs, link to the canonical compatibility or setup page
+rather than repeating its version constraints.
+
 Prefer concrete claims, short paragraphs, useful examples, clear hierarchy, and
 Mosaic's existing terms (Canvas, Mosaic, Tile, MultiTile). Lead with user value.
 Avoid generic AI prose, unsupported adjectives, repeated explanations, and raw

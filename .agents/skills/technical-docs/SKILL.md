@@ -68,6 +68,14 @@ and Mosaic terminology, use short paragraphs and useful examples, and link to
 deeper material instead of repeating it. Keep maintainer/process details in
 maintenance documentation and out of user guides unless needed for the task.
 
+Write evergreen documentation as a description of how Mosaic works now. Avoid
+“introduced in version X,” “previously,” “current development,” PR chronology,
+migration history, and before/after narration. Put release and change history in
+changelogs or release notes. Include exact dependency, toolchain, or library
+versions only when needed for installation, compatibility, configuration, or
+operation. In broader docs, link to the canonical compatibility or setup page
+rather than repeating its version constraints.
+
 Verify code, API names, commands, versions, defaults, and constraints against
 source, tests, examples, and build configuration. Examples should compile or
 faithfully reflect the current API with necessary context made clear. Keep

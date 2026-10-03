@@ -6,7 +6,7 @@
 
 [![Tests](https://github.com/Nick-Abbott/Mosaic/workflows/Test%20Badge/badge.svg)](https://github.com/Nick-Abbott/Mosaic/actions?query=workflow%3A%22Test+Badge%22)
 [![Build](https://github.com/Nick-Abbott/Mosaic/workflows/Build%20Badge/badge.svg)](https://github.com/Nick-Abbott/Mosaic/actions?query=workflow%3A%22Build+Badge%22)
-[![Kotlin](https://img.shields.io/badge/kotlin-2.2.10-blue.svg)](https://kotlinlang.org)
+[![Kotlin](https://img.shields.io/badge/kotlin-2.4.20-blue.svg)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 **Think from the response up, not the database down.**
@@ -100,12 +100,11 @@ boundaries depend on scheduling. Choose `perKeyTile` for individual fetches or
 
 ## 🏁 **Try It**
 
-Add Mosaic to a Kotlin/JVM project. Replace `VERSION` with your chosen Mosaic
-release version:
+Add Mosaic to a Kotlin/JVM project:
 
 ```kotlin
 dependencies {
-  implementation("org.buildmosaic:mosaic-core:VERSION")
+  implementation("org.buildmosaic:mosaic-core:0.6.0")
 }
 ```
 
@@ -117,7 +116,7 @@ and keeps their results. A Tile can read an input and call an ordinary service:
 
 ```kotlin
 val OrderKey = CanvasKey(String::class, "orderKey")
-val OrderTile = singleTile {
+val OrderTile by singleTile {
   OrderService.getOrder(source(OrderKey))
 }
 ```
@@ -128,12 +127,10 @@ Bind that input at the request boundary, then ask for the page:
 suspend fun orderPage(applicationCanvas: Canvas, orderId: String): OrderPage =
   applicationCanvas.withLayer {
     single(OrderKey) { orderId }
-  }.use { requestCanvas ->
-    requestCanvas.create().compose(OrderPageTile)
-  }
+  }.create().compose(OrderPageTile)
 ```
 
-Here `use` closes the request Canvas. The [complete quick start](mosaic-core/README.md#-quick-start)
+The [complete quick start](mosaic-core/README.md#-quick-start)
 covers application setup, resource ownership, and runtime requirements.
 
 ## 🗺️ **Your Code, Your Architecture**
@@ -155,9 +152,8 @@ can discover application entry points when safe and follow Tile dependencies
 across modules.
 
 It checks Canvas bindings and distinguishes **confirmed missing dependencies**
-from paths it can't verify. This optional tooling supports **Kotlin/JVM 2.2.10
-only**; runtime composition doesn't depend on it. The graph shows static
-relationships, not runtime traces.
+from paths it can't verify. Analysis supports **Kotlin/JVM 2.4.20 only**. Runtime composition
+doesn't depend on it. The graph shows static relationships, not runtime traces.
 
 [Set up architecture reports and verification →](mosaic-gradle-plugin/README.md)
 
@@ -171,7 +167,8 @@ val applicationCanvas = canvas {
 }
 ```
 
-The optional adapter creates one span per SingleTile execution or MultiTile batch.
+The optional adapter creates one span per SingleTile execution or MultiTile batch,
+using delegated Tile names such as `OrderTile`.
 Links show shared producers and additional batch callers; cache hits create no new
 spans. Your application owns sampling and export, and Mosaic records no keys,
 results, or exception messages automatically.

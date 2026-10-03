@@ -111,7 +111,7 @@ class PublishedInstallationTest {
     consumer.resolve("build.gradle.kts").writeText(
       """
       plugins {
-        kotlin("jvm") version "2.2.10"
+        kotlin("jvm") version "2.4.20"
         id("org.buildmosaic.analysis") version "$version"
       }
       version = "99.0.0"
@@ -149,7 +149,7 @@ class PublishedInstallationTest {
     assertTrue(summary.module.callables.any { it.id == "app.entry()" && it.effects.isNotEmpty() })
     JarFile(consumer.resolve("build/libs/app-99.0.0.jar")).use { assertTrue(it.getEntry(SUMMARY_PATH) != null) }
 
-    verifyRuntimeConsumer(workspace, maven, version, useBom = false)
+    verifyRuntimeConsumer(workspace, maven, version, useBom = false, kotlinVersion = "2.3.0")
     verifyRuntimeConsumer(workspace, maven, version, useBom = true)
   }
 }
@@ -159,6 +159,7 @@ private fun verifyRuntimeConsumer(
   maven: File,
   version: String,
   useBom: Boolean,
+  kotlinVersion: String = "2.4.20",
 ) {
   val consumer = workspace.resolve(if (useBom) "bom-consumer" else "runtime-consumer").apply { mkdirs() }
   consumer.resolve("settings.gradle.kts").writeText(
@@ -174,7 +175,7 @@ private fun verifyRuntimeConsumer(
   val platform = if (useBom) "implementation(platform(\"org.buildmosaic:mosaic-bom:$version\"))" else ""
   consumer.resolve("build.gradle.kts").writeText(
     """
-    plugins { kotlin("jvm") version "2.2.10" }
+    plugins { kotlin("jvm") version "$kotlinVersion" }
     dependencies {
       $platform
       implementation("$core")
@@ -200,10 +201,11 @@ private fun verifyRuntimeConsumer(
 
       class TileTest {
         @Test fun composes() = runTest {
-          val input = singleTile { "original" }
-          val response = singleTile { compose(input).uppercase() }
+          val input by singleTile { "original" }
+          val response by singleTile { compose(input).uppercase() }
           val mosaic = TestMosaicBuilder(this).withMockTile(input, "published").build()
           mosaic.assertEquals(response, "PUBLISHED")
+          kotlin.test.assertEquals("response", response.name)
         }
         @Test fun tracingInstalls() = runTest {
           val configured = canvas { tracing { OpenTelemetry.noop() } }

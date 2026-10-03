@@ -25,6 +25,7 @@ import kotlin.coroutines.CoroutineContext
  * @param canvas Dependency bindings and immutable runtime configuration.
  * @param dispatcher Dispatcher for all executions, whether observed or unobserved.
  */
+@Suppress("LargeClass") // Keep request execution, reservation admission, and cancellation under one owner.
 open class MosaicImpl(
   override val canvas: Canvas,
   dispatcher: CoroutineDispatcher = Dispatchers.Default,
@@ -117,7 +118,7 @@ open class MosaicImpl(
       val contributors = capturedCaller?.let { Contributors(it, emptyList(), 1) }
       capturedCaller = null
       executeWork(
-        contributors?.let { ExecutionStart(ExecutionKind.SINGLE, null, it, System.nanoTime()) },
+        contributors?.let { ExecutionStart(ExecutionKind.SINGLE, null, it, System.nanoTime(), tile.name) },
         listOfNotNull(entry.producer),
         { entry.fail(it) },
       ) {
@@ -160,7 +161,9 @@ open class MosaicImpl(
     try {
       val keys = batch.prepareKeys()
       executeWork(
-        batch.takeContributors()?.let { ExecutionStart(ExecutionKind.MULTI, keys.size, it, System.nanoTime()) },
+        batch.takeContributors()?.let {
+          ExecutionStart(ExecutionKind.MULTI, keys.size, it, System.nanoTime(), tile.name)
+        },
         batch.producers,
         batch::fail,
       ) {

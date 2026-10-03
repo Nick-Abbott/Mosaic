@@ -4,7 +4,7 @@ This module provides a Bill of Materials (BOM) for Mosaic, making it easier to a
 
 ## Usage
 
-Replace `VERSION` with your chosen Mosaic release version.
+Use the same version across Mosaic modules.
 
 ### Gradle (Kotlin DSL)
 
@@ -13,7 +13,7 @@ Replace `VERSION` with your chosen Mosaic release version.
 
 dependencies {
     // Import the BOM
-    implementation(platform("org.buildmosaic:mosaic-bom:VERSION"))
+    implementation(platform("org.buildmosaic:mosaic-bom:0.6.0"))
     
     // Add Mosaic dependencies without version numbers
     implementation("org.buildmosaic:mosaic-core")
@@ -28,7 +28,7 @@ dependencies {
 
 dependencies {
     // Import the BOM
-    implementation platform('org.buildmosaic:mosaic-bom:VERSION')
+    implementation platform('org.buildmosaic:mosaic-bom:0.6.0')
     
     // Add Mosaic dependencies without version numbers
     implementation 'org.buildmosaic:mosaic-core'
@@ -45,7 +45,7 @@ dependencies {
             <dependency>
                 <groupId>org.buildmosaic</groupId>
                 <artifactId>mosaic-bom</artifactId>
-                <version>VERSION</version>
+                <version>0.6.0</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -83,9 +83,9 @@ The BOM includes the following Mosaic artifacts:
 
 Mosaic uses ordinary library dependencies. The BOM aligns `mosaic-core` and
 `mosaic-test` and constrains the optional `mosaic-opentelemetry` adapter without
-adding it to your application. No Mosaic-specific registration plugin or processor is needed.
-The Kotlin 2.2.10 restriction applies to the optional analysis plugin, not to
-the BOM itself.
+adding it to your application. No Mosaic-specific registration plugin or processor
+is needed. The exact Kotlin version restriction applies to the optional
+[analysis plugin](../mosaic-gradle-plugin/README.md), not to the BOM itself.
 
 ## Versioning
 

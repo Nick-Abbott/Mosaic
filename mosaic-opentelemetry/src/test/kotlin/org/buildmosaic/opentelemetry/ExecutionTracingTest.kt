@@ -6,7 +6,9 @@ import io.opentelemetry.api.trace.StatusCode
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
+import org.buildmosaic.core.chunkedMultiTile
 import org.buildmosaic.core.multiTile
+import org.buildmosaic.core.perKeyTile
 import org.buildmosaic.core.singleTile
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -14,6 +16,36 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ExecutionTracingTest {
+  @Test fun delegatedNamesPreserveExecutionAndReuse() =
+    runTest {
+      TelemetryFixture().use { otel ->
+        val mosaic = otel.mosaic(StandardTestDispatcher(testScheduler))
+        val orderTile by singleTile { 7 }
+        val alias by orderTile
+        val products by multiTile<Int, Int> { keys -> keys.associateWith { it } }
+        val perKey by perKeyTile<Int, Int> { it }
+        val chunked by chunkedMultiTile<Int, Int>(1) { keys -> keys.associateWith { it } }
+        val unnamed = singleTile { 9 }
+        val unnamedMulti = multiTile<Int, Int> { keys -> keys.associateWith { it } }
+        assertEquals(7, mosaic.compose(alias))
+        assertEquals(7, mosaic.compose(orderTile))
+        assertEquals(1, mosaic.compose(products, 1))
+        assertEquals(1, mosaic.compose(products, 1))
+        assertEquals(2, mosaic.compose(perKey, 2))
+        assertEquals(mapOf(3 to 3, 4 to 4), mosaic.compose(chunked, listOf(3, 4)))
+        assertEquals(9, mosaic.compose(unnamed))
+        assertEquals(5, mosaic.compose(unnamedMulti, 5))
+        testScheduler.runCurrent()
+        assertEquals(
+          setOf("orderTile", "products", "perKey", "chunked", "Mosaic single", "Mosaic multi"),
+          otel.spans.map { it.name }.toSet(),
+        )
+        assertEquals(6, otel.spans.size)
+        assertEquals("single", otel.spans.single { it.name == "orderTile" }.attribute("mosaic.execution.kind"))
+        assertEquals(2, otel.spans.single { it.name == "chunked" }.count("mosaic.batch.size"))
+      }
+    }
+
   @Test fun singleExecutionParentsAndReuseRelationships() =
     runTest {
       TelemetryFixture().use { otel ->

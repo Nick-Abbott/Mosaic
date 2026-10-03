@@ -26,8 +26,8 @@ fun CanvasBuilder.tracing() {
  * setup, after duplicate validation; descendants inherit this installation. Separate request Mosaics
  * share configuration, never cached work. Explicit no-op providers are accepted.
  *
- * The application owns its SDK, sampling, processors, export, and shutdown. Mosaic records structural
- * execution data only; it never records keys, results, Canvas values, or raw exceptions.
+ * The application owns its SDK, sampling, processors, export, and shutdown. Mosaic records
+ * delegated Tile names and structural execution data; it never records keys, results, Canvas values, or raw exceptions.
  */
 fun CanvasBuilder.tracing(openTelemetry: () -> OpenTelemetry) {
   installExecutionObserver { OpenTelemetryObserver(openTelemetry().getTracer("org.buildmosaic.mosaic-opentelemetry")) }

@@ -11,6 +11,9 @@ import org.buildmosaic.analysis.metadata.toModel
 import org.buildmosaic.analysis.metadata.toWire
 import java.security.MessageDigest
 
+/** Compiler and Gradle plugin version supported by this analysis contract reader and writer. */
+const val ANALYSIS_KOTLIN_VERSION = "2.4.20"
+
 /** Internal JAR resource. Compatibility is decided by the header, not this path. */
 const val SUMMARY_PATH = "META-INF/mosaic-analysis/v1/summary.json"
 
@@ -32,7 +35,6 @@ object SummaryCodec {
   private const val FORMAT_VERSION = 3
   private const val SEMANTICS_VERSION = "analysis-contract-2"
   private const val TOOL_VERSION = "prototype-10"
-  private const val COMPILER_VERSION = "2.2.10"
   private val json =
     Json {
       classDiscriminator = "kind"
@@ -57,7 +59,7 @@ object SummaryCodec {
       )
     val envelope =
       WireEnvelope(
-        FORMAT_VERSION, SEMANTICS_VERSION, TOOL_VERSION, COMPILER_VERSION, moduleId, sourceSet, true,
+        FORMAT_VERSION, SEMANTICS_VERSION, TOOL_VERSION, ANALYSIS_KOTLIN_VERSION, moduleId, sourceSet, true,
         sha256(
           json.encodeToString(payload).toByteArray(Charsets.UTF_8),
         ),
@@ -82,7 +84,7 @@ object SummaryCodec {
       require(envelope.semanticsVersion == SEMANTICS_VERSION) {
         "Unsupported Mosaic analyzer semantics ${envelope.semanticsVersion}"
       }
-      require(envelope.kotlinCompilerVersion == COMPILER_VERSION) {
+      require(envelope.kotlinCompilerVersion == ANALYSIS_KOTLIN_VERSION) {
         "Unsupported Kotlin compiler ${envelope.kotlinCompilerVersion}"
       }
       require(envelope.toolVersion.isNotBlank()) { "Missing Mosaic producer version" }

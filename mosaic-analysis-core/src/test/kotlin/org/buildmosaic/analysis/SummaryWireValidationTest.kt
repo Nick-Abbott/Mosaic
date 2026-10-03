@@ -22,7 +22,7 @@ class SummaryWireValidationTest {
   fun `prototype seven metadata is rejected explicitly`() {
     val prototype =
       """
-      {"schemaMajor":1,"schemaMinor":1,"toolVersion":"prototype-7","kotlinCompilerVersion":"2.2.10",
+      {"schemaMajor":1,"schemaMinor":1,"toolVersion":"prototype-7","kotlinCompilerVersion":"2.4.20",
       "moduleId":"sample","sourceSet":"main","complete":true,"payloadHash":"unused",
       "module":{"id":"sample","canvases":[],"tiles":[],"callables":[],"overrides":[]}}
       """.trimIndent()

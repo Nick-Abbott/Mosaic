@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This published build-tooling module is a read-only Kotlin 2.2.10 K2 compiler plugin. It uses
+This build-tooling module is a read-only Kotlin 2.4.20 K2 compiler plugin. It uses
 `CompilerPluginRegistrar` and `IrGenerationExtension` before IR lowering. It
 does not transform Kotlin or run Mosaic code. The Gradle plugin installs it into the normal Kotlin/JVM `main`
 compilation through Kotlin’s compiler-subplugin API. It emits per-source internal
@@ -65,7 +65,9 @@ are not a public metadata format. After an incremental IR invocation, the
 compiler plugin removes obsolete shard files. A current-source manifest selects
 only current shards for assembly, including when Kotlin has no sources and does
 not invoke the plugin. The discovery path stays stable; the explicit header governs
-compatibility. Format 3 uses `analysis-contract-2` semantics and Kotlin 2.2.10.
+compatibility. Format 3 uses `analysis-contract-2` semantics
+and Kotlin 2.4.20. Summaries from other Kotlin compiler versions must be
+regenerated before analysis.
 The producer version is `prototype-10`. Unpublished prototype-7 snapshots are
 rejected and must be regenerated. The payload checksum covers the canonical
 module, stable key exports, provenance limitations, and binary locators; it detects corruption,
@@ -110,10 +112,20 @@ or prove general exception safety.
 DSL receivers bind the entry Canvas to invocation-local value references before
 body evaluation. Captures retain that Canvas across nested builders/providers;
 a provider's own receiver binds its construction layer without reconstructing it.
-Stable Tile properties require a top-level immutable declaration with a default
-getter and supported Tile initializer. Custom getters retain evaluated effects
-but yield unknown Tile provenance. Binary references require a proven stable
-Tile export from the selected producer summary; a top-level val alone is no proof.
+Stable Tile properties require a top-level immutable declaration with a supported
+Tile initializer and either a default getter or Mosaic's generated delegated
+getter. `by singleTile`, `by multiTile`, `by perKeyTile`, and `by chunkedMultiTile`
+unwrap only Mosaic's own `provideDelegate`/`getValue` operators with compiler-created
+property references. In pre-lowering IR, top-level getters read a delegate field
+and local getters read a delegate variable. The local delegate API is nullable;
+an absent or unrecognized delegate stays unknown. Supported local delegated Tile
+values preserve fresh allocation identities and immutable aliases;
+capability-bearing captures remain unknown. Arbitrary delegates, custom getters,
+and member-dependent Tiles have conservative boundaries. Naming is runtime
+metadata: this read-only plugin does not name ordinary `=` declarations.
+Custom getters retain evaluated effects but yield unknown Tile provenance. Binary
+references require a proven stable Tile export from the selected producer summary;
+a top-level val alone is no proof.
 
 ## Test placement
 

@@ -1,5 +1,6 @@
 package org.buildmosaic.gradle
 
+import org.buildmosaic.analysis.ANALYSIS_KOTLIN_VERSION
 import org.buildmosaic.analysis.SourceShardCodec
 import org.buildmosaic.analysis.SourceShardPaths
 import org.buildmosaic.analysis.SummaryCodec
@@ -124,8 +125,11 @@ abstract class ExtractMosaicTask : DefaultTask() {
 
   private fun validateConfiguration() {
     requireSupported(
-      productionCompilerVersion.get().matches(Regex("2\\.2\\.10(?:-release-[0-9]+)?")),
-      "Mosaic extraction requires Kotlin Gradle plugin 2.2.10; found ${productionCompilerVersion.get()}",
+      productionCompilerVersion.get().matches(
+        Regex("${Regex.escape(ANALYSIS_KOTLIN_VERSION)}(?:-release-[0-9]+)?"),
+      ),
+      "Mosaic extraction requires Kotlin Gradle plugin $ANALYSIS_KOTLIN_VERSION; " +
+        "found ${productionCompilerVersion.get()}",
     )
     val compilerPlugins = additionalCompilerPlugins.files.filter { it.name.startsWith("mosaic-compiler-plugin-") }
     requireSupported(compilerPlugins.size == 1, "Mosaic compiler plugin artifact was not resolved exactly once")
@@ -176,11 +180,11 @@ private fun requireSupported(
 private fun isDefaultKotlinCompilerArtifact(file: File): Boolean =
   file.name in
     setOf(
-      "kotlin-scripting-compiler-embeddable-2.2.10.jar",
-      "kotlin-scripting-compiler-impl-embeddable-2.2.10.jar",
-      "kotlin-scripting-jvm-2.2.10.jar",
-      "kotlin-scripting-common-2.2.10.jar",
-      "kotlin-stdlib-2.2.10.jar",
-      "kotlin-script-runtime-2.2.10.jar",
+      "kotlin-scripting-compiler-embeddable-$ANALYSIS_KOTLIN_VERSION.jar",
+      "kotlin-scripting-compiler-impl-embeddable-$ANALYSIS_KOTLIN_VERSION.jar",
+      "kotlin-scripting-jvm-$ANALYSIS_KOTLIN_VERSION.jar",
+      "kotlin-scripting-common-$ANALYSIS_KOTLIN_VERSION.jar",
+      "kotlin-stdlib-$ANALYSIS_KOTLIN_VERSION.jar",
+      "kotlin-script-runtime-$ANALYSIS_KOTLIN_VERSION.jar",
       "annotations-13.0.jar",
     )

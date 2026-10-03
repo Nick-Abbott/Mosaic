@@ -16,7 +16,8 @@ interface ExecutionIdentity
  * Callbacks can run concurrently across executions and child coroutines; integrations coordinate
  * their own mutable state.
  *
- * Mosaic supplies only structural data and opaque integration-owned tokens: no keys, values, Canvas
+ * Mosaic supplies structural data, an optional delegated Tile name, and opaque integration-owned tokens:
+ * no keys, values, Canvas
  * contents, request identifiers, or Throwable objects. Integrations control their own token contents.
  * Callback reentry uses normal composition, but does not inherit the surrounding core execution
  * relationship. Provider ambient context is left intact; nested actual executions establish their own
@@ -98,12 +99,14 @@ class Contributors internal constructor(
   }
 }
 
-/** Contains no Tile object, label, application keys, or values. Naming is outside this API slice. */
+/** Fixed execution metadata, with no Tile object, application keys, or values. */
 class ExecutionStart internal constructor(
   val kind: ExecutionKind,
   val batchSize: Int?,
   val contributors: Contributors,
   val startedAtNanos: Long,
+  /** Delegated property name at execution start, or null for an unnamed Tile. Labels are not identities. */
+  val tileName: String? = null,
 ) {
   /**
    * Projects every retained caller without changing structural data, order, counts, or truncation.
@@ -116,6 +119,7 @@ class ExecutionStart internal constructor(
       batchSize,
       Contributors(transform(contributors.initiating), contributors.additional.map(transform), contributors.totalCount),
       startedAtNanos,
+      tileName,
     )
 }
 

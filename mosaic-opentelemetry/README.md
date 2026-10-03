@@ -6,8 +6,7 @@ existing OpenTelemetry traces.
 
 ## Setup
 
-Add the adapter to your Kotlin/JVM application. Replace `VERSION` with your
-chosen Mosaic release version:
+Add the adapter to your Kotlin/JVM application:
 
 ```kotlin
 repositories {
@@ -15,7 +14,7 @@ repositories {
 }
 
 dependencies {
-  implementation("org.buildmosaic:mosaic-opentelemetry:VERSION")
+  implementation("org.buildmosaic:mosaic-opentelemetry:0.6.0")
 }
 ```
 
@@ -71,12 +70,16 @@ factory to bypass global discovery; explicitly supplied no-op providers are acce
 
 | Mosaic work | OpenTelemetry behavior |
 | --- | --- |
-| An actual SingleTile execution | One `INTERNAL` span named `Mosaic single` |
-| An actual MultiTile batch | One `INTERNAL` span named `Mosaic multi`, with batch size |
+| An actual SingleTile execution | One `INTERNAL` span named after the delegated Tile, or `Mosaic single` |
+| An actual MultiTile batch | One `INTERNAL` span named after the delegated MultiTile, or `Mosaic multi`, with batch size |
 | Initiating caller | Its captured OpenTelemetry context becomes the parent |
 | Additional retained batch callers | Distinct contributor span links, available at creation for sampling |
 | Composed producer, including cached work | A dependency link to its actual execution identity |
 | Unresolved producer | A subscription adds the dependency link when its identity becomes available |
+
+Use `val OrderTile by singleTile { ... }` to give executions a useful name. Names
+are labels, not cache identities; aliases preserve the first bound name. Ordinary
+`=` declarations use the generic fallback until delegated.
 
 Repeated cache reads create no new spans. Multiple reservation groups produced
 by one batch link to that same batch span. Relationships deduplicate by trace ID
@@ -119,7 +122,8 @@ limits can further restrict exported links.
 
 ## Privacy and failure behavior
 
-Automatic attributes contain execution kind, batch size, contributor counts, and
+Span names include delegated property names when available. Choose static names
+that contain no sensitive information. Automatic attributes contain execution kind, batch size, contributor counts, and
 truncation flags. Failures set `ERROR` and optional `error.type` with the exception
 class name. Cancellation sets `mosaic.execution.cancelled` and leaves status unset.
 Mosaic never calls `recordException` or records keys, results, Canvas values,
