@@ -1,11 +1,12 @@
 # Mosaic BOM (Bill of Materials)
 
-This module provides a Bill of Materials (BOM) for Mosaic, making it easier to align versions of Mosaic runtime dependencies.
+The Mosaic BOM aligns `mosaic-core`, `mosaic-test`, and optional
+`mosaic-opentelemetry` to the BOM version.
 
 ## Usage
 
-Use the same version across Mosaic runtime modules. Add only the libraries your
-application needs; importing the BOM does not install them.
+Import the BOM and omit versions on Mosaic runtime dependencies. Add only the
+libraries your application needs; importing the BOM does not install them.
 
 ### Gradle (Kotlin DSL)
 
@@ -71,27 +72,10 @@ dependencies {
 </project>
 ```
 
-## Benefits of Using the BOM
+## Scope
 
-1. **Simplified Dependency Management**: One version for the included Mosaic runtime libraries
-2. **Version Alignment**: Aligns `mosaic-core`, `mosaic-test`, and optional `mosaic-opentelemetry` versions
-3. **Easier Upgrades**: Update the included runtime libraries by changing one BOM version
-4. **Reduced Configuration**: No need to specify versions for the included runtime dependencies
-
-## Included Dependencies
-
-The BOM includes the following Mosaic artifacts:
-
-- `mosaic-core`: Core Mosaic functionality
-- `mosaic-test`: Testing utilities for Mosaic
-- `mosaic-opentelemetry`: Optional tracing through the application's OpenTelemetry pipeline
-
-Mosaic uses ordinary library dependencies. The BOM aligns `mosaic-core` and
-`mosaic-test` and constrains the optional `mosaic-opentelemetry` adapter without
-adding it to your application. No Mosaic-specific registration plugin or processor
-is needed. The exact Kotlin version restriction applies to the optional
-[analysis plugin](../mosaic-gradle-plugin/README.md), not to the BOM itself.
-
-## Versioning
-
-The BOM follows [Semantic Versioning](https://semver.org/). The version number of the BOM should match the version of the Mosaic components it includes.
+The BOM aligns runtime libraries only. It does not include the optional
+[analysis plugins](../mosaic-gradle-plugin/README.md), whose Kotlin version
+requirements are separate from runtime compatibility. See
+[core requirements](../mosaic-core/README.md#requirements-and-installation)
+for supported runtime toolchains.

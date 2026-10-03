@@ -1,11 +1,13 @@
 package org.buildmosaic.core.observation
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CompletableJob
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -22,6 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertSame
@@ -197,17 +200,66 @@ class ExecutionSchedulingTest {
       }
     }
 
-  @Test fun unobservedChildFailureIsContained() =
+  @Test fun manualChildrenDrainAndCancelWithRequest() =
+    runTest {
+      for (kind in ExecutionKind.entries) {
+        for (cancelRequest in listOf(false, true)) {
+          val mosaic = MosaicImpl(canvas {}, StandardTestDispatcher(testScheduler))
+          val gate = CompletableDeferred<Unit>()
+          var childSettled = false
+          val work: suspend () -> Int = {
+            CoroutineScope(currentCoroutineContext()).launch {
+              try {
+                gate.await()
+              } finally {
+                childSettled = true
+              }
+            }
+            3
+          }
+          val result =
+            when (kind) {
+              ExecutionKind.SINGLE -> mosaic.composeAsync(singleTile { work() })
+              ExecutionKind.MULTI ->
+                mosaic.composeAsync(
+                  multiTile<Int, Int> {
+                      keys ->
+                    keys.associateWith { work() }
+                  },
+                  1,
+                )
+            }
+          testScheduler.runCurrent()
+          assertEquals(3, result.await())
+          val request = checkNotNull(mosaic.coroutineContext[Job]) as CompletableJob
+          request.complete()
+          testScheduler.runCurrent()
+          assertFalse(request.isCompleted)
+          assertFalse(childSettled)
+          if (cancelRequest) request.cancel() else gate.complete(Unit)
+          testScheduler.runCurrent()
+          request.join()
+          assertTrue(childSettled)
+          assertTrue(request.isCompleted)
+          assertTrue(request.children.none())
+          assertEquals(3, result.await())
+        }
+      }
+    }
+
+  @Test fun explicitScopeContainsChildFailure() =
     runTest {
       for (kind in ExecutionKind.entries) {
         val mosaic = MosaicImpl(canvas {}, StandardTestDispatcher(testScheduler))
         val gate = CompletableDeferred<Unit>()
         val work: suspend () -> Int = {
-          CoroutineScope(currentCoroutineContext()).launch {
-            gate.await()
-            error("attached child failed")
+          coroutineScope {
+            launch {
+              gate.await()
+              error("scoped child failed")
+            }
+            3
           }
-          3
         }
         val result =
           when (kind) {
@@ -215,15 +267,15 @@ class ExecutionSchedulingTest {
             ExecutionKind.MULTI -> mosaic.composeAsync(multiTile<Int, Int> { keys -> keys.associateWith { work() } }, 1)
           }
         testScheduler.runCurrent()
-        assertEquals(3, result.await())
-        val request = checkNotNull(mosaic.coroutineContext[Job])
-        assertTrue(request.children.any())
+        assertFalse(result.isCompleted)
         gate.complete(Unit)
         testScheduler.runCurrent()
+        assertEquals("scoped child failed", assertFailsWith<IllegalStateException> { result.await() }.message)
+        val request = checkNotNull(mosaic.coroutineContext[Job])
         assertTrue(request.children.none())
         assertTrue(request.isActive)
-        assertEquals(3, result.await())
         assertEquals(4, mosaic.compose(singleTile { 4 }))
+        mosaic.cancel()
       }
     }
 }

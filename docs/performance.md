@@ -278,7 +278,7 @@ these measurements do not support a release comparison with 0.5.0.
 
 The [0.6.0 runtime results](releases/0.6.0.md#runtime-cost) compare released tag
 `0.5.0` with the 0.6.0 runtime at
-[`5ac874e`](https://github.com/Nick-Abbott/Mosaic/commit/5ac874ead99d707c422a31d97eeb69df5801748c).
+[`488ebad`](https://github.com/Nick-Abbott/Mosaic/commit/488ebad7bdb5eb23137246bdca5c44e69f271962).
 They use the existing graph, coalescing, SingleTile, and MultiTile fixtures with
 tracing disabled. These elapsed operation timings are separate from the
 application CPU and HTTP latency dataset below.
@@ -288,9 +288,48 @@ and five one-second measurement iterations. Separate `gc.alloc.rate.norm` runs
 used one fork and the same iteration lengths. Both versions used JDK 21.0.11,
 a Ryzen 9 9900X, CPU affinity `0-5,12-17`, and
 `-Xms512m -Xmx512m -XX:+UseG1GC -XX:ActiveProcessorCount=12`.
-Reversed-order timing and allocation runs confirmed the shared-diamond and
-sibling-coalescing differences. The same timing profile was used for the
-64-Tile chain. MultiTile allocation retains the invocation-setup caveat above.
+Reversed-order timing and allocation runs also covered the shared diamond,
+sibling coalescing, and depth-16/64 chains. Width-16/64 and coalescing-depth-5/10
+timing sweeps used one fork, three one-second warmups, and five one-second
+measurements. Allocation for those sweeps used the separate five-warmup profile.
+MultiTile allocation retains the invocation-setup caveat above; independent
+repeats expose variation between forks.
+
+Timing cells are means from the first comparison order. Allocation ranges show
+means from independent JVM sessions, including reversed comparisons where run;
+they are not confidence intervals. Normalized allocation includes the fixture
+setup described above.
+
+| Operation | 0.5.0 µs/op | 0.6.0 µs/op | 0.5.0 B/op | 0.6.0 B/op |
+| --- | ---: | ---: | ---: | ---: |
+| Shared diamond, size 4 | 5.553 | 5.703 | 3,465–3,489 | 4,697–4,728 |
+| Sibling coalescing, fan-out 4 / depth 0 | 7.841 | 7.997 | 11,417–11,448 | 13,047–13,269 |
+| Cold trivial SingleTile | 3.090 | 3.079 | 819 | 1,042 |
+| Depth 16 | 9.065 | 9.474 | 10,571–10,603 | 12,898–13,218 |
+| Depth 64 | 27.717 | 28.937 | 42,219–42,251 | 52,354 |
+| Width 16 | 8.382 | 8.787 | 8,763 | 11,011 |
+| Width 64 | 23.799 | 24.777 | 32,722 | 41,576 |
+| Coalescing depth 5, fan-out 4 | 12.240 | 12.770 | 21,804 | 24,808 |
+| Coalescing depth 10, fan-out 4 | 17.591 | 17.942 | 31,869 | 36,739 |
+| Cold 16-key MultiTile | 4.865 | 5.023 | 8,024 | 9,024–9,056 |
+| Cached 16-key MultiTile | 0.470 | 0.447 | 10,064 | 10,632–11,048 |
+
+Reversing comparison order measured diamond at
+5.581 → 5.672 µs/op and sibling coalescing at
+7.816 → 7.972 µs/op. Depth 16/64 repeated at
+9.082/28.366 → 9.477/28.923 µs/op.
+Cold SingleTile and cold 16-key MultiTile timing intervals overlapped between
+releases. MultiTile allocation varies across forks and includes request/cache
+preparation; it should not be interpreted as isolated cached-call allocation.
+
+The same 0.6.0 runtime produced the following full-drain results. Ranges span
+forward and reversed comparison sessions; there is no reliable 0.5.0 drain
+baseline.
+
+| Full-drain operation | 0.6.0 µs/op | 0.6.0 B/op |
+| --- | ---: | ---: |
+| Shared diamond, size 4 | 5.948–5.956 | 4,957–4,967 |
+| Sibling coalescing, fan-out 4 / depth 0 | 8.326–8.373 | 13,512–13,534 |
 
 ## Coalescing diagnostics
 

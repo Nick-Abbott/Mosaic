@@ -30,7 +30,7 @@ existing alternative budget. A synchronous body construction failure therefore
 leaves the zero-execution caller continuation, with opaque feasibility. Known-empty
 execution skips the body; known-nonempty execution retains synchronous failure;
 async body failure allows the launcher to continue. Receiver and argument
-construction still occurs before invocation. This models neither cache occupancy
+construction occurs before invocation. This models neither cache occupancy
 nor general Deferred state.
 
 ```kotlin
@@ -89,20 +89,22 @@ entries, and duplicate parameters are rejected.
 
 Format 3 has separate `formatVersion`, `semanticsVersion`, `toolVersion`,
 `kotlinCompilerVersion`, `moduleId`, `sourceSet`, and `complete` header fields.
-The reader accepts format 3, `analysis-contract-2`, Kotlin
-2.4.20, and complete `main` source-set snapshots. Older format-2 summaries are rejected
-because they have no stable CanvasKey export contract. The producer version is recorded
-separately from semantic compatibility. `payloadHash` is lowercase SHA-256 of
-the canonical compact UTF-8 JSON serialization of the entire `payload` object
-(module, limitations, and binary locators), without the envelope or hash field.
-It detects corruption; it does not authenticate a producer. Missing required
-fields, unknown kinds, partial output, and checksum mismatches fail decoding.
+The reader accepts format 3, `analysis-contract-2`, Kotlin 2.4.20, and complete
+`main` source-set summaries. The module identity must be nonblank and match the
+payload. A nonblank producer version is required but does not determine semantic
+compatibility. Regenerate incompatible summaries with the supported Mosaic
+analysis toolchain before consuming them.
 
-The resource remains at `META-INF/mosaic-analysis/v1/summary.json` for
-discovery. Unpublished prototype-7 snapshots must be rebuilt; the reader does
-not infer compatibility from the resource path. This checksum is not a cache
-fingerprint, and extraction and verification still run as before. Serialization
-remains independent of Kotlin compiler and Gradle APIs.
+`payloadHash` is lowercase SHA-256 of the canonical compact UTF-8 JSON
+serialization of the entire `payload` object (module, limitations, and binary
+locators), without the envelope or hash field. It detects corruption; it does
+not authenticate a producer or serve as a build-cache fingerprint. Missing
+required fields, unknown kinds, partial output, and checksum mismatches fail
+decoding.
+
+The discovery resource is `META-INF/mosaic-analysis/v1/summary.json`;
+compatibility is determined by the header, not the resource path. Serialization
+is independent of Kotlin compiler and Gradle APIs.
 
 The model intentionally supports only the expressions needed by the semantic
 fixtures. It does not parse Kotlin source, inspect JARs, discover roots, infer
