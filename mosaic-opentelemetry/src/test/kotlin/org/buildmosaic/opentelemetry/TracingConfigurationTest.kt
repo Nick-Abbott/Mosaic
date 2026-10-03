@@ -63,6 +63,7 @@ class TracingConfigurationTest {
           mosaic.coroutineContext[Job]!!.children.toList().forEach { it.join() }
           mosaic.coroutineContext[Job]!!.cancel()
           assertTrue(otel.spans.single().name == "Mosaic single")
+          assertEquals("org.buildmosaic.mosaic-opentelemetry", otel.spans.single().instrumentationScopeInfo.name)
           discovered.close()
           assertEquals(1, otel.spans.size)
           // Canvas does not close an application's telemetry pipeline.

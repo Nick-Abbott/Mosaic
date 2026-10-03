@@ -4,14 +4,18 @@ This module provides a Bill of Materials (BOM) for Mosaic, making it easier to a
 
 ## Usage
 
+Set `mosaicVersion` (Gradle) or `mosaic.version` (Maven) to the Mosaic release
+version used by your project.
+
 ### Gradle (Kotlin DSL)
 
 ```kotlin
 // In an existing Kotlin/JVM project's build.gradle.kts
+val mosaicVersion: String by project
 
 dependencies {
-    // Import the BOM (replace 0.5.0 with the desired version)
-    implementation(platform("org.buildmosaic:mosaic-bom:0.5.0"))
+    // Import the BOM
+    implementation(platform("org.buildmosaic:mosaic-bom:$mosaicVersion"))
     
     // Add Mosaic dependencies without version numbers
     implementation("org.buildmosaic:mosaic-core")
@@ -26,7 +30,7 @@ dependencies {
 
 dependencies {
     // Import the BOM
-    implementation platform('org.buildmosaic:mosaic-bom:0.5.0')
+    implementation platform("org.buildmosaic:mosaic-bom:${mosaicVersion}")
     
     // Add Mosaic dependencies without version numbers
     implementation 'org.buildmosaic:mosaic-core'
@@ -43,7 +47,7 @@ dependencies {
             <dependency>
                 <groupId>org.buildmosaic</groupId>
                 <artifactId>mosaic-bom</artifactId>
-                <version>0.5.0</version>
+                <version>${mosaic.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

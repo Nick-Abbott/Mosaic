@@ -6,26 +6,23 @@ existing OpenTelemetry traces.
 
 ## Setup
 
-This module is available from source until its first release. Publish the runtime
-and adapter to your local Maven repository:
-
-```bash
-./gradlew :mosaic-core:publishToMavenLocal :mosaic-opentelemetry:publishToMavenLocal \
-  -Pmosaic.version=0.5.1-SNAPSHOT
-```
-
-In your Kotlin/JVM application's build:
+Add the adapter to your Kotlin/JVM application. Set the `mosaicVersion` Gradle
+property to the Mosaic release version used by your project:
 
 ```kotlin
+val mosaicVersion: String by project
+
 repositories {
-  mavenLocal()
   mavenCentral()
 }
 
 dependencies {
-  implementation("org.buildmosaic:mosaic-opentelemetry:0.5.1-SNAPSHOT")
+  implementation("org.buildmosaic:mosaic-opentelemetry:$mosaicVersion")
 }
 ```
+
+Use the same Mosaic version across runtime modules. With the
+[BOM](../mosaic-bom/README.md), omit the adapter's dependency version.
 
 The adapter includes Mosaic core and OpenTelemetry API 1.66.0. Your application
 supplies the SDK or Java agent, sampling policy, processors, exporters, resources,

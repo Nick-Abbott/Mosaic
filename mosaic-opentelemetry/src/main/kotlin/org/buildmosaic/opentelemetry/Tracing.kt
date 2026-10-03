@@ -30,5 +30,5 @@ fun CanvasBuilder.tracing() {
  * execution data only; it never records keys, results, Canvas values, or raw exceptions.
  */
 fun CanvasBuilder.tracing(openTelemetry: () -> OpenTelemetry) {
-  installExecutionObserver { OpenTelemetryObserver(openTelemetry().getTracer("org.buildmosaic.mosaic")) }
+  installExecutionObserver { OpenTelemetryObserver(openTelemetry().getTracer("org.buildmosaic.mosaic-opentelemetry")) }
 }

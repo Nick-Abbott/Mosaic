@@ -100,11 +100,14 @@ boundaries depend on scheduling. Choose `perKeyTile` for individual fetches or
 
 ## 🏁 **Try It**
 
-Add Mosaic to a Kotlin/JVM project:
+Add Mosaic to a Kotlin/JVM project. Set the `mosaicVersion` Gradle property to
+the Mosaic release version used by your project:
 
 ```kotlin
+val mosaicVersion: String by project
+
 dependencies {
-  implementation("org.buildmosaic:mosaic-core:0.5.0")
+  implementation("org.buildmosaic:mosaic-core:$mosaicVersion")
 }
 ```
 
