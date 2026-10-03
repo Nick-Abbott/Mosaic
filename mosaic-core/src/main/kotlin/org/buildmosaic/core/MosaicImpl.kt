@@ -2,7 +2,9 @@ package org.buildmosaic.core
 
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
@@ -25,7 +27,7 @@ import kotlin.coroutines.CoroutineContext
  * @param canvas Dependency bindings and immutable runtime configuration.
  * @param dispatcher Dispatcher for all executions, whether observed or unobserved.
  */
-@Suppress("LargeClass") // Keep request execution, reservation admission, and cancellation under one owner.
+@Suppress("LargeClass") // Keep request ownership and protected startup settlement together.
 open class MosaicImpl(
   override val canvas: Canvas,
   dispatcher: CoroutineDispatcher = Dispatchers.Default,
@@ -109,9 +111,9 @@ open class MosaicImpl(
   ) {
     var capturedCaller = caller
     schedule(
-      onCompletion = { failure ->
+      fail = { failure ->
         capturedCaller = null
-        if (failure != null) entry.fail(failure)
+        entry.fail(failure)
         entry.producer?.abandon()
       },
     ) {
@@ -133,21 +135,29 @@ open class MosaicImpl(
     state: MultiTileState<K, V>,
     owner: PendingBatch<K, V>,
   ) {
-    schedule(onCompletion = { failure -> if (failure != null) state.failPending(owner, failure) }) {
+    schedule(fail = { state.failPending(owner, it) }) {
       state.takePending(owner)?.let { executeBatch(tile, it) }
     }
   }
 
-  /** Dispatch failure and a launch cancelled before entering its body both release their accepted work. */
+  /** Accepted work enters its failure-settlement region before checking request cancellation. */
+  @OptIn(DelicateCoroutinesApi::class) // ATOMIC guarantees entry into the protected region after dispatch.
   @Suppress("TooGenericExceptionCaught")
-  private fun schedule(
-    onCompletion: (Throwable?) -> Unit,
-    block: suspend () -> Unit,
+  private inline fun schedule(
+    crossinline fail: (Throwable) -> Unit,
+    crossinline block: suspend () -> Unit,
   ) {
     try {
-      launch { block() }.invokeOnCompletion(onCompletion)
+      launch(start = CoroutineStart.ATOMIC) {
+        try {
+          currentCoroutineContext().ensureActive()
+          block()
+        } catch (failure: Throwable) {
+          fail(failure)
+        }
+      }
     } catch (failure: Throwable) {
-      onCompletion(failure)
+      fail(failure)
       throw failure
     }
   }
@@ -174,11 +184,11 @@ open class MosaicImpl(
     }
   }
 
-  private suspend fun executeWork(
+  private suspend inline fun executeWork(
     start: ExecutionStart?,
     producers: List<ProducerPublication>,
-    fail: (Throwable) -> Unit,
-    block: suspend () -> Throwable?,
+    crossinline fail: (Throwable) -> Unit,
+    crossinline block: suspend () -> Throwable?,
   ) {
     currentCoroutineContext().ensureActive()
     if (producers.isNotEmpty()) {

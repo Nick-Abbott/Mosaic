@@ -249,6 +249,13 @@ request creation, while MultiTile `cold`, `halfCached`, and `fullyCached` exclud
 it from timing. A one-key request cannot be half cached, so the half-cached
 variant begins at 16 keys.
 
+`ExecutionDrainBenchmark` runs the four-branch shared diamond and four sibling
+coalescing consumers with the same fixtures. After composing the root, it
+completes and joins the request Job, waiting for every owned execution and attached
+child. These measurements include execution cleanup after result publication;
+compare them separately from the ordinary result-latency benchmarks. A fixture
+test verifies that the drain waits for a child that outlives the published result.
+
 Compare runs only on the same hardware, JDK, JVM options, and benchmark settings.
 Hosted CI variance makes small percentage movements unsuitable as regression
 signals. PR smoke selection, history, stable runners, and hard thresholds will
