@@ -146,7 +146,7 @@ Application distributions are fingerprinted by jar hashes, and metadata records
 the actual Java executable/version, exact JVM options, affinities, and Git state.
 Optional Linux/sysfs values are recorded where available without changing the
 host. Generated raw sessions, process samples, execution commands, and pair-level
-results remain ignored; the local handoff contains exhaustive execution evidence.
+results remain ignored.
 
 ## JMH runtime benchmarks
 
@@ -251,8 +251,46 @@ variant begins at 16 keys.
 
 Compare runs only on the same hardware, JDK, JVM options, and benchmark settings.
 Hosted CI variance makes small percentage movements unsuitable as regression
-signals. PR smoke selection, history, stable runners, and hard thresholds will
-follow after baseline variance has been measured.
+signals. The suite has no hard regression thresholds.
+
+### Full execution drain
+
+`ExecutionDrainBenchmark` runs the four-branch shared diamond and four sibling
+coalescing consumers with the same fixtures. After composing the root, it
+completes and joins the request Job, waiting for every owned execution and attached
+child. These measurements include execution cleanup after result publication;
+compare them separately from the ordinary result-latency benchmarks. A fixture
+test verifies that the drain waits for a child that outlives the published result.
+
+```bash
+./gradlew :mosaic-benchmarks:jmhJar
+java -jar mosaic-benchmarks/build/libs/mosaic-benchmarks-*-jmh.jar \
+  '.*ExecutionDrainBenchmark.*' -bm avgt -tu us -t 1 \
+  -wi 5 -i 5 -w 1s -r 1s -f 2
+```
+
+This measures a complete request execution rather than just the time until a
+root result becomes available. Use it to check total lifecycle cost when changing
+scheduling or cleanup. A reliable 0.5.0 full-drain baseline is unavailable, so
+these measurements do not support a release comparison with 0.5.0.
+
+### Release runtime comparison
+
+The [0.6.0 runtime results](releases/0.6.0.md#runtime-cost) compare released tag
+`0.5.0` with the 0.6.0 runtime at
+[`5ac874e`](https://github.com/Nick-Abbott/Mosaic/commit/5ac874ead99d707c422a31d97eeb69df5801748c).
+They use the existing graph, coalescing, SingleTile, and MultiTile fixtures with
+tracing disabled. These elapsed operation timings are separate from the
+application CPU and HTTP latency dataset below.
+
+Timing runs used one JMH thread, two forks, five one-second warmup iterations,
+and five one-second measurement iterations. Separate `gc.alloc.rate.norm` runs
+used one fork and the same iteration lengths. Both versions used JDK 21.0.11,
+a Ryzen 9 9900X, CPU affinity `0-5,12-17`, and
+`-Xms512m -Xmx512m -XX:+UseG1GC -XX:ActiveProcessorCount=12`.
+Reversed-order timing and allocation runs confirmed the shared-diamond and
+sibling-coalescing differences. The same timing profile was used for the
+64-Tile chain. MultiTile allocation retains the invocation-setup caveat above.
 
 ## Coalescing diagnostics
 
@@ -293,11 +331,12 @@ both dispatchers. These are scheduling observations, not API guarantees.
 
 ## Dataset provenance
 
-All current application, startup, JMH timing/allocation, and diagnostic results
+The published application, startup, JMH timing/allocation, and diagnostic results
 were collected from clean revision
 [`129b0c73864e82047e4f8e0b861aee31e4e9dc78`](https://github.com/Nick-Abbott/Mosaic/commit/129b0c73864e82047e4f8e0b861aee31e4e9dc78),
-based on the merged coalescing runtime at `c6ed689`. Identify this dataset by
-revision rather than assuming a published release version.
+using the coalescing runtime. Identify this dataset by revision rather than
+assuming it describes the latest release. The separate 0.6.0 comparison above
+does not update these application or operation tables.
 
 | Setting | Authoritative configuration |
 | --- | --- |
@@ -309,18 +348,6 @@ revision rather than assuming a published release version.
 | wrk2 | 4.0.0-e0109df; SHA256 `8ea9a2225686179c62bf66c681f2c8a1e990da3450d1bc66c3c2fd98d44c01f7` |
 | HTTP | Six pairs/point; 15s warmup; 30s requested measurement; four threads; 128 connections |
 | Simulated work | Deterministic inputs; 20,000 CPU-work iterations; tracing off |
-
-Pre-feature coalescing diagnostics used revision
-`07a9eda5be3486ae6151dd35f43da129c3789401`.
-
-The previous application/startup table came from
-`f334a8661247eb219c21f8707b1af7b0c2f2a05a`, and the previous short MultiTile
-measurements from `866ae0a9c90aec6f44864e8a9e47077d3bf33758`. The new dataset
-changes explicit warmup, heap sizing, processor count, JDK/kernel environment,
-repetition count, and JMH iteration lengths. Absolute changes from those older
-figures cannot be attributed solely to Mosaic runtime changes. The earlier
-Linux 7.0.0 environment exhibited severe timer instability; this dataset uses
-Linux 7.2.7 and passed workload pacing qualification.
 
 Generated raw sessions, fingerprints, artifact hashes, execution commands, and
 pair-level results remain in the ignored `performance/results/` directory.

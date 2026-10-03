@@ -14,10 +14,10 @@ import kotlin.coroutines.EmptyCoroutineContext
  * failed application work, and finalizes observation only after the scope has exited.
  */
 @Suppress("TooGenericExceptionCaught")
-internal suspend fun executeTile(
+internal suspend inline fun executeTile(
   observation: ObservedExecution?,
-  fail: (Throwable) -> Unit,
-  block: suspend () -> Throwable?,
+  crossinline fail: (Throwable) -> Unit,
+  crossinline block: suspend () -> Throwable?,
 ) {
   var applicationFailure: Throwable? = null
   val context =

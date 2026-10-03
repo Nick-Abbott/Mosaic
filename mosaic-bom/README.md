@@ -4,7 +4,8 @@ This module provides a Bill of Materials (BOM) for Mosaic, making it easier to a
 
 ## Usage
 
-Use the same version across Mosaic modules.
+Use the same version across Mosaic runtime modules. Add only the libraries your
+application needs; importing the BOM does not install them.
 
 ### Gradle (Kotlin DSL)
 
@@ -14,10 +15,12 @@ Use the same version across Mosaic modules.
 dependencies {
     // Import the BOM
     implementation(platform("org.buildmosaic:mosaic-bom:0.6.0"))
-    
+
     // Add Mosaic dependencies without version numbers
     implementation("org.buildmosaic:mosaic-core")
     testImplementation("org.buildmosaic:mosaic-test")
+    // Optional tracing adapter
+    implementation("org.buildmosaic:mosaic-opentelemetry")
 }
 ```
 
@@ -29,10 +32,12 @@ dependencies {
 dependencies {
     // Import the BOM
     implementation platform('org.buildmosaic:mosaic-bom:0.6.0')
-    
+
     // Add Mosaic dependencies without version numbers
     implementation 'org.buildmosaic:mosaic-core'
     testImplementation 'org.buildmosaic:mosaic-test'
+    // Optional tracing adapter
+    implementation 'org.buildmosaic:mosaic-opentelemetry'
 }
 ```
 
@@ -51,7 +56,7 @@ dependencies {
             </dependency>
         </dependencies>
     </dependencyManagement>
-    
+
     <dependencies>
         <dependency>
             <groupId>org.buildmosaic</groupId>

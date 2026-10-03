@@ -43,10 +43,9 @@ val applicationCanvas = canvas {
   single<OrderService> { orderService }
 }
 
-val requestCanvas = applicationCanvas.withLayer {
+val page = applicationCanvas.withLayer {
   single(OrderKey) { orderId }
-}
-val page = requestCanvas.create().compose(OrderPageTile)
+}.create().compose(OrderPageTile)
 ```
 
 Child Canvases inherit tracing. The provider factory runs once during Canvas
@@ -70,8 +69,8 @@ factory to bypass global discovery; explicitly supplied no-op providers are acce
 
 | Mosaic work | OpenTelemetry behavior |
 | --- | --- |
-| An actual SingleTile execution | One `INTERNAL` span named after the delegated Tile, or `Mosaic single` |
-| An actual MultiTile batch | One `INTERNAL` span named after the delegated MultiTile, or `Mosaic multi`, with batch size |
+| An actual SingleTile execution | One `INTERNAL` span using its delegated property name, or `Mosaic single` |
+| An actual MultiTile batch | One `INTERNAL` span using its delegated property name, or `Mosaic multi`, with batch size |
 | Initiating caller | Its captured OpenTelemetry context becomes the parent |
 | Additional retained batch callers | Distinct contributor span links, available at creation for sampling |
 | Composed producer, including cached work | A dependency link to its actual execution identity |
