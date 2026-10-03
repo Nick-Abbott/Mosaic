@@ -49,7 +49,7 @@ import org.buildmosaic.core.injection.canvas
 import org.buildmosaic.core.injection.create
 
 val UserIdKey = CanvasKey(String::class, "userId")
-val GreetingTile = singleTile { "Hello, ${source(UserIdKey)}!" }
+val GreetingTile by singleTile { "Hello, ${source(UserIdKey)}!" }
 
 fun main() = runBlocking {
   val applicationCanvas = canvas {}
@@ -76,7 +76,7 @@ Import `org.buildmosaic.core.*` and the corresponding example models, services,
 and tiles.
 
 ```kotlin
-val OrderSummaryTile = singleTile {
+val OrderSummaryTile by singleTile {
   val order = composeAsync(OrderTile)
   val customer = composeAsync(CustomerTile)
   val lineItems = composeAsync(LineItemsTile)
@@ -91,7 +91,7 @@ gets product IDs and SKUs from `order.items`, starts both batches, then awaits
 each item's values:
 
 ```kotlin
-val LineItemsTile = singleTile {
+val LineItemsTile by singleTile {
   val order = compose(OrderTile)
   val productIds = order.items.map { it.productId }
   val skus = order.items.map { it.sku }
@@ -140,7 +140,7 @@ suspend fun createApplicationCanvas(): Canvas = canvas {
   single<GreetingService> { GreetingService(paint<String>("greetingPrefix")) }
 }
 
-val WelcomeTile = singleTile {
+val WelcomeTile by singleTile {
   source<GreetingService>().greet(source(UserIdKey))
 }
 
@@ -187,15 +187,15 @@ consumers keep the same composition API. These excerpts use the order example's
 services and models:
 
 ```kotlin
-val PricingBySkuTile = multiTile<String, Price> { skus ->
+val PricingBySkuTile by multiTile<String, Price> { skus ->
   PricingService.getPrices(skus.toList())
 }
 
-val PerKeyProductsTile = perKeyTile<String, Product> { productId ->
+val PerKeyProductsTile by perKeyTile<String, Product> { productId ->
   ProductService.getProducts(listOf(productId)).getValue(productId)
 }
 
-val ChunkedProductsTile = chunkedMultiTile<String, Product>(batchSize = 50) { ids ->
+val ChunkedProductsTile by chunkedMultiTile<String, Product>(batchSize = 50) { ids ->
   ProductService.getProducts(ids)
 }
 ```
@@ -210,7 +210,7 @@ scheduling and is not an API guarantee.
 
 `chunkedMultiTile` splits the resulting coalesced invocation into lists and starts
 chunks concurrently; chunk size limits request size, not request rate or
-concurrency. `perKeyTile` still fetches each key individually and concurrently.
+concurrency. `perKeyTile` fetches each key individually and concurrently.
 Return a non-null value for every requested key; a missing or null batch result
 fails that key with `NoSuchElementException`.
 
@@ -252,35 +252,19 @@ val PerKey by perKeyTile<String, Product> { id -> ProductService.getProducts(lis
 val Chunked by chunkedMultiTile<String, Product>(50) { ids -> ProductService.getProducts(ids) }
 ```
 
-`OrderTile.name` is `"OrderTile"`. The name is captured when Kotlin binds the
-property; every read returns the same Tile object and cache identity. Top-level,
-member, and local delegated properties use the same runtime behavior.
+`OrderTile.name` is `"OrderTile"`. Top-level, member, and local delegated
+properties bind a name and return the same Tile instance on every read.
 
-The first automatic binding wins. For example, `val Alias by OrderTile` returns
-the same instance, whose name remains `"OrderTile"`. An ordinary alias using `=`
-also shares its instance and name. Concurrent bindings retain the name of the
-first binding that acquires the Tile's binding lock. Names are labels, not unique
-identifiers, and never change caching or equality. The public `name` getter exposes
-this metadata for diagnostics and execution observation; callers cannot assign it.
-The [OpenTelemetry adapter](../mosaic-opentelemetry/README.md) uses it as the span name.
-
-The delegate operators are members of `Tile` and `MultiTile`, so importing the
-factories is enough. When code is recompiled, these members take precedence over
-custom extension delegate operators on those types.
+The first delegated name is retained: `val Alias by OrderTile` shares the same
+instance and keeps the name `"OrderTile"`. An ordinary alias using `=` also
+shares its instance and name. Names are read-only labels for diagnostics and
+tracing; they are not unique identifiers and do not change caching or equality.
+The [OpenTelemetry adapter](../mosaic-opentelemetry/README.md) uses them as span names.
 
 A Tile created with `val OrderTile = singleTile { ... }` has `name == null` until
-it is used as a delegate. The compiler plugin does not assign runtime names.
-Naming requires no `kotlin-reflect` dependency. Binding performs the name lookup
-once; inlined property reads allocate no delegate wrapper and perform no property
-lookup.
-
-The optional analyzer understands Mosaic-owned delegated factories within its
-supported boundaries: stable top-level properties can be exported to consumers,
-and supported local Tile values keep their deferred contracts. Arbitrary
-delegates and member-dependent Tile properties are analyzed conservatively.
-Runtime member naming works independently of analyzer support. See
-[analysis setup](../mosaic-gradle-plugin/README.md#installation) for toolchain
-requirements and configuration.
+it is used as a delegate. The optional compiler plugin does not assign runtime
+names. For analysis of delegated declarations, see the
+[compiler's supported boundaries](../mosaic-compiler-plugin/README.md#extraction-guarantees).
 
 ## 🔍 **Execution Observation**
 
@@ -291,7 +275,7 @@ inherit it. Cache hits create no new execution spans.
 
 Observation covers the execution scope, including attached children, even if a
 result was published earlier. Observation failures are isolated from Tile results;
-Mosaic retains ownership of execution, caching, batching, and cancellation.
+Mosaic owns execution and shared work, caching, and batching.
 Custom integration authors can use the
 [execution observation SPI KDoc](src/main/kotlin/org/buildmosaic/core/observation/ExecutionObserver.kt)
 for callback, context restoration, and token ownership contracts.

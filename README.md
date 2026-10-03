@@ -27,7 +27,7 @@ Tiles. A request-scoped Mosaic shares repeated Tile work automatically.
 An order page needs a summary and shipping details. That's also how you write it:
 
 ```kotlin
-val OrderPageTile = singleTile {
+val OrderPageTile by singleTile {
   val summary = composeAsync(OrderSummaryTile)
   val logistics = composeAsync(LogisticsTile)
 
@@ -42,7 +42,7 @@ The endpoint stays small even when the data behind it doesn't. The summary Tile
 builds its own part of the response:
 
 ```kotlin
-val OrderSummaryTile = singleTile {
+val OrderSummaryTile by singleTile {
   val order = composeAsync(OrderTile)
   val customer = composeAsync(CustomerTile)
   val lineItems = composeAsync(LineItemsTile)
@@ -60,7 +60,7 @@ or see [how the composition works](mosaic-core/README.md#-composition).
 The page needs line items. So does the order total:
 
 ```kotlin
-val OrderTotalTile = singleTile {
+val OrderTotalTile by singleTile {
   compose(LineItemsTile).sumOf { it.price.amount * it.quantity }
 }
 
@@ -80,7 +80,7 @@ fresh. [More on caching and identity →](mosaic-core/README.md#-caching-and-ide
 Have a bulk API? Put it behind a MultiTile:
 
 ```kotlin
-val ProductsByIdTile = multiTile<String, Product> { ids ->
+val ProductsByIdTile by multiTile<String, Product> { ids ->
   ProductService.getProducts(ids.toList())
 }
 
@@ -218,8 +218,7 @@ product keys. Mosaic fetched all 24 distinct products once, using one or two
 backend batches across 40 samples.
 
 Timings depend on hardware and JVM. These application measurements apply to the
-source revision in the report; the [0.6.0 runtime comparison](docs/releases/0.6.0.md#runtime-cost)
-separately measures isolated operations against released 0.5.0.
+source revision documented in the report.
 [Performance evidence, workloads, and measurement limits →](performance/README.md)
 
 ## 🌐 **Bring Your HTTP Framework**

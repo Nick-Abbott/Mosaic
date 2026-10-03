@@ -12,7 +12,8 @@ predate this maintained changelog; their release history is not reconstructed he
 - Delegated Tile naming with `val OrderTile by singleTile { ... }` and equivalent
   MultiTile factories. Aliases preserve the first name and the same cache identity.
 - Supported execution observation for actual Tile executions and MultiTile batches,
-  including caller context, shared producer relationships, and sanitized completion.
+  including caller context, shared-work relationships, and sanitized completion.
+  Observation failures are isolated from Tile results.
 - Optional `mosaic-opentelemetry` module and Canvas `tracing()` / `tracing { openTelemetry }`
   DSL. Spans use delegated Tile names, propagate coroutine context, and link shared work.
   The runtime BOM aligns the adapter alongside core and test libraries.
@@ -23,8 +24,6 @@ predate this maintained changelog; their release history is not reconstructed he
   External Canvas implementations and `MosaicCanvas` are removed; migrate to the DSL.
 - Canvas construction shares concurrent dependency resolution, detects cycles, and
   cleans up local resources on failure/cancellation in reverse creation order.
-- One runtime owns execution, caching, batching, and completion for production and
-  `mosaic-test`; optional observers do not own a separate execution engine.
 - Kotlin compiler and Gradle plugin move to 2.4.20 with language/API level 2.4;
   runtime dependencies use stdlib 2.4.20 and coroutines 1.11.0. Runtime consumers
   require Kotlin 2.3.0 or later; JVM 17 remains the runtime target.

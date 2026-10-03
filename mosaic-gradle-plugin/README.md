@@ -95,7 +95,7 @@ focused diagram and analyzer findings for each discovered or explicit root,
 including uncertainty and the selected receiver; LIBRARY graphs show the
 overview only. Missing or unverified
 requirements appear in the report without failing graph generation; invalid
-roots, summaries, and conflicting selected owners still fail. The diagrams
+roots, summaries, and conflicting selected owners fail. The diagrams
 describe possible static relationships, not runtime traces, execution order,
 timing, call counts, or exact MultiTile batches.
 
@@ -106,7 +106,7 @@ selected dependency summaries, so it launches no separate compiler process.
 
 ## Incremental and cache behavior
 
-Dependency contract invalidation remains separate from source compilation.
+Dependency contract invalidation is separate from source compilation.
 Verification reads the raw summary resource copied by a cacheable per-JAR
 artifact transform. A dependency Mosaic contract change reruns verification
 without forcing unchanged application source extraction. A JAR without the
@@ -155,10 +155,9 @@ capability-bearing initialization marked unknown. If the referenced constructor
 summary is absent, verification is unknown. Referenced stored-property reads
 likewise retain initialization work. This is not a general model of JVM class
 initialization or exception safety. Used user defaults with unavailable binary
-expressions and Mosaic extension-helper calls remain unknown. The metadata is
-format 3 with `analysis-contract-2`; summaries from older extractor versions
-are rejected because they may have omitted accessor or constructor-default
-effects or conflated array keys.
+expressions and Mosaic extension-helper calls remain unknown. Dependency summaries
+must satisfy the [metadata compatibility contract](../mosaic-analysis-core/README.md#binary-metadata);
+regenerate incompatible summaries with the supported Mosaic analysis toolchain.
 
 ## Supported project boundary
 
