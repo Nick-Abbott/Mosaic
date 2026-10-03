@@ -19,6 +19,7 @@ tasks.register("releaseToMavenCentral") {
   dependsOn(
     ":mosaic-core:publishAndReleaseToMavenCentral",
     ":mosaic-test:publishAndReleaseToMavenCentral",
+    ":mosaic-opentelemetry:publishAndReleaseToMavenCentral",
     ":mosaic-bom:publishAndReleaseToMavenCentral",
     ":mosaic-compiler-plugin:publishAndReleaseToMavenCentral",
     ":mosaic-gradle-plugin:publishAndReleaseToMavenCentral",

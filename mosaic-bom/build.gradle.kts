@@ -17,5 +17,6 @@ dependencies {
     constraints {
         api("org.buildmosaic:mosaic-core:${mosaicVersion}")
         api("org.buildmosaic:mosaic-test:${mosaicVersion}")
+        api("org.buildmosaic:mosaic-opentelemetry:${mosaicVersion}")
     }
 }

@@ -100,11 +100,12 @@ boundaries depend on scheduling. Choose `perKeyTile` for individual fetches or
 
 ## 🏁 **Try It**
 
-Add Mosaic to a Kotlin/JVM project:
+Add Mosaic to a Kotlin/JVM project. Replace `VERSION` with your chosen Mosaic
+release version:
 
 ```kotlin
 dependencies {
-  implementation("org.buildmosaic:mosaic-core:0.5.0")
+  implementation("org.buildmosaic:mosaic-core:VERSION")
 }
 ```
 
@@ -159,6 +160,24 @@ only**; runtime composition doesn't depend on it. The graph shows static
 relationships, not runtime traces.
 
 [Set up architecture reports and verification →](mosaic-gradle-plugin/README.md)
+
+## 🔍 **See the Work That Ran**
+
+Add Mosaic execution to your existing OpenTelemetry traces:
+
+```kotlin
+val applicationCanvas = canvas {
+  tracing { openTelemetry }
+}
+```
+
+The optional adapter creates one span per SingleTile execution or MultiTile batch.
+Links show shared producers and additional batch callers; cache hits create no new
+spans. Your application owns sampling and export, and Mosaic records no keys,
+results, or exception messages automatically.
+
+`openTelemetry` is your application's configured instance.
+[Set up tracing and see the span semantics →](mosaic-opentelemetry/README.md)
 
 ## 🧪 **Test the Composition, Skip the Services**
 
