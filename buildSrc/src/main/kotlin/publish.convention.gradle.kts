@@ -35,7 +35,7 @@ mavenPublishing {
 
     developers {
       developer {
-        name.set("Nick Abbott")
+        name.set("Nicholas Abbott")
         email.set("nick@buildmosaic.org")
         url.set("https://github.com/Nick-Abbott")
       }
