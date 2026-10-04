@@ -1,5 +1,6 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./.github/images/mosaic-logo-dark.svg" type="image/svg+xml">
+  <source media="(prefers-color-scheme: dark)" srcset="./.github/images/mosaic-logo-dark.png" type="image/png">
   <source media="(prefers-color-scheme: light)" srcset="./.github/images/mosaic-logo-light.svg" type="image/svg+xml">
   <img alt="Mosaic logo" src="./.github/images/mosaic-logo-light.png" width="240" height="120">
 </picture>
