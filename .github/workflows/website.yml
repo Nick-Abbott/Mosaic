@@ -94,14 +94,14 @@ jobs:
           include-hidden-files: true
           retention-days: 7
       - name: Upload Pages artifact from canonical main
-        if: github.repository == 'BuildMosaic/Mosaic' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v5
         with:
           path: website/dist
 
   deploy:
     name: Deploy BuildMosaic.org
-    if: github.repository == 'BuildMosaic/Mosaic' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: validate
     runs-on: ubuntu-latest
     permissions:
