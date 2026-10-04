@@ -1,7 +1,7 @@
 # Mosaic Core
 
-[![Tests](https://github.com/Nick-Abbott/Mosaic/workflows/Test%20Badge/badge.svg)](https://github.com/Nick-Abbott/Mosaic/actions?query=workflow%3A%22Test+Badge%22)
-[![Build](https://github.com/Nick-Abbott/Mosaic/workflows/Build%20Badge/badge.svg)](https://github.com/Nick-Abbott/Mosaic/actions?query=workflow%3A%22Build+Badge%22)
+[![Tests](https://github.com/BuildMosaic/Mosaic/workflows/Test%20Badge/badge.svg)](https://github.com/BuildMosaic/Mosaic/actions?query=workflow%3A%22Test+Badge%22)
+[![Build](https://github.com/BuildMosaic/Mosaic/workflows/Build%20Badge/badge.svg)](https://github.com/BuildMosaic/Mosaic/actions?query=workflow%3A%22Build+Badge%22)
 [![Kotlin](https://img.shields.io/badge/kotlin-2.4.20-blue.svg)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](../LICENSE)
 

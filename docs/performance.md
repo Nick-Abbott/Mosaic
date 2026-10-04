@@ -278,7 +278,7 @@ these measurements do not support a release comparison with 0.5.0.
 
 The [0.6.0 runtime results](releases/0.6.0.md#runtime-cost) compare released tag
 `0.5.0` with the 0.6.0 runtime at
-[`488ebad`](https://github.com/Nick-Abbott/Mosaic/commit/488ebad7bdb5eb23137246bdca5c44e69f271962).
+[`488ebad`](https://github.com/BuildMosaic/Mosaic/commit/488ebad7bdb5eb23137246bdca5c44e69f271962).
 They use the existing graph, coalescing, SingleTile, and MultiTile fixtures with
 tracing disabled. These elapsed operation timings are separate from the
 application CPU and HTTP latency dataset below.
@@ -372,7 +372,7 @@ both dispatchers. These are scheduling observations, not API guarantees.
 
 The published application, startup, JMH timing/allocation, and diagnostic results
 were collected from clean revision
-[`129b0c73864e82047e4f8e0b861aee31e4e9dc78`](https://github.com/Nick-Abbott/Mosaic/commit/129b0c73864e82047e4f8e0b861aee31e4e9dc78),
+[`129b0c73864e82047e4f8e0b861aee31e4e9dc78`](https://github.com/BuildMosaic/Mosaic/commit/129b0c73864e82047e4f8e0b861aee31e4e9dc78),
 using the coalescing runtime. Identify this dataset by revision rather than
 assuming it describes the latest release. The separate 0.6.0 comparison above
 does not update these application or operation tables.
