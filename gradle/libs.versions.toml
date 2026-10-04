@@ -11,7 +11,7 @@ opentelemetry-kotlin = "1.65.0"
 serialization = "1.11.0"
 mockk = "1.14.5"
 ksp = "2.3.12"
-dokka = "2.0.0"
+dokka = "2.2.0"
 maven-publish = "0.34.0"
 plugin-publish = "2.0.0"
 

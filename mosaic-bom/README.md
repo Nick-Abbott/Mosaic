@@ -77,5 +77,5 @@ dependencies {
 The BOM aligns runtime libraries only. It does not include the optional
 [analysis plugins](../mosaic-gradle-plugin/README.md), whose Kotlin version
 requirements are separate from runtime compatibility. See
-[core requirements](../mosaic-core/README.md#requirements-and-installation)
+[core requirements](https://BuildMosaic.org/start/installation/)
 for supported runtime toolchains.

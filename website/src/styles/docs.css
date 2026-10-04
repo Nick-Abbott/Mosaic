@@ -1,0 +1,93 @@
+:root {
+  --sl-font: var(--m-body);
+  --sl-font-mono: var(--m-code);
+  --sl-color-bg: var(--m-navy);
+  --sl-color-bg-nav: var(--m-navy);
+  --sl-color-bg-sidebar: var(--m-navy);
+  --sl-color-accent-low: var(--m-fragment);
+  --sl-color-accent: var(--m-blue);
+  --sl-color-accent-high: var(--m-orange);
+  --sl-color-text-accent: var(--m-orange);
+  --sl-color-white: var(--m-white);
+  --sl-color-black: var(--m-navy);
+  --sl-color-gray-1: var(--m-white);
+  --sl-color-gray-2: var(--m-secondary);
+  --sl-color-gray-3: var(--m-secondary);
+  --sl-color-gray-4: var(--m-slate);
+  --sl-color-gray-5: var(--m-slate);
+  --sl-color-gray-6: var(--m-fragment);
+  --sl-content-width: 48rem;
+  --sl-nav-height: 6rem;
+}
+:root[data-theme='light'] {
+  --sl-color-bg: var(--m-white);
+  --sl-color-bg-nav: var(--m-white);
+  --sl-color-bg-sidebar: var(--m-white);
+  --sl-color-white: var(--m-ink);
+  --sl-color-black: var(--m-white);
+  --sl-color-gray-1: var(--m-ink);
+  --sl-color-gray-2: var(--m-slate);
+  --sl-color-gray-3: var(--m-slate);
+  --sl-color-gray-4: var(--m-slate);
+  --sl-color-gray-5: var(--page-line);
+  --sl-color-gray-6: var(--page-panel);
+  --sl-color-gray-7: var(--page-panel);
+  --sl-color-accent-low: var(--page-panel);
+  --sl-color-accent-high: var(--m-fragment);
+  --sl-color-text-accent: var(--m-fragment);
+}
+h1,
+h2,
+h3 {
+  font-family: var(--m-display);
+  letter-spacing: -0.015em;
+}
+.sl-markdown-content {
+  font-size: 1.025rem;
+}
+.sl-markdown-content h2 {
+  margin-top: 2.6rem;
+}
+.sl-markdown-content table {
+  font-variant-numeric: tabular-nums;
+}
+.sl-markdown-content :not(pre) > code {
+  overflow-wrap: anywhere;
+}
+.docs-links {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  font-size: 0.9rem;
+}
+.docs-links a {
+  color: var(--page-text);
+  text-decoration: none;
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+}
+.docs-links a:hover {
+  text-decoration: underline;
+}
+[aria-current='page'] {
+  color: var(--m-navy) !important;
+}
+:root[data-theme='light'] [aria-current='page'] {
+  background: var(--m-fragment);
+  color: var(--m-white) !important;
+}
+@media (max-width: 70rem) {
+  .docs-links a:nth-child(2) {
+    display: none;
+  }
+}
+
+.expressive-code pre:focus-visible {
+  outline: 3px solid var(--page-accent);
+  outline-offset: -3px;
+}
+
+.sl-markdown-content > :is(p, ul, ol, blockquote) {
+  max-width: 68ch;
+}

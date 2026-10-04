@@ -1,0 +1,247 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-04T13:27:42.151194+00:00",
+  "title": "Design System: Mosaic",
+  "extensions": {
+    "colorMeta": {
+      "m-navy": {
+        "role": "neutral",
+        "displayName": "Navy"
+      },
+      "m-blue": {
+        "role": "primary",
+        "displayName": "Mosaic Blue"
+      },
+      "m-orange": {
+        "role": "primary",
+        "displayName": "Mosaic Orange"
+      },
+      "m-ink": {
+        "role": "neutral",
+        "displayName": "Ink"
+      },
+      "m-white": {
+        "role": "neutral",
+        "displayName": "White"
+      },
+      "m-secondary": {
+        "role": "neutral",
+        "displayName": "Secondary Copy"
+      },
+      "m-fragment": {
+        "role": "neutral",
+        "displayName": "Fragment Navy"
+      },
+      "m-slate": {
+        "role": "neutral",
+        "displayName": "Slate"
+      },
+      "light-panel": {
+        "role": "neutral",
+        "displayName": "Light Panel",
+        "purpose": "Keep the source color-mix expression in DESIGN.md; do not replace it with a hex approximation."
+      },
+      "light-line": {
+        "role": "neutral",
+        "displayName": "Light Line",
+        "purpose": "Keep the source color-mix expression in DESIGN.md; do not replace it with a hex approximation."
+      },
+      "primary-hover": {
+        "role": "primary",
+        "displayName": "Primary Hover",
+        "purpose": "Keep the source color-mix expression in DESIGN.md; do not replace it with a hex approximation."
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Homepage positioning h1; responsive overrides are documented in DESIGN.md."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Homepage section h2, except the closing CTA."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Homepage explanatory h3."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Homepage reading text; inherits root size."
+      },
+      "docs-body": {
+        "displayName": "Documentation Body",
+        "purpose": "Authored Starlight guide content."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Homepage desktop navigation."
+      },
+      "button": {
+        "displayName": "Button",
+        "purpose": "Homepage CTA type."
+      },
+      "code": {
+        "displayName": "Code",
+        "purpose": "Highlighted source: configured 0.875rem (14px at the default root size), line-height 1.75, at desktop and mobile. Inline identifiers retain their separately scoped sizing."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Homepage figure captions and notes."
+      },
+      "reuse-key": {
+        "displayName": "Reuse Key",
+        "purpose": "Small static monospace key labels; distinct from highlighted source blocks."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "button-background",
+        "value": "background-color 0.15s ease-out",
+        "purpose": "Homepage button hover only under prefers-reduced-motion: no-preference."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "home-wide-min",
+        "value": "1600px",
+        "purpose": "Minimum width: larger hero top padding."
+      },
+      {
+        "name": "home-medium-max",
+        "value": "1100px",
+        "purpose": "Maximum width: narrowed gutters, heading and column gaps."
+      },
+      {
+        "name": "home-stacked-max",
+        "value": "850px",
+        "purpose": "Maximum width: hero/story columns stack."
+      },
+      {
+        "name": "home-mobile-max",
+        "value": "600px",
+        "purpose": "Maximum width: mobile menu, stacked inspection and readable text graph."
+      },
+      {
+        "name": "docs-project-links-max",
+        "value": "70rem",
+        "purpose": "Maximum width: hide secondary docs project link."
+      },
+      {
+        "name": "shared-compact-brand-max",
+        "value": "23.99rem",
+        "purpose": "Maximum width: replace the 180\u00d760px lockup with the supplied 30\u00d735px mark in a 44\u00d744px target."
+      }
+    ],
+    "focus": [
+      {
+        "name": "shared",
+        "value": "3px solid var(--page-accent); outline-offset: 4px",
+        "purpose": "Homepage and Starlight interactive focus."
+      },
+      {
+        "name": "code-pre",
+        "value": "3px solid var(--page-accent); outline-offset: -3px",
+        "purpose": "Keyboard-focusable Expressive Code pre."
+      },
+      {
+        "name": "native-api",
+        "value": "3px solid #fd993e; outline-offset: 3px",
+        "purpose": "Native Dokka focus."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Canonical homepage CTA, orange with navy text.",
+      "html": "<a class=\"ds-primary\" href=\"/start/quick-start/\">Get started <svg viewBox=\"0 0 24 24\" width=\"19\" height=\"19\" aria-hidden=\"true\"><path d=\"M4 12h15m-6-6 6 6-6 6\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"></path></svg></a>",
+      "css": ".ds-primary{display:inline-flex;justify-content:center;align-items:center;gap:1rem;padding:.85rem 1.25rem;min-height:48px;border-radius:4px;font-family:var(--m-body,'Public Sans Variable',sans-serif);font-size:.95rem;font-weight:600;line-height:1.7;text-decoration:none;background:var(--m-orange,#fd993e);color:var(--m-navy,#0d192a);}.ds-primary:hover{background:color-mix(in srgb,var(--m-orange,#fd993e) 85%,var(--m-white,#ffffff));}.ds-primary:focus-visible{outline:3px solid var(--page-accent,#fd993e);outline-offset:4px;}@media(prefers-reduced-motion:no-preference){.ds-primary{transition:background-color .15s ease-out;}}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Bordered repository action beside the primary CTA.",
+      "html": "<a class=\"ds-secondary\" href=\"https://github.com/BuildMosaic/Mosaic\">GitHub</a>",
+      "css": ".ds-secondary{display:inline-flex;justify-content:center;align-items:center;gap:1rem;padding:.85rem 1.25rem;min-height:48px;border-radius:4px;font-family:var(--m-body,'Public Sans Variable',sans-serif);font-size:.95rem;font-weight:600;line-height:1.7;text-decoration:none;color:var(--page-text,#ffffff);border:1px solid var(--page-line,#263244);}.ds-secondary:hover{background:var(--page-panel,#142c48);}.ds-secondary:focus-visible{outline:3px solid var(--page-accent,#fd993e);outline-offset:4px;}@media(prefers-reduced-motion:no-preference){.ds-secondary{transition:background-color .15s ease-out;}}"
+    },
+    {
+      "name": "Homepage Navigation",
+      "kind": "nav",
+      "refersTo": "navigation-link",
+      "description": "Text navigation from the desktop header; mobile details and brand lockup stay in the real component.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Main navigation\"><a href=\"/start/overview/\">Docs</a><a href=\"/api/\">API</a><a href=\"/reference/performance/\">Performance</a><a href=\"https://github.com/BuildMosaic/Mosaic\">GitHub</a></nav>",
+      "css": ".ds-nav{display:flex;align-items:center;gap:2rem;color:var(--page-text,#ffffff);font-family:var(--m-body,'Public Sans Variable',sans-serif);}.ds-nav a{display:grid;align-items:center;min-height:44px;font-size:.95rem;color:inherit;text-decoration:none;text-underline-offset:.22em;}.ds-nav a:hover{color:var(--page-accent,#fd993e);text-decoration:underline;}.ds-nav a:focus-visible{outline:3px solid var(--page-accent,#fd993e);outline-offset:4px;}@media(max-width:850px){.ds-nav{gap:1.2rem;}.ds-nav a:nth-child(3){display:none;}}"
+    },
+    {
+      "name": "Reuse Key",
+      "kind": "chip",
+      "refersTo": "reuse-key",
+      "description": "Static technical identifier with blue emphasis for a reused key; not an action or filter chip.",
+      "html": "<code class=\"ds-key\">product-1 <small>reused</small></code>",
+      "css": ".ds-key{display:inline-block;padding:.3rem .6rem;background:var(--page-panel,#142c48);color:var(--page-text,#ffffff);border:1px solid var(--m-blue,#007def);font-family:var(--m-code,'JetBrains Mono Variable',monospace);font-size:.82rem;line-height:1.7;}.ds-key small{font-family:var(--m-body,'Public Sans Variable',sans-serif);color:var(--page-muted,#b6c7dc);font-size:.75rem;padding-left:.5rem;}"
+    },
+    {
+      "name": "Shared Producer",
+      "kind": "custom",
+      "refersTo": "shared-producer",
+      "description": "Static orange shared-work node from the composition proof.",
+      "html": "<div class=\"ds-producer\"><code>LineItemsTile</code><span>One shared execution</span></div>",
+      "css": ".ds-producer{width:max-content;background:var(--m-orange,#fd993e);color:var(--m-navy,#0d192a);padding:.8rem 1.7rem;display:grid;gap:.15rem;text-align:center;font-family:var(--m-body,'Public Sans Variable',sans-serif);line-height:1.7;}.ds-producer code{font-family:var(--m-code,'JetBrains Mono Variable',monospace);font-size:.86em;}.ds-producer span{font-size:.75rem;}"
+    },
+    {
+      "name": "Evidence Table",
+      "kind": "custom",
+      "refersTo": "benchmark",
+      "description": "Semantic ruled benchmark table; sample uses neutral placeholders rather than inventing measurements.",
+      "html": "<table class=\"ds-table\"><caption>Measured cost</caption><thead><tr><th scope=\"col\">Composition</th><th scope=\"col\">Result</th></tr></thead><tbody><tr><th scope=\"row\">Published benchmark</th><td>See report</td></tr></tbody></table>",
+      "css": ".ds-table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:.93rem;font-family:var(--m-body,'Public Sans Variable',sans-serif);color:var(--page-text,#ffffff);line-height:1.7;}.ds-table caption{text-align:left;font-family:var(--m-display,'Barlow',sans-serif);font-size:1.9rem;margin-bottom:1rem;font-weight:600;}.ds-table th,.ds-table td{padding:.9rem 0;text-align:left;border-bottom:1px solid var(--page-line,#263244);}.ds-table thead th{font-size:.75rem;font-weight:400;color:var(--page-muted,#b6c7dc);}.ds-table td{text-align:right;color:var(--page-accent,#fd993e);font-family:var(--m-code,'JetBrains Mono Variable',monospace);}.ds-table thead th:last-child{text-align:right;}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Response composition",
+    "overview": "Response composition gives Mosaic its visual language: real Kotlin, dependency relationships, and restrained architectural surfaces. The site feels like a mature backend framework reference, with compact technical copy, substantial examples, and clear routes into teaching and API lookup.\n\nCanonical blue and orange pieces sit within navy or white reading surfaces. Barlow supplies the display voice, Public Sans supports sustained reading, and JetBrains Mono keeps identifiers and source precise. Flat panels and thin rules supply structure; the visual system does not require animation to explain a relationship.",
+    "keyCharacteristics": [
+      "Canonical supplied vector identity and theme-aware lockups.",
+      "Code and static dependency diagrams as visual material.",
+      "Unequal explanatory columns that stack into readable mobile sequences.",
+      "Shared typography and palette across a native homepage, Starlight teaching docs, and a lightly branded native Dokka reference."
+    ],
+    "rules": [
+      {
+        "name": "The Canonical Identity Rule",
+        "body": "Use the supplied vector mark and outlined wordmarks unchanged; semantic surfaces may adapt to the theme, but logo geometry and logo colors do not.",
+        "section": "colors"
+      },
+      {
+        "name": "The Three Voices Rule",
+        "body": "Use Barlow for authored display headings, Public Sans for reading and controls, and JetBrains Mono for source and identifiers. Keep the native Dokka type machinery intact.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Structure Rule",
+        "body": "Use tonal panels, thin borders, and spacing to show grouping. Authored homepage surfaces have no box shadows.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do read PRODUCT.md and the relevant .impeccable/surfaces/ contract before changing a surface; this file records the implemented system.",
+      "Do edit canonical identity in brand/BRAND.md and SVG masters, shared tokens in website/src/styles/theme.css, homepage layout in home.css, and documentation overrides in docs.css.",
+      "Do extend the homepage with real source examples, factual diagrams, and the existing heading/body/link hierarchy; retain the response-composition narrative.",
+      "Do put teaching content in website/src/content/docs/ and API descriptions in KDoc; retain Starlight search, sidebar, contents, theme controls, and code-copy behavior, and native Dokka generation.",
+      "Do check both themes, keyboard focus, code overflow, and mobile stacking; use the website/AGENTS.md viewport matrix and website commands for the changed surface.",
+      "Do preserve SVG title/description or a descriptive text alternative, native table semantics, visible focus, and the existing 44px navigation/control and 48px CTA target minimums."
+    ],
+    "donts": [
+      "Don't recolor, stretch, redraw, or add effects to supplied logo geometry, or substitute the historical README accent variants for the website palette.",
+      "Don't replace the homepage's code-and-composition narrative with an interchangeable feature-card catalog, generated abstract imagery, or unsupported product claims.",
+      "Don't introduce a competing font scale, palette, shadow system, or client animation as a requirement for understanding static technical relationships.",
+      "Don't edit copied public/brand assets, generated API HTML, dist output, or framework internals to implement authored visual changes; change their owning sources.",
+      "Don't make a homepage-specific dimension into a global requirement for Starlight or Dokka; keep framework-owned layout and behavior in their native systems."
+    ]
+  }
+}
