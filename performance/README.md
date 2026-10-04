@@ -155,7 +155,7 @@ The `zero` profile adds no simulated service delay. The `service` profile adds
 ## About these results
 
 Measurements used a Ryzen 9 9900X, Zulu JDK 21.0.11, G1, and Linux 7.2.7, from
-[revision `129b0c7`](https://github.com/Nick-Abbott/Mosaic/commit/129b0c73864e82047e4f8e0b861aee31e4e9dc78).
+[revision `129b0c7`](https://github.com/BuildMosaic/Mosaic/commit/129b0c73864e82047e4f8e0b861aee31e4e9dc78).
 Absolute timings depend on hardware, JVM, and workload. Compare datasets only
 when their hardware, warmup, heap, processor count, JDK, and sampling settings
 match; differences between environments cannot be attributed solely to Mosaic.

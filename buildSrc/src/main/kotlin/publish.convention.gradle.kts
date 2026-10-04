@@ -24,7 +24,7 @@ mavenPublishing {
   pom {
     name.set(project.name)
     description.set(project.description)
-    url.set("https://github.com/Nick-Abbott/Mosaic/tree/main/${project.name}")
+    url.set("https://github.com/BuildMosaic/Mosaic/tree/main/${project.name}")
 
     licenses {
       license {
@@ -42,9 +42,9 @@ mavenPublishing {
     }
 
     scm {
-      url.set("https://github.com/Nick-Abbott/Mosaic/")
-      connection.set("scm:git:https://github.com/Nick-Abbott/Mosaic.git")
-      developerConnection.set("scm:git:ssh://git@github.com/Nick-Abbott/Mosaic.git")
+      url.set("https://github.com/BuildMosaic/Mosaic/")
+      connection.set("scm:git:https://github.com/BuildMosaic/Mosaic.git")
+      developerConnection.set("scm:git:ssh://git@github.com/BuildMosaic/Mosaic.git")
     }
   }
 }

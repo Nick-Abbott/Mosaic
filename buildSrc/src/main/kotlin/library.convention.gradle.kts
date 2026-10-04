@@ -8,7 +8,7 @@ plugins {
 dokka {
   dokkaSourceSets.configureEach {
     sourceLink {
-      remoteUrl("https://github.com/Nick-Abbott/Mosaic/tree/main/")
+      remoteUrl("https://github.com/BuildMosaic/Mosaic/tree/main/")
       localDirectory.set(file("src/main/kotlin"))
     }
   }

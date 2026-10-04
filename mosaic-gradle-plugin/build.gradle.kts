@@ -77,8 +77,8 @@ gradlePlugin {
 }
 
 gradlePlugin {
-  website = "https://github.com/Nick-Abbott/Mosaic"
-  vcsUrl = "https://github.com/Nick-Abbott/Mosaic.git"
+  website = "https://github.com/BuildMosaic/Mosaic"
+  vcsUrl = "https://github.com/BuildMosaic/Mosaic.git"
 }
 
 tasks.test {

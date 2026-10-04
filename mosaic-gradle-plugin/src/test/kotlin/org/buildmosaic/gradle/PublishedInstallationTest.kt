@@ -53,7 +53,7 @@ class PublishedInstallationTest {
       assertTrue(artifact.resolveSibling("$module-$version-sources.jar").isFile)
       assertTrue(artifact.resolveSibling("$module-$version-javadoc.jar").isFile)
       val pom = artifact.resolveSibling("$module-$version.pom").readText()
-      assertTrue(pom.contains("<url>https://github.com/Nick-Abbott/Mosaic/tree/main/$module</url>"), pom)
+      assertTrue(pom.contains("<url>https://github.com/BuildMosaic/Mosaic/tree/main/$module</url>"), pom)
       assertTrue(pom.contains("<name>The Apache License, Version 2.0</name>"), pom)
     }
     val bom = maven.resolve("org/buildmosaic/mosaic-bom/$version/mosaic-bom-$version.pom").readText()

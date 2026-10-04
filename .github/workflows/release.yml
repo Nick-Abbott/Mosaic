@@ -24,10 +24,8 @@ jobs:
       - name: Require dispatch from main
         env:
           WORKFLOW_REF: ${{ github.ref }}
-          REPOSITORY: ${{ github.repository }}
         run: |
           test "$WORKFLOW_REF" = refs/heads/main
-          test "$REPOSITORY" = Nick-Abbott/Mosaic
 
       - uses: actions/checkout@v4
         with:
@@ -81,12 +79,12 @@ jobs:
           entry="$(grep -F "## [$RELEASE_TAG] - " CHANGELOG.md)"
           notes="$(mktemp "${RUNNER_TEMP}/mosaic-release-notes.XXXXXXXX")"
           trap 'rm -f -- "$notes"' EXIT
-          sed "s#](../../#](https://github.com/Nick-Abbott/Mosaic/blob/$RELEASE_TAG/#g" "docs/releases/$RELEASE_TAG.md" > "$notes"
+          sed "s#](../../#](https://github.com/BuildMosaic/Mosaic/blob/$RELEASE_TAG/#g" "docs/releases/$RELEASE_TAG.md" > "$notes"
           printf '\n' >> "$notes"
           awk -v heading="$entry" -v tag="$RELEASE_TAG" '
             $0 == heading {copy=1}
             copy && $0 != heading && /^## / {exit}
-            copy {gsub(/\]\(mosaic-gradle-plugin\/README.md/, "](https://github.com/Nick-Abbott/Mosaic/blob/" tag "/mosaic-gradle-plugin/README.md"); print}
+            copy {gsub(/\]\(mosaic-gradle-plugin\/README.md/, "](https://github.com/BuildMosaic/Mosaic/blob/" tag "/mosaic-gradle-plugin/README.md"); print}
           ' CHANGELOG.md >> "$notes"
           if existing_release="$(gh release view "$RELEASE_TAG" --json url --jq '.url' 2>&1)"; then
             echo "::error::A GitHub Release already exists for $RELEASE_TAG: $existing_release"
