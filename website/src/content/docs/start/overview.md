@@ -1,0 +1,30 @@
+---
+title: 'What is Mosaic?'
+description: 'Compose backend application logic from reusable Kotlin Tiles.'
+---
+
+Mosaic is a Kotlin library for building backends one response at a time. Start with the data your endpoint returns, then compose the work that produces it. Your HTTP framework still owns routing, serialization, and server lifecycle.
+
+A **Tile** is a reusable piece of suspending work. It can read dependencies and compose other Tiles. A **Mosaic** executes those Tiles, sharing repeated work within that instance. A **Canvas** supplies application services and request input. A **MultiTile** does keyed work with reuse and opportunistic batching.
+
+```kotlin
+val OrderPageTile by singleTile {
+  val summary = composeAsync(OrderSummaryTile)
+  val logistics = composeAsync(LogisticsTile)
+  OrderPage(summary.await(), logistics.await())
+}
+```
+
+The example uses the models and dependencies in the [shared order library](https://github.com/BuildMosaic/Mosaic/tree/main/examples/tile-library). Summary and logistics can run concurrently. Each branch asks for its own requirements; repeated requests for the same Tile share one execution.
+
+## When it helps
+
+Mosaic fits responses assembled from multiple services, graphs with shared dependencies, and keyed fetches used by independent branches. It keeps that orchestration close to the response logic and makes the same compositions easy to test in isolation.
+
+For a single service call, ordinary suspending Kotlin may already be sufficient. Mosaic adds a runtime cost that depends on the graph; inspect the [performance evidence](/reference/performance/) for your workload.
+
+## Runtime first, tooling optional
+
+No registration plugin or processor is needed for runtime use. Add the core library and write ordinary Kotlin. Testing and OpenTelemetry support are optional runtime modules. Compiler analysis is separate build tooling with a narrower [compatibility boundary](/reference/compatibility/#optional-analysis).
+
+[Install Mosaic](/start/installation/), then follow the [Quick Start](/start/quick-start/). For exact signatures, use the [Kotlin API](/api/).

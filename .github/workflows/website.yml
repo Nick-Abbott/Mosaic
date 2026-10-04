@@ -1,0 +1,116 @@
+name: Website
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - 'brand/**'
+      - '.github/images/order-architecture.png'
+      - 'examples/tile-library/src/main/**'
+      - 'mosaic-core/src/main/**'
+      - 'mosaic-test/src/main/**'
+      - 'mosaic-opentelemetry/src/main/**'
+      - 'build.gradle.kts'
+      - 'buildSrc/**'
+      - 'gradle/**'
+      - 'gradle.properties'
+      - '.github/workflows/website.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - 'brand/**'
+      - '.github/images/order-architecture.png'
+      - 'examples/tile-library/src/main/**'
+      - 'mosaic-core/src/main/**'
+      - 'mosaic-test/src/main/**'
+      - 'mosaic-opentelemetry/src/main/**'
+      - 'build.gradle.kts'
+      - 'buildSrc/**'
+      - 'gradle/**'
+      - 'gradle.properties'
+      - '.github/workflows/website.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: website-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ASTRO_TELEMETRY_DISABLED: '1'
+
+jobs:
+  validate:
+    name: Build and validate website
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          java-version: '21'
+          distribution: zulu
+          cache: gradle
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: website/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: website/.node-version
+          cache: pnpm
+          cache-dependency-path: website/pnpm-lock.yaml
+      - name: Install locked dependencies
+        working-directory: website
+        run: pnpm install --frozen-lockfile
+      - name: Check authored content, types, and formatting
+        working-directory: website
+        run: |
+          pnpm check
+          pnpm format:check
+      - name: Generate native API and publication Javadoc
+        run: ./gradlew dokkaGenerate --build-cache
+      - name: Assemble production site and validate links
+        working-directory: website
+        run: |
+          node scripts/prepare-assets.mjs --api
+          pnpm build
+          pnpm check:links
+      - name: Install Chromium for browser checks
+        working-directory: website
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Responsive, keyboard, and accessibility checks
+        working-directory: website
+        run: pnpm qa
+      - name: Upload browser report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: website-browser-report
+          path: website/.qa/
+          include-hidden-files: true
+          retention-days: 7
+      - name: Upload Pages artifact from canonical main
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: website/dist
+
+  deploy:
+    name: Deploy BuildMosaic.org
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

@@ -12,6 +12,8 @@
 
 **Think from the response up, not the database down.**
 
+**[Get started at BuildMosaic.org](https://BuildMosaic.org/start/quick-start/) · [Documentation](https://BuildMosaic.org/start/overview/) · [Kotlin API](https://BuildMosaic.org/api/)**
+
 Mosaic is a Kotlin library for building backends one response at a time. A **Tile** is a
 reusable piece of work that can read request or application data and compose other
 Tiles. A request-scoped Mosaic shares repeated Tile work automatically.
@@ -54,7 +56,7 @@ val OrderSummaryTile by singleTile {
 
 `LineItemsTile` goes deeper, fetching products and prices. None of that wiring
 spills into the page Tile. [Follow the complete order example](examples/tile-library/src/main/kotlin/org/buildmosaic/library)
-or see [how the composition works](mosaic-core/README.md#-composition).
+or see [how the composition works](https://BuildMosaic.org/concepts/tiles/).
 
 ## ⚡ **Ask Twice. Share the Work.**
 
@@ -74,7 +76,7 @@ println("${page.await().summary.order.id}: ${total.await()}")
 Both branches reach `LineItemsTile`, but it runs once in this Mosaic. They share
 its in-flight work and result without coordinating with each other.
 Reuse is scoped to the **same Mosaic and Tile instance**; a new Mosaic starts
-fresh. [More on caching and identity →](mosaic-core/README.md#-caching-and-identity)
+fresh. [More on caching and identity →](https://BuildMosaic.org/concepts/shared-work/)
 
 ## 🔧 **Fetch by Key with MultiTile**
 
@@ -97,7 +99,7 @@ one invocation. It does not intentionally wait for more keys, so exact batch
 boundaries depend on scheduling. Choose `perKeyTile` for individual fetches or
 `chunkedMultiTile` for smaller batches; callers keep the same API.
 
-[Choose a batching strategy →](mosaic-core/README.md#-multitile)
+[Choose a batching strategy →](https://BuildMosaic.org/concepts/batching/)
 
 ## 🏁 **Try It**
 
@@ -131,7 +133,7 @@ suspend fun orderPage(applicationCanvas: Canvas, orderId: String): OrderPage =
   }.create().compose(OrderPageTile)
 ```
 
-The [complete quick start](mosaic-core/README.md#-quick-start)
+The [complete quick start](https://BuildMosaic.org/start/quick-start/)
 covers application setup, resource ownership, and runtime requirements.
 
 ## 🗺️ **Your Code, Your Architecture**
@@ -156,7 +158,7 @@ It checks Canvas bindings and distinguishes **confirmed missing dependencies**
 from paths it can't verify. Analysis supports **Kotlin/JVM 2.4.20 only**. Runtime composition
 doesn't depend on it. The graph shows static relationships, not runtime traces.
 
-[Set up architecture reports and verification →](mosaic-gradle-plugin/README.md)
+[Set up architecture reports and verification →](https://BuildMosaic.org/guides/analysis/)
 
 ## 🔍 **See the Work That Ran**
 
@@ -176,7 +178,7 @@ spans. Your application owns sampling and export, and Mosaic records no keys,
 results, or exception messages automatically.
 
 `openTelemetry` is your application's configured instance.
-[Set up tracing and see the span semantics →](mosaic-opentelemetry/README.md)
+[Set up tracing and see the span semantics →](https://BuildMosaic.org/guides/tracing/)
 
 ## 🧪 **Test the Composition, Skip the Services**
 
@@ -195,7 +197,7 @@ fun `order page combines summary and logistics`() = runTest {
 ```
 
 `mockSummary` and `mockLogistics` are fixture values; the real `OrderPageTile` puts
-them together. The [testing guide](mosaic-test/README.md) covers setup, Canvas
+them together. The [testing guide](https://BuildMosaic.org/guides/testing/) covers setup, Canvas
 inputs, failures, and delays simulated with coroutine virtual time.
 
 ## 📈 **Measured Against Handwritten Kotlin**
@@ -230,7 +232,7 @@ The same order Tiles run behind three example applications:
 - **[Ktor](examples/ktor-example)** — Coroutine route handlers
 - **[Micronaut](examples/micronaut-example)** — Controllers and dependency injection
 
-[Run an example →](mosaic-core/README.md#-framework-integration)
+[Run an example →](https://BuildMosaic.org/guides/frameworks/)
 
 ## 📄 **License**
 

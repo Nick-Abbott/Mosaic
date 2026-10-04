@@ -14,3 +14,17 @@ ktDebugJsonLog.txt
 performance/results/
 __pycache__/
 *.pyc
+
+# Static website and project-local design tooling
+website/node_modules/
+website/dist/
+website/.astro/
+website/public/brand/
+website/public/api/
+website/public/order-architecture.png
+website/.qa/
+.impeccable/review/
+.impeccable/critique/
+.impeccable/mocks/
+.impeccable/config.local.json
+.agents/skills/impeccable/scripts/bin/

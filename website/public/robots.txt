@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://BuildMosaic.org/sitemap-index.xml

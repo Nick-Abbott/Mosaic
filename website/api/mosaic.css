@@ -1,0 +1,39 @@
+/* Native Dokka layout, with Mosaic's canonical surfaces and focus color. */
+:root {
+  --color-key-blue: #007def;
+  --color-background-nav: #0d192a;
+  --color-background-nav-dt: #0d192a;
+  --color-background-page: #ffffff;
+  --color-background-page-dt: #0d192a;
+  --color-background-footer-dt: #142c48;
+}
+:focus-visible {
+  outline: 3px solid #fd993e;
+  outline-offset: 3px;
+}
+::selection {
+  background: #fd993e;
+  color: #0d192a;
+}
+.library-name--link::before {
+  content: '';
+  display: inline-block;
+  width: 24px;
+  height: 28px;
+  margin-right: 12px;
+  vertical-align: middle;
+  background: url('../images/mosaic-mark.svg') center / contain no-repeat;
+}
+.footer--content a {
+  color: #142c48;
+}
+.theme-dark .footer--content a {
+  color: #b6c7dc;
+}
+
+.mosaic-user-docs {
+  color: #ffffff;
+  align-self: center;
+  padding: 12px;
+  text-decoration: underline;
+}

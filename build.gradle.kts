@@ -1,5 +1,7 @@
 plugins {
   id("base.convention")
+  id("org.jetbrains.dokka")
+  id("org.jetbrains.dokka-javadoc")
 }
 
 allprojects {
@@ -24,4 +26,23 @@ tasks.register("releaseToMavenCentral") {
     ":mosaic-compiler-plugin:publishAndReleaseToMavenCentral",
     ":mosaic-gradle-plugin:publishAndReleaseToMavenCentral",
   )
+}
+
+dependencies {
+  dokka(project(":mosaic-core"))
+  dokka(project(":mosaic-test"))
+  dokka(project(":mosaic-opentelemetry"))
+}
+
+dokka {
+  moduleName.set("Mosaic")
+  pluginsConfiguration.html {
+    customStyleSheets.from(layout.projectDirectory.file("website/api/mosaic.css"))
+    customAssets.from(
+      layout.projectDirectory.file("brand/mosaic-mark.svg"),
+      layout.projectDirectory.file("website/api/mosaic-api.js"),
+    )
+    separateInheritedMembers.set(true)
+    footerMessage.set("<a href=\"https://BuildMosaic.org/\">BuildMosaic.org</a> · <a href=\"https://BuildMosaic.org/start/overview/\">User documentation</a>")
+  }
 }
