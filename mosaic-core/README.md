@@ -72,5 +72,4 @@ The canonical user guide is at **[BuildMosaic.org](https://BuildMosaic.org/start
 
 KDoc owns API-level contracts, including the execution observation SPI.
 Optional [analysis tooling](../mosaic-gradle-plugin/README.md) has its own narrower
-compatibility boundary and is independent of runtime use. Analysis recognition
-of `withMosaic` and `instance` is not yet supported.
+compatibility boundary and is independent of runtime use.
