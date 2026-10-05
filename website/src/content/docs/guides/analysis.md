@@ -70,7 +70,7 @@ mosaicAnalysis {
 }
 ```
 
-STRICT preserves an explicit rule WARNING. Proven cyclic result dependencies cannot be reconfigured or suppressed. Read the [rules and suppression reference](/reference/analysis-configuration/#rule-registry) for boundaries and complete examples.
+STRICT preserves an explicit rule WARNING. Proven cyclic result dependencies cannot be reconfigured or suppressed. Read the [rules and suppression reference](/reference/analysis-configuration/#rules) for boundaries and complete examples.
 
 ## Choose entry contexts
 
@@ -96,8 +96,8 @@ Libraries omit roots. A library with configured roots fails configuration.
 
 ## What runs during the build
 
-The compiler extracts source-relative internal shards inside normal `main` Kotlin compilation. `extractMosaicMain` assembles current-source shards into one complete summary; it does not run another compiler. With no Kotlin sources, it produces an explicit empty complete summary. The JAR packages that summary at `META-INF/mosaic-analysis/v1/summary.json`.
+Analysis runs during normal `main` Kotlin compilation without another compiler process. For incremental builds, the compiler stores source-relative internal shards; `extractMosaicMain` assembles current-source shards into one complete summary. With no Kotlin sources, it produces an explicit empty complete summary. The JAR packages that summary at `META-INF/mosaic-analysis/v1/summary.json`.
 
 Dependency summary changes can rerun verification independently of unchanged source compilation. Incremental, clean, and cache-restored builds must yield the same summary and verification result.
 
-The [analysis configuration reference](/reference/analysis-configuration/) is the canonical user reference. The [Gradle plugin documentation](https://github.com/BuildMosaic/Mosaic/blob/develop/mosaic-gradle-plugin/README.md) explains internal task wiring and publication. The [compiler guide](https://github.com/BuildMosaic/Mosaic/blob/main/mosaic-compiler-plugin/README.md) owns extraction fidelity; the [analysis-core guide](https://github.com/BuildMosaic/Mosaic/blob/main/mosaic-analysis-core/README.md) owns evaluator and metadata semantics. These provisional build-tooling interfaces are separate from the runtime API and BOM.
+Use the [analysis configuration reference](/reference/analysis-configuration/) for configuration and troubleshooting, including [tasks and reports](/reference/analysis-configuration/#tasks-and-reports). For implementation details, the [compiler guide](https://github.com/BuildMosaic/Mosaic/blob/main/mosaic-compiler-plugin/README.md) describes extraction fidelity, and the [analysis-core guide](https://github.com/BuildMosaic/Mosaic/blob/main/mosaic-analysis-core/README.md) describes evaluation and metadata semantics. These provisional build-tooling interfaces are separate from the runtime API and BOM.
