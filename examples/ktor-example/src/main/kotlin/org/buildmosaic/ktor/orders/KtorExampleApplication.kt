@@ -12,10 +12,17 @@ import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.response.respond
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
+import kotlinx.coroutines.runBlocking
 import org.buildmosaic.core.injection.canvas
 import org.buildmosaic.core.injection.withMosaic
 import org.buildmosaic.library.OrderKey
 import org.buildmosaic.library.exception.OrderNotFoundException
+import org.buildmosaic.library.service.AddressService
+import org.buildmosaic.library.service.CarrierService
+import org.buildmosaic.library.service.CustomerService
+import org.buildmosaic.library.service.OrderService
+import org.buildmosaic.library.service.PricingService
+import org.buildmosaic.library.service.ProductService
 import org.buildmosaic.library.tile.OrderPageTile
 import org.buildmosaic.library.tile.OrderTotalTile
 
@@ -35,14 +42,32 @@ fun Application.module() {
     }
   }
 
-  val canvas = kotlinx.coroutines.runBlocking { canvas { } }
+  val orderService = OrderService()
+  val customerService = CustomerService()
+  val productService = ProductService()
+  val pricingService = PricingService()
+  val addressService = AddressService()
+  val carrierService = CarrierService()
+
+  // Canvas construction is suspending; this bridge runs once during application setup.
+  val applicationCanvas =
+    runBlocking {
+      canvas {
+        instance(orderService)
+        instance(customerService)
+        instance(productService)
+        instance(pricingService)
+        instance(addressService)
+        instance(carrierService)
+      }
+    }
 
   routing {
     get("/orders/{id}") {
       val orderId = call.parameters["id"] ?: error("Missing order ID")
       val orderPage =
-        canvas.withLayer {
-          single(OrderKey) { orderId }
+        applicationCanvas.withLayer {
+          instance(key = OrderKey, value = orderId)
         }.withMosaic { compose(OrderPageTile) }
       call.respond(orderPage)
     }
@@ -50,8 +75,8 @@ fun Application.module() {
     get("/orders/{id}/total") {
       val orderId = call.parameters["id"] ?: error("Missing order ID")
       val total =
-        canvas.withLayer {
-          single(OrderKey) { orderId }
+        applicationCanvas.withLayer {
+          instance(key = OrderKey, value = orderId)
         }.withMosaic { compose(OrderTotalTile) }
       call.respond(mapOf("total" to total))
     }

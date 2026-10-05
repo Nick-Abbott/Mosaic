@@ -88,7 +88,7 @@ Have a bulk API? Put it behind a MultiTile:
 
 ```kotlin
 val ProductsByIdTile by multiTile<String, Product> { ids ->
-  ProductService.getProducts(ids.toList())
+  source<ProductService>().getProducts(ids.toList())
 }
 
 // In the same request Mosaic:
@@ -124,16 +124,31 @@ and keeps their results. A Tile can read an input and call an ordinary service:
 ```kotlin
 val OrderKey = CanvasKey(String::class, "orderKey")
 val OrderTile by singleTile {
-  OrderService.getOrder(source(OrderKey))
+  source<OrderService>().getOrder(source(OrderKey))
 }
 ```
 
-Bind that input at the request boundary, then ask for the page:
+The application creates the services and registers its existing instances with
+Canvas. `instance` borrows them; the application retains ownership:
+
+```kotlin
+val applicationCanvas = canvas {
+  instance(orderService)
+  instance(customerService)
+  instance(productService)
+  instance(pricingService)
+  instance(addressService)
+  instance(carrierService)
+}
+```
+
+The [framework examples](examples) show how each application creates these services.
+Bind the request input in a child Canvas, then ask for the page:
 
 ```kotlin
 suspend fun orderPage(applicationCanvas: Canvas, orderId: String): OrderPage =
   applicationCanvas.withLayer {
-    single(OrderKey) { orderId }
+    instance(key = OrderKey, value = orderId)
   }.withMosaic { compose(OrderPageTile) }
 ```
 
