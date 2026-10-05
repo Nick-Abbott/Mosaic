@@ -13,6 +13,8 @@ const routes = [
   '/reference/performance/',
   '/concepts/tiles/',
   '/api/',
+  '/api/mosaic-core/',
+  '/api/mosaic-core/org.buildmosaic.core.injection/-canvas/',
 ];
 for (const width of [1440, 1920, 1280, 820, 390, 430]) {
   for (const theme of ['light', 'dark'] as const) {
