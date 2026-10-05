@@ -35,6 +35,16 @@ for (const width of [1440, 1920, 1280, 820, 390, 430]) {
         await expect(page.locator('main, [role="main"]')).toBeVisible();
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
         if (route === '/') {
+          const graph = page.locator('.composition-figure svg');
+          const mobileGraph = page.locator('.mobile-composition');
+          if (width < 600) {
+            await expect(graph).not.toBeVisible();
+            await expect(mobileGraph).toBeVisible();
+            await expect(mobileGraph.locator('.mobile-shared')).toHaveText('OrderTile shared by three branches');
+          } else {
+            await expect(graph).toBeVisible();
+            await expect(mobileGraph).not.toBeVisible();
+          }
           expect(await page.evaluate(() => window.mosaicLayoutShift)).toBeLessThanOrEqual(0.1);
           expect(
             await page
