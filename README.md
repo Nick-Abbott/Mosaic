@@ -18,6 +18,10 @@ Mosaic is a Kotlin library for building backends one response at a time. A **Til
 reusable piece of work that can read request or application data and compose other
 Tiles. A request-scoped Mosaic shares repeated Tile work automatically.
 
+The public stable release is **[0.6.0](https://github.com/BuildMosaic/Mosaic/releases/tag/0.6.0)**.
+For released examples, use the [0.6.0 README](https://github.com/BuildMosaic/Mosaic/blob/0.6.0/README.md);
+`develop` includes unreleased APIs and examples.
+
 ## 🚀 **Why Mosaic?**
 
 - **🎯 Response first** — Start with what your endpoint returns.
@@ -229,13 +233,29 @@ source revision documented in the report.
 
 ## 🌐 **Bring Your HTTP Framework**
 
-The same order Tiles run behind three example applications:
+Mosaic works alongside any HTTP framework; your framework owns routing,
+serialization, and server lifecycle. The same order Tiles run behind three
+example applications:
 
 - **[Spring Boot](examples/spring-example)** — Controllers and application Canvas configuration
 - **[Ktor](examples/ktor-example)** — Coroutine route handlers
 - **[Micronaut](examples/micronaut-example)** — Controllers and dependency injection
 
 [Run an example →](https://BuildMosaic.org/guides/frameworks/)
+
+## 🤝 **Maintainer and Support**
+
+Mosaic is maintained by Nicholas Abbott ([nick@buildmosaic.org](mailto:nick@buildmosaic.org)).
+Use [GitHub Issues](https://github.com/BuildMosaic/Mosaic/issues) for usage questions,
+bug reports, and feature requests; see the [contribution guide](.github/CONTRIBUTING.md)
+for contribution and discussion routes.
+
+For vulnerabilities, follow the [security policy](.github/SECURITY.md) and email
+[security@buildmosaic.org](mailto:security@buildmosaic.org) privately. Do not open a public issue.
+The policy limits security updates to the latest minor release.
+
+Before adopting or upgrading, review [runtime and optional analysis compatibility](https://BuildMosaic.org/reference/compatibility/)
+and [release notes and upgrade guidance](https://BuildMosaic.org/reference/releases/).
 
 ## 📄 **License**
 
