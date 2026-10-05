@@ -36,18 +36,18 @@ mosaicAnalysis {
 }
 ```
 
-Add Mosaic runtime dependencies separately. The plugin neither applies Kotlin nor installs the application runtime. It resolves the matching compiler plugin through Kotlin's normal compiler-subplugin integration. The compiler and Gradle artifacts bundle the internal analysis kernel; analysis tooling is outside the runtime BOM.
+Add Mosaic runtime dependencies separately. The plugin neither applies Kotlin nor installs the application runtime. It resolves the matching compiler plugin through Kotlin's normal compiler-subplugin integration. The analysis components are bundled with the compiler and Gradle plugins, so no separate analysis dependency is needed; analysis tooling is outside the runtime BOM.
 
 ## Gradle DSL
 
 The extension is `org.buildmosaic.gradle.MosaicAnalysisExtension`. These are its public configuration options:
 
-| Option        | Type                                  | Default           | Valid values                                             | Effect                                                                                                                                      |
-| ------------- | ------------------------------------- | ----------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `role`        | `Property<MosaicAnalysisRole>`        | `APPLICATION`     | `APPLICATION`, `LIBRARY`                                 | APPLICATION verifies execution roots and exports contracts. LIBRARY validates and exports local contracts without application verification. |
-| `enforcement` | `Property<MosaicAnalysisEnforcement>` | `STANDARD`        | `STANDARD`, `STRICT`                                     | Controls uncertainty enforcement; does not override named rule severity.                                                                    |
-| `roots`       | `ListProperty<String>`                | Empty list        | Callable or Canvas contract IDs in selected summaries    | Empty selects automatic discovery in APPLICATION. A nonempty list replaces discovery. LIBRARY requires an empty list.                       |
-| `rules`       | `MosaicAnalysisRules`                 | Registry defaults | `severity(ruleId: String, severity: MosaicRuleSeverity)` | Configures named policy rules. Severity has exactly `ERROR`, `WARNING`, `OFF`.                                                              |
+| Option        | Type                                  | Default       | Valid values                                             | Effect                                                                                                                                      |
+| ------------- | ------------------------------------- | ------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `role`        | `Property<MosaicAnalysisRole>`        | `APPLICATION` | `APPLICATION`, `LIBRARY`                                 | APPLICATION verifies execution roots and exports contracts. LIBRARY validates and exports local contracts without application verification. |
+| `enforcement` | `Property<MosaicAnalysisEnforcement>` | `STANDARD`    | `STANDARD`, `STRICT`                                     | Controls uncertainty enforcement; does not override named rule severity.                                                                    |
+| `roots`       | `ListProperty<String>`                | Empty list    | Callable or Canvas contract IDs in selected summaries    | Empty selects automatic discovery in APPLICATION. A nonempty list replaces discovery. LIBRARY requires an empty list.                       |
+| `rules`       | `MosaicAnalysisRules`                 | Rule defaults | `severity(ruleId: String, severity: MosaicRuleSeverity)` | Configures named policy rules. Severity has exactly `ERROR`, `WARNING`, `OFF`.                                                              |
 
 Use typed settings and ordinary Gradle properties:
 
@@ -104,9 +104,9 @@ mosaicAnalysis { role = MosaicAnalysisRole.LIBRARY }
 
 Libraries omit roots. Configuring library roots fails. Applications also export complete summaries.
 
-## Rule registry
+## Rules
 
-The compiler-independent `MosaicRule` registry in `mosaic-analysis-core` owns IDs, titles, defaults, configurability, suppressibility, and correctness/policy classification. A focused consistency test checks this table against the registry.
+Mosaic analysis exposes the following rules. All default to ERROR. The table shows which rules you can configure for your module or suppress for an intentional local exception. Proven cyclic Tile dependencies always remain errors.
 
 | ID                              | Title                          | Default severity | Configurable | Suppressible |
 | ------------------------------- | ------------------------------ | ---------------- | ------------ | ------------ |
@@ -116,7 +116,7 @@ The compiler-independent `MosaicRule` registry in `mosaic-analysis-core` owns ID
 
 ### MOSAIC_CYCLIC_TILE_DEPENDENCY
 
-Detects a closed dependency on unfinished stable SingleTile results in the **same Mosaic**, with synchronous/result-requiring composition on every closed edge and a supported execution path. Self-cycles and longer cycles include the entire closed path and source locations. This is a correctness error; no configuration or suppression syntax can disable it.
+Reports a circular dependency in which SingleTile results require unfinished work from each other in the **same Mosaic**. Analysis must establish stable Tile identities, synchronous/result-requiring composition on every edge of the closed path, and a supported execution path. Self-cycles and longer cycles include the entire closed path and source locations. This is a correctness error; no configuration or suppression syntax can disable it.
 
 ```kotlin
 val A: Tile<Int> by singleTile { compose(B) }
@@ -124,13 +124,13 @@ val B: Tile<Int> by singleTile { compose(A) }
 suspend fun entry() = canvas {}.withMosaic { compose(A) }
 ```
 
-The witness is `A -> B -> A`. Mosaic tracks current receiver identity, fresh standard `withMosaic`/deprecated `create()` instances, and established immutable aliases. Equal Canvases do not imply equal Mosaic caches. Unknown receivers, unsupported execution steps, fresh Tile allocation identities, opaque execution alternatives, and keyed recursion do not establish this proof.
+The reported path is `A -> B -> A`. Sharing a Canvas does not mean sharing a Mosaic cache: `withMosaic` and deprecated `create()` each create a fresh standard Mosaic. Analysis distinguishes those instances from the Mosaic executing the current Tile and preserves established immutable aliases. Unknown receivers, unsupported execution steps, fresh Tile allocation identities, opaque execution alternatives, and keyed recursion do not establish this proof.
 
 An async launcher does not imply waiting. If A starts B asynchronously and B/C synchronously require each other, the independent witness is `B -> C -> B`; it does not claim A waits. Arbitrary `Deferred.await()` relationships are outside the proof boundary. The finding is called a cyclic Tile dependency, not a thread deadlock.
 
 ### MOSAIC_RECURSIVE_TILE
 
-Detects a stable recursive dependency structure containing ordinary Tiles when the stronger cyclic-result proof is unavailable. Examples include async edges, unknown Mosaic identity, separate Mosaics, and mixed Tile/MultiTile recursion. The diagnostic explicitly says the same-Mosaic cyclic result dependency was **not proven**.
+Reports a stable Tile declaration that requests itself, directly or through other Tiles or MultiTiles, when the stronger cyclic-result proof is unavailable. Examples include async edges, unknown Mosaic identity, separate Mosaics, and mixed Tile/MultiTile recursion. The diagnostic explicitly says the same-Mosaic cyclic result dependency was **not proven**.
 
 ```kotlin
 val A: Tile<Int> by singleTile { canvas.create().compose(A) }
@@ -151,7 +151,7 @@ val A: Tile<Int> by singleTile { canvas.create().compose(A) }
 
 ### MOSAIC_RECURSIVE_MULTITILE
 
-Detects pure stable MultiTile declaration recursion, including self-reference and longer cycles. Mosaic cannot establish that recursive requests use different keys or terminate. Changing-key recursion may be intentional; the default ERROR asks for an explicit local exception or module policy. Declaration recursion is not proof of a same-key cyclic wait.
+Reports a stable MultiTile declaration that requests itself, directly or through other MultiTiles. Changing-key recursion may be intentional, but Mosaic cannot establish that recursive requests use different keys or terminate. The default ERROR asks you to review the recursion: use a local suppression for one intentional recursive structure or Gradle severity for a module-wide policy. Declaration recursion is not proof of a same-key cyclic wait.
 
 ```kotlin
 val CategoryTile: MultiTile<Int, Int> by perKeyTile { id ->
@@ -204,7 +204,7 @@ MOSAIC_RECURSIVE_MULTITILE: Recursive MultiTile dependency: SUPPRESSED
 
 ## Extraction semantics and unknown boundaries
 
-Supported direct `withMosaic` evaluates its Canvas receiver before invocation, establishes one fresh standard Mosaic, binds the direct lambda receiver, and analyzes the block once in source order. `compose`, `composeAsync`, `source`, `sourceOr`, and immutable receiver aliases retain that provenance. An escaping receiver, indirect block value/reference, arbitrary Mosaic helper parameter transfer, or capability-bearing deferred capture is an explicit unknown boundary. Arbitrary higher-order functions are not interpreted.
+Supported direct `withMosaic` evaluates its Canvas receiver before invocation, establishes one fresh standard Mosaic, binds the direct lambda receiver, and analyzes the block once in source order. `compose`, `composeAsync`, `source`, `sourceOr`, and immutable receiver aliases use that same Mosaic and Canvas. An escaping receiver, indirect block value/reference, arbitrary Mosaic helper parameter transfer, or capability-bearing deferred capture is an explicit unknown boundary. Arbitrary higher-order functions are not interpreted.
 
 `CanvasBuilder.instance(value)`, `instance(value, qualifier = "primary")`, and `instance(key, value)` evaluate their supplied expressions at registration time. They register the same normalized type/qualifier keys as `single`; they have no deferred constructor effects. Immutable aliases and supported child layers retain ordinary local-first lookup. Duplicate local keys remain invalid; dynamic keys/qualifiers and unsupported registrations remain conservative. Closing and ownership are runtime concerns outside availability contracts.
 
@@ -214,17 +214,17 @@ Unsupported control flow, general callbacks, arbitrary virtual dispatch, mutable
 
 | Task / artifact     | Effect / location                                                                                                                                                                                  |
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `compileKotlin`     | Extracts source-relative internal shards inside normal Kotlin `main` compilation; no separate Mosaic compiler process.                                                                             |
-| `extractMosaicMain` | Assembles current-source shards into `build/mosaic-analysis/main/summary.json`; Kotlin `NO_SOURCE` produces an explicit empty complete summary.                                                    |
+| `compileKotlin`     | Analyzes your `main` Kotlin sources during normal compilation; stores source-relative internal shards without a separate Mosaic compiler process.                                                  |
+| `extractMosaicMain` | Writes the complete summary to `build/mosaic-analysis/main/summary.json` from current-source shards; Kotlin `NO_SOURCE` produces an explicit empty complete summary.                               |
 | `verifyMosaicMain`  | Verifies APPLICATION roots against selected summaries, or validates LIBRARY export; writes `build/reports/mosaic-analysis/main.txt`.                                                               |
 | `verifyMosaic`      | Aggregates main verification.                                                                                                                                                                      |
 | `check`             | Includes `verifyMosaic`; normal `build` consequently verifies/validates.                                                                                                                           |
 | `mosaicGraph`       | Writes `build/reports/mosaic-analysis/graph.md`, with a Mermaid overview and APPLICATION root findings. No finding alone fails graph generation. Invalid configuration/artifacts/roots still fail. |
 | `jar`               | Packages one complete summary at `META-INF/mosaic-analysis/v1/summary.json` for both roles. Shards are never dependency metadata.                                                                  |
 
-Reports show selected roots and receivers, statuses, closed witnesses and source locations, rule severity, suppressed sites, Canvas obligations, and uncertainty. Graph generation reuses the semantic kernel's findings; graph topology is not cycle-proof authority. The graph represents possible static structure, not runtime timing, call counts, cache occupancy, or exact key batches.
+Reports show selected roots and receivers, statuses, closed witnesses and source locations, rule severity, suppressed sites, Canvas obligations, and uncertainty. Graph and verification reports use the same analysis findings; a loop in the diagram alone does not prove a cyclic result dependency. The graph represents possible static structure, not runtime timing, call counts, cache occupancy, or exact key batches.
 
-Dependency summary invalidation is separate from source compilation. Clean, incremental, and cache-restored paths preserve summary and verification results. Summary compatibility is determined by the header, not the `v1` resource directory: the reader accepts **format 4 / `analysis-contract-3`**, complete `main` summaries, and matching Kotlin 2.4.20. Incompatible Canvas-only summaries are rejected. Regenerate dependency summaries with the matching Mosaic analysis version; old summaries are not reinterpreted as receiver provenance.
+Dependency summary changes can rerun verification without recompiling unchanged application sources. Clean, incremental, and cache-restored paths preserve summary and verification results. Summary compatibility is determined by the header, not the `v1` resource directory: the reader accepts **format 4 / `analysis-contract-3`**, complete `main` summaries, and matching Kotlin 2.4.20. Incompatible Canvas-only summaries are rejected because they cannot distinguish separate Mosaics sharing one Canvas. Regenerate dependency summaries with the matching Mosaic analysis version.
 
 ## Supported project boundary
 
