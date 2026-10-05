@@ -34,6 +34,17 @@ analysis tooling.
 
 Neither skill is required for routine edits or authorizes unrelated cleanup.
 
+## Focused agent skills
+
+- For reported bugs or performance regressions, use
+  [diagnosing-bugs](.agents/skills/diagnosing-bugs/SKILL.md).
+- When creating or materially editing guidance for coding agents, use
+  [writing-for-agents](.agents/skills/writing-for-agents/SKILL.md).
+- Only on explicit user request, use [retro](.agents/skills/retro/SKILL.md) for
+  session/environment recommendations or
+  [architecture-audit](.agents/skills/architecture-audit/SKILL.md) for architectural
+  improvement opportunities. Both stop at recommendations without editing files.
+
 ## Analysis invariants
 
 - Support exactly Kotlin compiler and Gradle plugin 2.4.20. Reject unsupported
