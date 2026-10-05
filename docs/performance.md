@@ -240,14 +240,20 @@ directly. The completed `composeAsync()` cache-hit benchmark directly returns th
 cached `Deferred` without awaiting it. The direct and suspending controls reveal
 some of the harness cost.
 
-MultiTile request and cache setup occurs in JMH invocation setup so the timed
-method always sees the stated cache state. For allocation profiling, JMH's GC
-counter can also include allocations from invocation setup in its normalized
-figure. Treat MultiTile allocation figures as workload-level diagnostics, not
-isolated `compose` allocation costs. Cold SingleTile and graph benchmarks include
-request creation, while MultiTile `cold`, `halfCached`, and `fullyCached` exclude
-it from timing. A one-key request cannot be half cached, so the half-cached
-variant begins at 16 keys.
+MultiTile `cold` and `halfCached` prepare fresh requests in JMH invocation setup
+so misses cannot become hits in subsequent invocations. JMH's GC profiler can
+include that setup in normalized allocation; those figures are workload-level
+diagnostics rather than isolated `compose` allocation costs.
+
+`fullyCached` prewarms 32 distinct Mosaic caches once per trial and reuses their
+completed results. It measures repeated cache reads, excluding request creation
+and prewarming from each invocation. The coroutine bridge, result-map assembly,
+and sum remain part of the measured operation. Its timing and allocation need a
+new baseline against earlier fixtures that prewarmed fresh requests per invocation.
+
+Cold SingleTile and graph benchmarks include request creation, while MultiTile
+`cold`, `halfCached`, and `fullyCached` exclude it from timing. A one-key request
+cannot be half cached, so the half-cached variant begins at 16 keys.
 
 Compare runs only on the same hardware, JDK, JVM options, and benchmark settings.
 Hosted CI variance makes small percentage movements unsuitable as regression
@@ -256,11 +262,16 @@ signals. The suite has no hard regression thresholds.
 ### Full execution drain
 
 `ExecutionDrainBenchmark` runs the four-branch shared diamond and four sibling
-coalescing consumers with the same fixtures. After composing the root, it
-completes and joins the request Job, waiting for every owned execution and attached
-child. These measurements include execution cleanup after result publication;
-compare them separately from the ordinary result-latency benchmarks. A fixture
-test verifies that the drain waits for a child that outlives the published result.
+coalescing consumers with the same fixtures. Each operation uses `Canvas.withMosaic`
+to create a fresh Mosaic owned by the calling coroutine, inheriting its dispatcher.
+After composing the root, block exit cancels unfinished work and waits for cleanup.
+These measurements include request creation and cleanup after result publication;
+compare them separately from the ordinary result-latency benchmarks. Fixture tests
+verify cancellation and attached-child cleanup, and fresh caches across requests.
+
+These scoped timings and allocations are not directly comparable with earlier
+unscoped complete-and-join drain fixtures, which used `Dispatchers.Default` and
+allowed unfinished children to complete naturally.
 
 ```bash
 ./gradlew :mosaic-benchmarks:jmhJar
@@ -292,8 +303,8 @@ Reversed-order timing and allocation runs also covered the shared diamond,
 sibling coalescing, and depth-16/64 chains. Width-16/64 and coalescing-depth-5/10
 timing sweeps used one fork, three one-second warmups, and five one-second
 measurements. Allocation for those sweeps used the separate five-warmup profile.
-MultiTile allocation retains the invocation-setup caveat above; independent
-repeats expose variation between forks.
+MultiTile allocation in this release comparison includes invocation setup and
+request/cache prewarming; independent repeats expose variation between forks.
 
 Timing cells are means from the first comparison order. Allocation ranges show
 means from independent JVM sessions, including reversed comparisons where run;
