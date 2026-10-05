@@ -2,7 +2,7 @@ package org.buildmosaic.spring.orders.web
 
 import kotlinx.coroutines.runBlocking
 import org.buildmosaic.core.injection.Canvas
-import org.buildmosaic.core.injection.create
+import org.buildmosaic.core.injection.withMosaic
 import org.buildmosaic.library.OrderKey
 import org.buildmosaic.library.model.OrderPage
 import org.buildmosaic.library.tile.OrderPageTile
@@ -22,7 +22,7 @@ class OrderController(private val canvas: Canvas) {
     runBlocking {
       canvas.withLayer {
         single(OrderKey) { id }
-      }.create().compose(OrderPageTile)
+      }.withMosaic { compose(OrderPageTile) }
     }
 
   @GetMapping("/{id}/total")
@@ -32,6 +32,6 @@ class OrderController(private val canvas: Canvas) {
     runBlocking {
       canvas.withLayer {
         single(OrderKey) { id }
-      }.create().compose(OrderTotalTile)
+      }.withMosaic { compose(OrderTotalTile) }
     }
 }

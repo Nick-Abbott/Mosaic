@@ -31,10 +31,10 @@ Inside a suspending handler:
 ```kotlin
 val page = applicationCanvas.withLayer {
   single(OrderKey) { orderId }
-}.create().compose(OrderPageTile)
+}.withMosaic { compose(OrderPageTile) }
 ```
 
-The example's declarations and `org.buildmosaic.core.injection.create` supply these names. The Canvas binds the request input; the fresh Mosaic scopes Tile reuse to that request. Your handler returns or serializes `page`.
+The example's declarations and `org.buildmosaic.core.injection.withMosaic` supply these names. The Canvas binds the request input; the fresh Mosaic scopes Tile reuse to that request. Your handler returns or serializes `page`.
 
 ## Pick the example for your framework
 

@@ -13,7 +13,7 @@ import jakarta.inject.Singleton
 import kotlinx.coroutines.runBlocking
 import org.buildmosaic.core.injection.Canvas
 import org.buildmosaic.core.injection.canvas
-import org.buildmosaic.core.injection.create
+import org.buildmosaic.core.injection.withMosaic
 import org.buildmosaic.library.OrderKey
 import org.buildmosaic.library.exception.OrderNotFoundException
 import org.buildmosaic.library.model.OrderPage
@@ -46,7 +46,7 @@ class OrderController(private val canvas: Canvas) {
     runBlocking {
       canvas.withLayer {
         single(OrderKey) { id }
-      }.create().compose(OrderPageTile)
+      }.withMosaic { compose(OrderPageTile) }
     }
 
   @Get("/{id}/total")
@@ -57,7 +57,7 @@ class OrderController(private val canvas: Canvas) {
       val total =
         canvas.withLayer {
           single(OrderKey) { id }
-        }.create().compose(OrderTotalTile)
+        }.withMosaic { compose(OrderTotalTile) }
       mapOf("total" to total)
     }
 

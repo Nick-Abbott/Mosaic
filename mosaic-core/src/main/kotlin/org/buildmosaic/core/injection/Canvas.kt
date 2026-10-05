@@ -1,5 +1,6 @@
 package org.buildmosaic.core.injection
 
+import kotlinx.coroutines.currentCoroutineContext
 import org.buildmosaic.core.Mosaic
 import org.buildmosaic.core.MosaicImpl
 import org.buildmosaic.core.MosaicRuntimeConfig
@@ -121,8 +122,29 @@ inline fun <reified T : Any> Canvas.source(): T = source(T::class)
 inline fun <reified T : Any> Canvas.sourceOr(): T? = sourceOr(T::class)
 
 /**
- * Creates a new [Mosaic] instance
+ * Executes [block] with a request-owned [Mosaic], inheriting the calling coroutine's context.
+ * Tile producers are supervised siblings: cancelling a waiter does not cancel shared work.
+ * Request cancellation cancels unfinished producers. Every exit cancels speculative work and
+ * waits for producer and attached-child cleanup before returning or propagating the block's failure.
  *
- * @return An instance of [Mosaic] scoped to the [Canvas]
+ * ```kotlin
+ * return canvas.withMosaic {
+ *   handler(this)
+ * }
+ * ```
  */
+suspend fun <R> Canvas.withMosaic(block: suspend Mosaic.() -> R): R {
+  val mosaic = MosaicImpl(this, currentCoroutineContext())
+  try {
+    return block(mosaic)
+  } finally {
+    mosaic.shutdown()
+  }
+}
+
+/** Creates an unscoped [Mosaic]. Prefer [withMosaic] to own execution within a request lifetime. */
+@Deprecated(
+  "Use scoped Canvas.withMosaic { ... } to own Mosaic work within the calling coroutine",
+  level = DeprecationLevel.WARNING,
+)
 fun Canvas.create(): Mosaic = MosaicImpl(this)

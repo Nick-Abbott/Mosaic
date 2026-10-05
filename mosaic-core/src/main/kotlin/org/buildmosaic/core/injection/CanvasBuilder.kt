@@ -44,7 +44,8 @@ class CanvasBuilder internal constructor(inheritedConfig: MosaicRuntimeConfig = 
   private enum class ObserverState { ABSENT, INSTALLING, CONFIGURED }
 
   /**
-   * Registers a singleton dependency in the canvas.
+   * Registers a Canvas-owned singleton dependency. Constructed [AutoCloseable] values
+   * are closed on Canvas close or construction rollback. Use [instance] to borrow a value.
    *
    * @param T The type of the dependency
    * @param key The [CanvasKey] associated with your dependency
@@ -53,10 +54,11 @@ class CanvasBuilder internal constructor(inheritedConfig: MosaicRuntimeConfig = 
   fun <T : Any> single(
     key: CanvasKey<T>,
     ctor: suspend CanvasFactory.() -> T,
-  ) = check(bindings.put(key, SingleBinding(ctor)) == null) { "Duplicate binding for $key" }
+  ) = check(bindings.putIfAbsent(key, SingleBinding(ctor)) == null) { "Duplicate binding for $key" }
 
   /**
-   * Registers a singleton dependency in the canvas.
+   * Registers a Canvas-owned singleton dependency. Constructed [AutoCloseable] values
+   * are closed on Canvas close or construction rollback. Use [instance] to borrow a value.
    *
    * @param T The type of the dependency
    * @param qualifier Optional qualifier to distinguish between multiple instances of the same type
@@ -66,6 +68,21 @@ class CanvasBuilder internal constructor(inheritedConfig: MosaicRuntimeConfig = 
     qualifier: String? = null,
     noinline ctor: suspend CanvasFactory.() -> T,
   ) = single(CanvasKey(T::class, qualifier), ctor)
+
+  /**
+   * Registers an externally owned value. Canvas never closes this value, including on
+   * construction rollback. Available eagerly to constructors, with normal local-first lookup.
+   */
+  fun <T : Any> instance(
+    key: CanvasKey<T>,
+    value: T,
+  ) = check(bindings.putIfAbsent(key, SingleBinding(value)) == null) { "Duplicate binding for $key" }
+
+  /** Registers an externally owned value under its type and optional [qualifier]. */
+  inline fun <reified T : Any> instance(
+    value: T,
+    qualifier: String? = null,
+  ) = instance(CanvasKey(T::class, qualifier), value)
 }
 
 /**

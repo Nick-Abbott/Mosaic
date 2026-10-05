@@ -13,7 +13,7 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import org.buildmosaic.core.injection.canvas
-import org.buildmosaic.core.injection.create
+import org.buildmosaic.core.injection.withMosaic
 import org.buildmosaic.library.OrderKey
 import org.buildmosaic.library.exception.OrderNotFoundException
 import org.buildmosaic.library.tile.OrderPageTile
@@ -43,7 +43,7 @@ fun Application.module() {
       val orderPage =
         canvas.withLayer {
           single(OrderKey) { orderId }
-        }.create().compose(OrderPageTile)
+        }.withMosaic { compose(OrderPageTile) }
       call.respond(orderPage)
     }
 
@@ -52,7 +52,7 @@ fun Application.module() {
       val total =
         canvas.withLayer {
           single(OrderKey) { orderId }
-        }.create().compose(OrderTotalTile)
+        }.withMosaic { compose(OrderTotalTile) }
       call.respond(mapOf("total" to total))
     }
   }
