@@ -38,7 +38,7 @@ Playwright goldens cover the graph and nested Canvas page in both themes. Separa
 - Focused Impeccable review: rendered graph and API captures inspected across the viewport/theme matrix; one mechanical scan returned no findings. The pass stayed within these surfaces.
 - `git diff --check`: passed.
 
-Toolchain: Node 22.23.3, pnpm 10.34.6, JDK 21, Dokka 2.2.0, Playwright 1.58.2. Local browser: Google Chrome 154 on Linux; CI uses Playwright Chromium.
+Toolchain: Node 22.23.3, pnpm 10.34.6, JDK 21, Dokka 2.2.0, Playwright 1.58.2. Review evidence: Google Chrome 154 on Linux. Screenshot goldens and final browser validation use Playwright’s pinned Chromium 145.0.7632.6, matching CI. Visual captures reset native sidebar session state and move the pointer away from controls.
 
 ## Remaining issues
 

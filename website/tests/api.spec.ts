@@ -57,7 +57,10 @@ for (const theme of ['light', 'dark'] as const) {
       );
       await page.locator('#theme-toggle-button').click();
     }
+    // Start the visual capture with a fresh sidebar state, independent of prior routes.
+    await page.evaluate(() => sessionStorage.clear());
     await page.goto(canvasRoute);
+    await page.mouse.move(0, 900);
     await expect(page.locator('#toc-listbox a').filter({ hasText: /^Canvas$/ })).toBeVisible();
     await page.evaluate(() => document.fonts.ready);
     await expect(page).toHaveScreenshot(`canvas-${theme}.png`, { maxDiffPixelRatio: 0.005 });
