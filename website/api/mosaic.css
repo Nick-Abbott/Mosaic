@@ -1,11 +1,19 @@
 /* Native Dokka layout, with Mosaic's canonical surfaces and focus color. */
 :root {
   --color-key-blue: #007def;
+  --background-color: var(--color-background-page);
+  --focus-outline: 3px solid #fd993e;
+  --hover-link-color: #007def;
   --color-background-nav: #0d192a;
   --color-background-nav-dt: #0d192a;
   --color-background-page: #ffffff;
   --color-background-page-dt: #0d192a;
   --color-background-footer-dt: #142c48;
+}
+.theme-dark {
+  --background-color: var(--color-background-page-dt);
+  --color-dark: #142c48;
+  --hover-link-color: #fd993e;
 }
 :focus-visible {
   outline: 3px solid #fd993e;
@@ -14,15 +22,6 @@
 ::selection {
   background: #fd993e;
   color: #0d192a;
-}
-.library-name--link::before {
-  content: '';
-  display: inline-block;
-  width: 24px;
-  height: 28px;
-  margin-right: 12px;
-  vertical-align: middle;
-  background: url('../images/mosaic-mark.svg') center / contain no-repeat;
 }
 .footer--content a {
   color: #142c48;
@@ -36,4 +35,15 @@
   align-self: center;
   padding: 12px;
   text-decoration: underline;
+}
+
+/* Keep native selected rows blue, with readable small white labels. */
+.toc--part[data-active] > .toc--row {
+  --color-key-blue: color-mix(in srgb, #007def 80%, #0d192a);
+  --color-key-blue-hover: var(--color-key-blue);
+}
+
+/* Dokka's compact header otherwise paints its controls black. */
+.navigation-controls {
+  background-color: var(--color-background-nav);
 }

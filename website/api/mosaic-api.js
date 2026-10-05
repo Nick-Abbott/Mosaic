@@ -5,6 +5,8 @@ const improveDokkaAccessibility = () => {
   toc?.setAttribute('role', 'presentation');
   toc?.removeAttribute('aria-label');
   toc?.closest('nav')?.setAttribute('aria-label', 'API navigation');
+  // Dokka's source-set controls are buttons, not list items.
+  document.querySelector('#filter-section')?.setAttribute('role', 'group');
   const docs = document.createElement('a');
   docs.href = '/start/overview/';
   docs.className = 'mosaic-user-docs';
