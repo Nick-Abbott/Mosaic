@@ -1,8 +1,5 @@
 package org.buildmosaic.core
 
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlin.reflect.KProperty
 
 /**
@@ -61,7 +58,9 @@ fun <T> singleTile(block: suspend Mosaic.() -> T): Tile<T> = Tile(block)
  * Within one Mosaic, pending uncached keys for the same MultiTile may combine
  * before execution. There is no intentional wait; batch boundaries depend on scheduling.
  */
-class MultiTile<K : Any, V>(internal val block: suspend Mosaic.(Set<K>) -> Map<K, V>) {
+class MultiTile<K : Any, V> internal constructor(internal val execution: MultiTileExecution<K, V>) {
+  constructor(block: suspend Mosaic.(Set<K>) -> Map<K, V>) : this(BulkExecution(block))
+
   /** The first delegated property name bound to this tile, or `null` if none has been bound. */
   @Volatile
   var name: String? = null
@@ -104,8 +103,8 @@ fun <K : Any, V> multiTile(block: suspend Mosaic.(Set<K>) -> Map<K, V>): MultiTi
 /**
  * Creates a [MultiTile] from a per-key fetch function.
  *
- * Each key is fetched independently in parallel and the results are aggregated
- * into a map. Example:
+ * Each key is fetched independently in parallel and retains its own success or failure.
+ * A failed key does not discard successful siblings. Example:
  *
  * ```kotlin
  * val userTile = perKeyTile<String, User> { id ->
@@ -113,18 +112,12 @@ fun <K : Any, V> multiTile(block: suspend Mosaic.(Set<K>) -> Map<K, V>): MultiTi
  * }
  * ```
  */
-fun <K : Any, V> perKeyTile(fetch: suspend Mosaic.(K) -> V): MultiTile<K, V> =
-  multiTile { keys ->
-    coroutineScope {
-      keys
-        .associateWith { key -> async { fetch(key) } }
-        .mapValues { (_, deferred) -> deferred.await() }
-    }
-  }
+fun <K : Any, V> perKeyTile(fetch: suspend Mosaic.(K) -> V): MultiTile<K, V> = MultiTile(PerKeyExecution(fetch))
 
 /**
  * Creates a [MultiTile] that splits incoming keys into batches of [batchSize]
- * and merges the results from [fetch].
+ * and retains results from each independent [fetch] invocation. A failed chunk only fails
+ * its unfinished keys; a partial map fails omitted keys while preserving present values.
  *
  * ```kotlin
  * val productTile = chunkedMultiTile<String, Product>(50) { ids ->
@@ -135,15 +128,4 @@ fun <K : Any, V> perKeyTile(fetch: suspend Mosaic.(K) -> V): MultiTile<K, V> =
 fun <K : Any, V> chunkedMultiTile(
   batchSize: Int,
   fetch: suspend Mosaic.(List<K>) -> Map<K, V>,
-): MultiTile<K, V> =
-  multiTile { keys ->
-    coroutineScope {
-      val result = mutableMapOf<K, V>()
-      keys
-        .chunked(batchSize)
-        .map { chunk -> async { fetch(chunk) } }
-        .awaitAll()
-        .forEach { map -> result += map }
-      result
-    }
-  }
+): MultiTile<K, V> = MultiTile(ChunkedExecution(batchSize, fetch))

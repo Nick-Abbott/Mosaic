@@ -10,16 +10,31 @@ Reuse belongs to one Mosaic instance. Calls using the same Tile instance share i
 The order page and total both reach `LineItemsTile`. Create one request Mosaic and use it for both results:
 
 ```kotlin
-val mosaic = applicationCanvas.withLayer {
+applicationCanvas.withLayer {
   single(OrderKey) { orderId }
-}.create()
-
-val page = mosaic.composeAsync(OrderPageTile)
-val total = mosaic.composeAsync(OrderTotalTile)
-println("${page.await().summary.order.id}: ${total.await()}")
+}.withMosaic {
+  val page = composeAsync(OrderPageTile)
+  val total = composeAsync(OrderTotalTile)
+  println("${page.await().summary.order.id}: ${total.await()}")
+}
 ```
 
-This excerpt belongs in a suspending handler, with the order example's declarations and `org.buildmosaic.core.injection.create` imported. One branch may start `LineItemsTile` before the other reaches it. Both reuse its producer and value.
+This excerpt belongs in a suspending handler, with the order example's declarations and `org.buildmosaic.core.injection.withMosaic` imported. One branch may start `LineItemsTile` before the other reaches it. Both reuse its producer and value.
+
+`withMosaic` inherits the request coroutine's dispatcher and context. Producers are children of its Job and supervised from one another. Request cancellation cancels unfinished work. Normal or exceptional block exit cancels unfinished speculative work and waits for producer and attached-child cleanup.
+
+The `Deferred` returned by `composeAsync` represents Mosaic-owned shared work. Await it freely. To stop waiting, cancel your own coroutine or wait operation rather than cancelling that shared Deferred; other consumers may still need it.
+
+Libraries can keep Canvas out of a handler API:
+
+```kotlin
+suspend fun handler(mosaic: Mosaic): OrderPage = mosaic.compose(OrderPageTile)
+
+// At the request boundary:
+val page = requestCanvas.withMosaic { handler(this) }
+```
+
+`Canvas.create()` is deprecated with a warning and remains available for compatibility. Migration is structural: move the handler call into the scoped block.
 
 Creating two Mosaics from that Canvas would execute the work separately. An application-wide Mosaic would share results across requests; create one per request to keep request input and reuse scoped correctly.
 
@@ -32,7 +47,7 @@ Creating two Mosaics from that Canvas would execute the work separately. An appl
 | Another `singleTile { ... }` with equivalent code | No: a new Tile instance                     |
 | The same Tile used in another Mosaic              | No: a separate Mosaic cache                 |
 
-Declare reusable Tiles as stable `val`s. Calling `Canvas.create()` creates a fresh Mosaic and cache; sharing a Canvas does not share Tile results across Mosaics.
+Declare reusable Tiles as stable `val`s. Each `Canvas.withMosaic` invocation creates a fresh Mosaic and cache; sharing a Canvas does not share Tile results across Mosaics.
 
 Keep shared dependencies as stable declarations. Constructing a Tile inside each caller prevents those callers from sharing it, even if the code is identical.
 

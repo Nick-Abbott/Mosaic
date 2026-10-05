@@ -130,8 +130,11 @@ Bind that input at the request boundary, then ask for the page:
 suspend fun orderPage(applicationCanvas: Canvas, orderId: String): OrderPage =
   applicationCanvas.withLayer {
     single(OrderKey) { orderId }
-  }.create().compose(OrderPageTile)
+  }.withMosaic { compose(OrderPageTile) }
 ```
+
+Import `org.buildmosaic.core.injection.withMosaic`. The calling coroutine owns Tile work;
+leaving the block cancels unfinished work and waits for cleanup.
 
 The [complete quick start](https://BuildMosaic.org/start/quick-start/)
 covers application setup, resource ownership, and runtime requirements.

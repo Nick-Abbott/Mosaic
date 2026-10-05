@@ -30,7 +30,7 @@ val WelcomeTile by singleTile {
 suspend fun handleRequest(applicationCanvas: Canvas, userId: String): String =
   applicationCanvas.withLayer {
     single(UserIdKey) { userId }
-  }.create().compose(WelcomeTile)
+  }.withMosaic { compose(WelcomeTile) }
 ```
 
 `Canvas` is a final Mosaic-owned class, constructed with `canvas` or `withLayer`. It stores resolved dependencies and owns its local resources.
@@ -39,6 +39,6 @@ suspend fun handleRequest(applicationCanvas: Canvas, userId: String): String =
 
 ## Application and request scopes
 
-Construct an application Canvas for stable services. Add request-specific values in a child layer, then create a new Mosaic for that request. Bind only the request values that differ from application defaults.
+Construct an application Canvas for stable services. Add request-specific values in a child layer, then use `withMosaic` to run a new Mosaic owned by that request. Bind only the request values that differ from application defaults.
 
 For services that own closeable resources, read [resource ownership](/guides/resources/). The optional [analysis plugin](/guides/analysis/) checks bindings within supported static boundaries; it cannot guarantee every dynamic lookup.

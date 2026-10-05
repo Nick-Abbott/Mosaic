@@ -12,7 +12,9 @@ interface Mosaic {
   val canvas: Canvas
 
   /**
-   * Retrieve the value of a [Tile] wrapped in a deferred for awaiting later
+   * Returns Mosaic-owned shared work for [tile]. Callers may await it freely.
+   * To stop waiting, cancel your own coroutine or wait operation rather than cancelling
+   * the shared [Deferred], which would affect other consumers.
    *
    * @param V the type of the [Tile] return value
    * @param tile the [Tile] to retrieve
@@ -28,7 +30,9 @@ interface Mosaic {
   suspend fun <V> compose(tile: Tile<V>): V = composeAsync(tile).await()
 
   /**
-   * Retrieve the value of a [MultiTile] wrapped in a deferred for awaiting later
+   * Returns Mosaic-owned shared work for each key. Each key retains its own success or failure.
+   * Callers may await results freely. To stop waiting, cancel your own coroutine or wait
+   * operation rather than cancelling a shared [Deferred], which would affect other consumers.
    *
    * @param K the type of the [MultiTile] keys
    * @param V the type of the [MultiTile] return value
@@ -54,7 +58,9 @@ interface Mosaic {
   ): Map<K, V> = composeAsync(tile, keys).mapValues { it.value.await() }
 
   /**
-   * Retrieve a single value from a [MultiTile] wrapped in a deferred for awaiting later
+   * Returns Mosaic-owned shared work for [key]. Callers may await it freely.
+   * To stop waiting, cancel your own coroutine or wait operation rather than the shared
+   * [Deferred], which would affect other consumers.
    *
    * @param K the type of the [MultiTile] keys
    * @param V the type of the [MultiTile] return value

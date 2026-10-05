@@ -29,17 +29,17 @@ Configure it once on your application Canvas. `openTelemetry` below is your appl
 
 ```kotlin
 import org.buildmosaic.core.injection.canvas
-import org.buildmosaic.core.injection.create
+import org.buildmosaic.core.injection.withMosaic
 import org.buildmosaic.opentelemetry.tracing
 
 val applicationCanvas = canvas {
   tracing { openTelemetry }
-  single<OrderService> { orderService }
+  instance(orderService)
 }
 
 val page = applicationCanvas.withLayer {
   single(OrderKey) { orderId }
-}.create().compose(OrderPageTile)
+}.withMosaic { compose(OrderPageTile) }
 ```
 
 Child Canvases inherit tracing. The provider factory runs once during Canvas setup; a duplicate installation fails before another factory executes. Each request Mosaic still owns its own cache and execution state. Closing a Canvas does not shut down your telemetry pipeline.
