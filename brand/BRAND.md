@@ -46,18 +46,19 @@ outlines and corresponding PNG together when wording changes.
 
 ## Social package
 
-SVG masters are the editable source. PNG exports are opaque sRGB images for
-platform upload; the same banner serves X and Bluesky.
+SVG masters in `social/masters/` are the editable source. PNG exports are
+grouped by purpose in `avatars/`, `banners/`, `previews/`, and `posts/`. They are
+opaque sRGB images for platform upload; the same banner serves X and Bluesky.
 
 | Use | Editable master | PNG export (pixels) |
 | --- | --- | --- |
 | X profile | [avatar.svg](social/masters/avatar.svg) | [400 × 400](social/avatars/x-profile-400.png) |
 | Bluesky profile | [avatar.svg](social/masters/avatar.svg) | [1000 × 1000](social/avatars/bluesky-profile-1000.png) |
 | Threads profile | [avatar.svg](social/masters/avatar.svg) | [640 × 640](social/avatars/threads-profile-640.png) |
-| GitHub organization/profile | [avatar.svg](social/masters/avatar.svg) | [500 × 500](social/github/github-logo-500.png) |
+| GitHub organization/profile | [avatar.svg](social/masters/avatar.svg) | [500 × 500](social/avatars/github-profile-500.png) |
 | X / Bluesky header | [banner.svg](social/masters/banner.svg) | [1500 × 500](social/banners/x-bluesky-banner-1500x500.png) |
-| GitHub repository/link preview | [github-social-preview.svg](social/masters/github-social-preview.svg) | [1280 × 640](social/github/github-social-preview-1280x640.png) |
-| Threads square post | [threads-post.svg](social/masters/threads-post.svg) | [1080 × 1080](social/threads/threads-post-1080.png) |
+| GitHub repository/link preview | [github-social-preview.svg](social/masters/github-social-preview.svg) | [1280 × 640](social/previews/github-social-preview-1280x640.png) |
+| Threads square post | [threads-post.svg](social/masters/threads-post.svg) | [1080 × 1080](social/posts/threads-post-1080.png) |
 
 X recommends 400 × 400 profiles and 1500 × 500 headers; its headers can lose
 about 60 pixels at either vertical edge. GitHub recommends approximately
