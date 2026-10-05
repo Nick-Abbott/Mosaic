@@ -143,9 +143,9 @@ class PublishedInstallationTest {
     assertTrue(report.contains("VERIFIED REQUIRED_LOOKUP"), report)
     assertTrue(consumer.resolve("build/reports/mosaic-analysis/graph.md").readText().contains("## Root: app.entry()"))
     val summary = SummaryCodec.decode(consumer.resolve("build/mosaic-analysis/main/summary.json").readBytes())
-    assertEquals(3, summary.formatVersion)
-    assertEquals("analysis-contract-2", summary.semanticsVersion)
-    assertEquals("prototype-10", summary.toolVersion)
+    assertEquals(4, summary.formatVersion)
+    assertEquals("analysis-contract-3", summary.semanticsVersion)
+    assertEquals("prototype-11", summary.toolVersion)
     assertTrue(summary.module.callables.any { it.id == "app.entry()" && it.effects.isNotEmpty() })
     JarFile(consumer.resolve("build/libs/app-99.0.0.jar")).use { assertTrue(it.getEntry(SUMMARY_PATH) != null) }
 

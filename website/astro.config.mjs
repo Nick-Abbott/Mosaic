@@ -60,6 +60,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             { label: 'Performance', slug: 'reference/performance' },
+            { label: 'Analysis configuration', slug: 'reference/analysis-configuration' },
             { label: 'Compatibility', slug: 'reference/compatibility' },
             { label: 'Releases', slug: 'reference/releases' },
             { label: 'Kotlin API reference', link: '/api/' },
