@@ -30,6 +30,8 @@ export default defineConfig({
             { label: 'What is Mosaic?', slug: 'start/overview' },
             { label: 'Installation', slug: 'start/installation' },
             { label: 'Quick Start', slug: 'start/quick-start' },
+            { label: 'Questions and support', link: 'https://github.com/BuildMosaic/Mosaic/issues' },
+            { label: 'Security policy', link: 'https://github.com/BuildMosaic/Mosaic/security/policy' },
           ],
         },
         {
