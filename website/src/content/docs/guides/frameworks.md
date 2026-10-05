@@ -7,7 +7,7 @@ Mosaic composes application logic; your HTTP framework owns routing, serializati
 
 ## Run an example
 
-Clone [BuildMosaic/Mosaic](https://github.com/BuildMosaic/Mosaic), check out `develop`, use JDK 21, and run one application from the repository root:
+Clone [BuildMosaic/Mosaic](https://github.com/BuildMosaic/Mosaic), use JDK 21, and run one application from the repository root:
 
 ```bash
 ./gradlew -p examples :spring-example:run
@@ -22,7 +22,7 @@ curl http://localhost:8080/orders/order-1
 curl http://localhost:8080/orders/order-1/total
 ```
 
-The services are in-memory example implementations. Inspect the [models and services](https://github.com/BuildMosaic/Mosaic/tree/develop/examples/tile-library/src/main/kotlin/org/buildmosaic/library) for sample data and response shape.
+The services are in-memory example implementations. Inspect the [models and services](https://github.com/BuildMosaic/Mosaic/tree/main/examples/tile-library/src/main/kotlin/org/buildmosaic/library) for sample data and response shape.
 
 ## Keep the request boundary small
 
@@ -38,11 +38,11 @@ The example's declarations and `org.buildmosaic.core.injection.withMosaic` suppl
 
 ## Pick the example for your framework
 
-| Example                                                                                    | Where to look                                         |
-| ------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
-| [Spring Boot](https://github.com/BuildMosaic/Mosaic/tree/develop/examples/spring-example)  | Canvas configuration bean and order controllers       |
-| [Ktor](https://github.com/BuildMosaic/Mosaic/tree/develop/examples/ktor-example)           | Coroutine routes and StatusPages error mapping        |
-| [Micronaut](https://github.com/BuildMosaic/Mosaic/tree/develop/examples/micronaut-example) | Canvas factory, dependency injection, and controllers |
+| Example                                                                                 | Where to look                                         |
+| --------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| [Spring Boot](https://github.com/BuildMosaic/Mosaic/tree/main/examples/spring-example)  | Canvas configuration bean and order controllers       |
+| [Ktor](https://github.com/BuildMosaic/Mosaic/tree/main/examples/ktor-example)           | Coroutine routes and StatusPages error mapping        |
+| [Micronaut](https://github.com/BuildMosaic/Mosaic/tree/main/examples/micronaut-example) | Canvas factory, dependency injection, and controllers |
 
 Ktor composes directly in coroutine routes. Spring MVC and Micronaut use suspending controllers. Spring includes `kotlinx-coroutines-reactor` for its coroutine support. Each application uses `runBlocking` only to construct the application Canvas at its synchronous setup boundary.
 
