@@ -27,7 +27,7 @@ The plugin rejects nonstandard/generated Kotlin source paths, scripts, mixed Jav
 
 The plugin validates the Java toolchain against Kotlin's toolchain. Regenerate dependency summaries produced with incompatible toolchains. Metadata compatibility is determined by its header, not by the resource directory name.
 
-[Configure analysis](/guides/analysis/) and read the full [supported project boundary](https://github.com/BuildMosaic/Mosaic/blob/main/mosaic-gradle-plugin/README.md#supported-project-boundary). Unknown paths stay visible; a STANDARD warning pass is not proof that every lookup is safe.
+[Configure analysis](/guides/analysis/) and read the full [supported project boundary](/reference/analysis-configuration/#supported-project-boundary). Unknown paths stay visible; a STANDARD warning pass is not proof that every lookup is safe.
 
 ## Release migration
 
