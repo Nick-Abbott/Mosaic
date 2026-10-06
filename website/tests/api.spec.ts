@@ -100,7 +100,7 @@ test('native Dokka module navigation, search, sidebar, source links, and return 
 
 test('Dokka standalone and aggregate publications share canonical branding on every HTML page', async () => {
   const root = fileURLToPath(new URL('../../', import.meta.url));
-  const mark = await readFile(join(root, 'brand/mosaic-mark.svg'), 'utf8');
+  const mark = await readFile(join(root, 'assets/mosaic-mark.svg'), 'utf8');
   const stylesheet = await readFile(join(root, 'website/api/mosaic.css'), 'utf8');
   const script = await readFile(join(root, 'website/api/mosaic-api.js'), 'utf8');
   for (const module of ['', 'mosaic-core', 'mosaic-test', 'mosaic-opentelemetry']) {

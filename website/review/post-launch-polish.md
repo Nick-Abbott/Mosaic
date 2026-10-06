@@ -8,7 +8,7 @@ The desktop diagram keeps all seven dependencies. Summary, customer, line items,
 
 ## Native API branding
 
-`buildSrc/src/main/kotlin/dokka.convention.gradle.kts` owns the shared HTML configuration. Both the aggregate and library conventions apply it. A Gradle `Sync` task derives `build/dokka-brand/logo-icon.svg` from `brand/mosaic-mark.svg`; the provider carries its task dependency into Dokka's `customAssets`. No independently editable alias is committed.
+`buildSrc/src/main/kotlin/dokka.convention.gradle.kts` owns the shared HTML configuration. Both the aggregate and library conventions apply it. A Gradle `Sync` task derives `build/dokka-brand/logo-icon.svg` from `assets/mosaic-mark.svg`; the provider carries its task dependency into Dokka's `customAssets`. No independently editable alias is committed.
 
 This uses [Dokka's supported header asset override](https://kotlinlang.org/docs/dokka-html.html#customize-assets). The same custom stylesheet, accessibility/navigation script, inherited-member setting, and footer reach standalone modules, aggregate output, packages, and declarations. The authored logo pseudo-element is removed; Dokka's native header and favicon use the supplied asset.
 
