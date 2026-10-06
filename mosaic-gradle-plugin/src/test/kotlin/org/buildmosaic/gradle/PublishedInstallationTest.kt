@@ -56,7 +56,6 @@ class PublishedInstallationTest {
       assertTrue(pom.contains("<url>https://github.com/BuildMosaic/Mosaic/tree/main/$module</url>"), pom)
       assertTrue(pom.contains("<name>The Apache License, Version 2.0</name>"), pom)
     }
-    verifyCoreDocumentation(maven, version)
     val bom = maven.resolve("org/buildmosaic/mosaic-bom/$version/mosaic-bom-$version.pom").readText()
     assertTrue(!maven.resolve("org/buildmosaic/mosaic-analysis-core").exists())
     assertTrue(bom.contains("<artifactId>mosaic-core</artifactId>"), bom)
@@ -221,23 +220,6 @@ private fun verifyRuntimeConsumer(
             kotlin.test.assertEquals("response", response.name)
           }
         }
-        @Test fun lifecycleSurfaceIsScoped() {
-          for (name in listOf("org.buildmosaic.core.MosaicImpl", "org.buildmosaic.test.TestMosaic")) {
-            val type = Class.forName(name)
-            kotlin.test.assertTrue(java.lang.reflect.Modifier.isFinal(type.modifiers))
-            kotlin.test.assertTrue(type.constructors.all { it.isSynthetic })
-            kotlin.test.assertTrue(type.methods.filter { it.name.startsWith("shutdown") }.all { it.isSynthetic })
-          }
-          for ((owner, method) in listOf(
-            "org.buildmosaic.core.MosaicExecutionKt" to "withMosaicExecution",
-            "org.buildmosaic.core.internal.InternalMosaicTestApiKt" to "withTestMosaicExecution",
-          )) {
-            val entry = Class.forName(owner).declaredMethods.single { it.name == method }
-            kotlin.test.assertTrue(entry.isSynthetic)
-          }
-          kotlin.test.assertTrue(org.buildmosaic.test.TestMosaicBuilder::class.java.methods.none { it.name == "build" })
-          kotlin.test.assertTrue(Class.forName("org.buildmosaic.core.injection.CanvasKt").methods.none { it.name == "create" })
-        }
         @Test fun tracingInstalls() = runTest {
           val configured = canvas { tracing { OpenTelemetry.noop() } }
           kotlin.test.assertEquals("published", configured.withMosaic { compose(singleTile { "published" }) })
@@ -266,99 +248,6 @@ private fun verifyRuntimeConsumer(
   assertTrue(result.output.contains("io.opentelemetry:opentelemetry-api:"), result.output)
   assertTrue(!result.output.contains("io.opentelemetry:opentelemetry-sdk:"), result.output)
   assertTrue(!result.output.contains("io.opentelemetry:opentelemetry-extension-kotlin:"), result.output)
-
-  consumer.resolve("src/test/kotlin/RemovedLifecycle.kt").writeText(
-    """
-    import org.buildmosaic.core.Mosaic
-    import org.buildmosaic.core.MosaicImpl
-    import org.buildmosaic.core.withMosaicExecution
-    import org.buildmosaic.core.injection.Canvas
-    import org.buildmosaic.core.injection.*
-    import org.buildmosaic.test.*
-    import org.buildmosaic.core.internal.withTestMosaicExecution
-    fun unscoped(canvas: Canvas) = canvas.create()
-    fun persistentTest() = mosaicBuilder().build()
-    fun constructed(canvas: Canvas) = MosaicImpl(canvas, kotlin.coroutines.EmptyCoroutineContext)
-    class Subclass(canvas: Canvas) : MosaicImpl(canvas, kotlin.coroutines.EmptyCoroutineContext)
-    fun constructedTest(mosaic: Mosaic) = TestMosaic(mosaic)
-    suspend fun unsupportedEngine(canvas: Canvas) = withMosaicExecution(canvas) {}
-    suspend fun unsupportedBridge(canvas: Canvas) = canvas.withTestMosaicExecution(emptyMap(), emptyMap()) {}
-    """.trimIndent(),
-  )
-  val rejected = reject(consumer, "compileTestKotlin")
-  for (diagnostic in listOf(
-    "MosaicImpl",
-    "TestMosaic",
-    "withMosaicExecution",
-    "Internal Mosaic test bridge",
-  )) {
-    assertTrue(rejected.output.contains(diagnostic), rejected.output)
-  }
-  for (removed in listOf("create", "build")) {
-    assertTrue(
-      rejected.output.contains("Unresolved reference '$removed'"),
-      rejected.output,
-    )
-  }
-  for (internal in listOf("MosaicImpl", "withMosaicExecution")) {
-    assertTrue(
-      rejected.output.lineSequence().any { it.contains("Cannot access") && it.contains(internal) },
-      rejected.output,
-    )
-  }
-  consumer.resolve("src/test/kotlin/RemovedLifecycle.kt").delete()
-
-  // The fallback is deliberately opt-in, not Kotlin-internal. Keep that limitation explicit.
-  consumer.resolve("src/test/kotlin/ExplicitUnsupportedOptIn.kt").writeText(
-    """
-    import kotlinx.coroutines.test.runTest
-    import org.buildmosaic.core.singleTile
-    import org.buildmosaic.core.injection.canvas
-    import org.buildmosaic.core.internal.InternalMosaicTestApi
-    import org.buildmosaic.core.internal.withTestMosaicExecution
-    import kotlin.test.Test
-    class ExplicitUnsupportedOptIn {
-      @OptIn(InternalMosaicTestApi::class)
-      @Test fun deliberateOptInCompiles() = runTest {
-        val dependency = singleTile { "real" }
-        val subject = singleTile { compose(dependency).uppercase() }
-        canvas {}.withTestMosaicExecution(mapOf(dependency to singleTile { "mock" }), emptyMap()) {
-          kotlin.test.assertEquals("MOCK", compose(subject))
-        }
-      }
-    }
-    """.trimIndent(),
-  )
-  assertEquals(TaskOutcome.SUCCESS, run(consumer, "test").task(":test")?.outcome)
-
-  consumer.resolve("src/test/java/UnsupportedApi.java").writeText(
-    """
-    import org.buildmosaic.core.MosaicImpl;
-    import org.buildmosaic.core.MosaicExecutionKt;
-    import org.buildmosaic.core.injection.Canvas;
-    import org.buildmosaic.core.internal.InternalMosaicTestApiKt;
-    class UnsupportedApi {
-      Object construct(Canvas canvas) {
-        return new MosaicImpl(canvas, kotlin.coroutines.EmptyCoroutineContext.INSTANCE,
-          java.util.Collections.emptyMap(), java.util.Collections.emptyMap());
-      }
-      Object shutdown(MosaicImpl mosaic) {
-        return mosaic.shutdown${'$'}mosaic_core(null);
-      }
-      Object engine() {
-        return MosaicExecutionKt.withMosaicExecution(null, null, null, null, null);
-      }
-      Object bridge() {
-        return InternalMosaicTestApiKt.withTestMosaicExecution(null, null, null, null, null);
-      }
-    }
-    class Subclass extends MosaicImpl {}
-    """.trimIndent(),
-  )
-  val javaRejected = reject(consumer, "compileTestJava")
-  for (diagnostic in listOf("MosaicImpl", "shutdown", "withMosaicExecution", "withTestMosaicExecution", "final")) {
-    assertTrue(javaRejected.output.contains(diagnostic), javaRejected.output)
-  }
 }
 
 private fun run(
@@ -373,29 +262,3 @@ private fun run(
       File(System.getProperty("user.home"), ".gradle").absolutePath,
     )
     .build()
-
-private fun reject(
-  project: File,
-  task: String,
-): org.gradle.testkit.runner.BuildResult =
-  GradleRunner.create().withProjectDir(project)
-    .withArguments(
-      task,
-      "--stacktrace",
-      "--gradle-user-home",
-      File(System.getProperty("user.home"), ".gradle").absolutePath,
-    )
-    .buildAndFail()
-
-private fun verifyCoreDocumentation(
-  maven: File,
-  version: String,
-) {
-  JarFile(maven.resolve("org/buildmosaic/mosaic-core/$version/mosaic-core-$version-javadoc.jar")).use { jar ->
-    assertTrue(
-      jar.entries().asSequence().none {
-        it.name.contains("org/buildmosaic/core/internal") || it.name.contains("MosaicImpl")
-      },
-    )
-  }
-}

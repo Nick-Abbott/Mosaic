@@ -68,6 +68,18 @@ build behavior, and publication in Gradle TestKit tests. Use the cheapest layer
 that decisively proves a regression. Keep direct K2 compiler fixtures: they test
 IR extraction even though production uses normal Kotlin compilation.
 
+Tests are evergreen behavioral specifications, not proof that a code change
+occurred. A production change does not inherently require a new test. Add or
+retain tests for durable observable behavior, semantic invariants, supported
+compatibility promises, or meaningful failure boundaries. Prefer tests that
+remain meaningful if the implementation is replaced while preserving behavior.
+
+Do not test implementation shape (method presence/absence, historical names,
+modifiers, synthetic flags, file/class structure, or unsupported internal access)
+merely because it changed. Negative API tests must protect an explicit supported
+compatibility contract, not ban historical names or memorialize implementation
+decisions.
+
 Run before submitting:
 
 ```bash
