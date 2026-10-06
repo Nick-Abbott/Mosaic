@@ -2,7 +2,7 @@ name: Website
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, develop]
     paths:
       - 'website/**'
       - 'brand/**'
