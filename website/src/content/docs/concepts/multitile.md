@@ -7,15 +7,15 @@ A `MultiTile<K, V>` produces values for requested keys. Choose a fetch strategy;
 
 ```kotlin
 val PricingBySkuTile by multiTile<String, Price> { skus ->
-  PricingService.getPrices(skus.toList())
+  source<PricingService>().getPrices(skus.toList())
 }
 
 val PerKeyProductsTile by perKeyTile<String, Product> { productId ->
-  ProductService.getProducts(listOf(productId)).getValue(productId)
+  source<ProductService>().getProducts(listOf(productId)).getValue(productId)
 }
 
 val ChunkedProductsTile by chunkedMultiTile<String, Product>(batchSize = 50) { ids ->
-  ProductService.getProducts(ids)
+  source<ProductService>().getProducts(ids)
 }
 ```
 
@@ -34,7 +34,7 @@ Each key retains its own terminal success or failure. A partial bulk map publish
 | `compose(tile, key)`       | `V` (suspends until available)                    |
 | `composeAsync(tile, key)`  | `Deferred<V>`                                     |
 
-Await a map entry with `pending.getValue(key).await()`, or all entries with `pending.mapValues { (_, value) -> value.await() }` in suspending code. The LineItems example above preserves order by iterating `order.items`; do not rely on the result map's iteration order.
+Await a map entry with `pending.getValue(key).await()`, or all entries with `pending.mapValues { (_, value) -> value.await() }` in suspending code. The [LineItems example](/concepts/tiles/) preserves order by iterating `order.items`; do not rely on the result map's iteration order.
 
 ## Preserve domain order
 

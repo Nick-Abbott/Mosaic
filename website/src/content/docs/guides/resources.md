@@ -13,7 +13,7 @@ For build-time checks within supported boundaries, see the optional [analysis pl
 
 Register a pre-existing service with `instance(existingClient)`, `instance(existingClient, qualifier = "primary")`, or `instance(clientKey, existingClient)`. Canvas never closes these borrowed values, including on construction rollback. They are available to `paint` during eager construction and use the same lookup, qualifier, duplicate-key, override, and parent-fallback rules as `single` bindings.
 
-Use `single { HttpClient() }` when Canvas constructs and owns the client. The external owner remains responsible for closing an `instance` binding.
+Use `single { HttpClient() }` when Canvas constructs and owns the client. The external owner remains responsible for closing an `instance` binding. For a String-valued CanvasKey, use named arguments such as `instance(key = requestKey, value = requestId)` to distinguish the key/value overload from the value/qualifier overload.
 
 ## Scope a child that owns resources
 

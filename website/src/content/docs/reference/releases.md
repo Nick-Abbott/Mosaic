@@ -3,8 +3,9 @@ title: 'Releases'
 description: 'Release notes and the maintained Mosaic changelog.'
 ---
 
-Mosaic **0.6.0** is the public stable release. It includes delegated Tile names, execution observation, OpenTelemetry tracing, and Mosaic-owned Canvas resource lifetimes.
+Mosaic **0.7.0** is the public stable release. It adds request execution through `withMosaic`, externally owned Canvas bindings, isolated MultiTile outcomes, and analysis of scoped execution and Tile cycles.
 
+- [0.7.0 release notes and migration](https://github.com/BuildMosaic/Mosaic/blob/0.7.0/docs/releases/0.7.0.md)
 - [0.6.0 release notes and migration](https://github.com/BuildMosaic/Mosaic/blob/main/docs/releases/0.6.0.md)
 - [0.5.0: opportunistic MultiTile coalescing](https://github.com/BuildMosaic/Mosaic/blob/main/docs/releases/0.5.0.md)
 - [0.4.0: discovered analysis roots and architecture graphs](https://github.com/BuildMosaic/Mosaic/blob/main/docs/releases/0.4.0.md)
@@ -20,7 +21,7 @@ The [security policy](https://github.com/BuildMosaic/Mosaic/security/policy) sup
 
 ## Released and unreleased code
 
-Use the [0.6.0 source and examples](https://github.com/BuildMosaic/Mosaic/tree/0.6.0) when evaluating the public stable release. The `develop` branch contains unreleased work; its APIs and examples can differ from published artifacts. Check [GitHub Releases](https://github.com/BuildMosaic/Mosaic/releases) for published versions.
+Use the [0.7.0 source and examples](https://github.com/BuildMosaic/Mosaic/tree/0.7.0) when evaluating the public stable release. The `develop` branch contains unreleased work; its APIs and examples can differ from published artifacts. Check [GitHub Releases](https://github.com/BuildMosaic/Mosaic/releases) for published versions.
 
 ## API reference
 

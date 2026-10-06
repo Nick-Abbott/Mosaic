@@ -15,7 +15,7 @@ repositories {
 }
 
 dependencies {
-  implementation("org.buildmosaic:mosaic-opentelemetry:0.6.0")
+  implementation("org.buildmosaic:mosaic-opentelemetry:0.7.0")
 }
 ```
 
@@ -38,7 +38,7 @@ val applicationCanvas = canvas {
 }
 
 val page = applicationCanvas.withLayer {
-  single(OrderKey) { orderId }
+  instance(key = OrderKey, value = orderId)
 }.withMosaic { compose(OrderPageTile) }
 ```
 

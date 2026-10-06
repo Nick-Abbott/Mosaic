@@ -29,11 +29,11 @@ val WelcomeTile by singleTile {
 
 suspend fun handleRequest(applicationCanvas: Canvas, userId: String): String =
   applicationCanvas.withLayer {
-    single(UserIdKey) { userId }
+    instance(key = UserIdKey, value = userId)
   }.withMosaic { compose(WelcomeTile) }
 ```
 
-`Canvas` is a final Mosaic-owned class, constructed with `canvas` or `withLayer`. It stores resolved dependencies and owns its local resources.
+`Canvas` is a final Mosaic-owned class, constructed with `canvas` or `withLayer`. It stores resolved dependencies. `single { ... }` constructs Canvas-owned values; `instance(existing)` borrows externally owned values that Canvas never closes, including on construction failure. Use `instance<Service>(existing)` to bind an interface type, `instance(existing, qualifier = "primary")` for a qualified binding, or `instance(key, existing)` for a CanvasKey. The external owner remains responsible for borrowed resources.
 
 `canvas` eagerly constructs bindings. A child layer resolves local bindings first, then falls back to its parent. Overrides do not rewire services already constructed by the parent. Concurrent `paint` calls share one construction; recursive construction fails with a circular-dependency error.
 

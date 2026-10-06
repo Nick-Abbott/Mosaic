@@ -11,7 +11,7 @@ The order page and total both reach `LineItemsTile`. Create one request Mosaic a
 
 ```kotlin
 applicationCanvas.withLayer {
-  single(OrderKey) { orderId }
+  instance(key = OrderKey, value = orderId)
 }.withMosaic {
   val page = composeAsync(OrderPageTile)
   val total = composeAsync(OrderTotalTile)
@@ -66,10 +66,10 @@ A repeated composition in the same Mosaic sees its retained failed result. Repea
 Use `by` to bind a property name to a reusable Tile. All four factories support this syntax:
 
 ```kotlin
-val OrderTile by singleTile { OrderService.getOrder(source(OrderKey)) }
-val Products by multiTile<String, Product> { ids -> ProductService.getProducts(ids.toList()) }
-val PerKey by perKeyTile<String, Product> { id -> ProductService.getProducts(listOf(id)).getValue(id) }
-val Chunked by chunkedMultiTile<String, Product>(50) { ids -> ProductService.getProducts(ids) }
+val OrderTile by singleTile { source<OrderService>().getOrder(source(OrderKey)) }
+val Products by multiTile<String, Product> { ids -> source<ProductService>().getProducts(ids.toList()) }
+val PerKey by perKeyTile<String, Product> { id -> source<ProductService>().getProducts(listOf(id)).getValue(id) }
+val Chunked by chunkedMultiTile<String, Product>(50) { ids -> source<ProductService>().getProducts(ids) }
 ```
 
 `OrderTile.name` is `"OrderTile"`. Top-level, member, and local delegated properties bind a name and return the same Tile instance on every read.

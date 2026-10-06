@@ -10,7 +10,7 @@ and results. MultiTile adds equal-key reuse and opportunistic batching.
 
 ```kotlin
 dependencies {
-  implementation("org.buildmosaic:mosaic-core:0.6.0")
+  implementation("org.buildmosaic:mosaic-core:0.7.0")
 }
 ```
 

@@ -7,7 +7,7 @@
 **2.4.20 only**.
 It is build tooling: it does not apply Kotlin or add Mosaic application runtime
 dependencies. Add Maven Central to plugin and dependency repositories. Install
-version 0.6.0 with:
+version 0.7.0 with:
 
 ```kotlin
 import org.buildmosaic.gradle.MosaicAnalysisEnforcement
@@ -15,7 +15,7 @@ import org.buildmosaic.gradle.MosaicAnalysisRole
 
 plugins {
   kotlin("jvm") version "2.4.20"
-  id("org.buildmosaic.analysis") version "0.6.0"
+  id("org.buildmosaic.analysis") version "0.7.0"
 }
 
 mosaicAnalysis {

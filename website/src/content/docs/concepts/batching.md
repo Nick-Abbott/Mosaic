@@ -15,7 +15,7 @@ All three keyed factories return a MultiTile. Callers use the same [composition 
 
 ```kotlin
 val ProductsByIdTile by multiTile<String, Product> { ids ->
-  ProductService.getProducts(ids.toList())
+  source<ProductService>().getProducts(ids.toList())
 }
 ```
 
@@ -25,7 +25,7 @@ The fetch block returns a map. Present entries succeed, including `null` when th
 
 ```kotlin
 val ProductsByIdTile by perKeyTile<String, Product> { id ->
-  ProductService.getProducts(listOf(id)).getValue(id)
+  source<ProductService>().getProducts(listOf(id)).getValue(id)
 }
 ```
 
@@ -35,7 +35,7 @@ Distinct keys fetch concurrently and settle independently. One key failure does 
 
 ```kotlin
 val ProductsByIdTile by chunkedMultiTile<String, Product>(50) { ids ->
-  ProductService.getProducts(ids)
+  source<ProductService>().getProducts(ids)
 }
 ```
 
