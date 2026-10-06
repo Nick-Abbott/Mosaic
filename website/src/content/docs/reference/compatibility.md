@@ -9,7 +9,8 @@ Runtime libraries and optional analysis have different requirements.
 
 | Area                          | Supported or tested requirement                                    |
 | ----------------------------- | ------------------------------------------------------------------ |
-| Runtime platform              | Kotlin/JVM; Java 17 or later                                       |
+| Consumer language             | Kotlin only                                                        |
+| Runtime platform              | JVM; JDK 17 or later                                               |
 | Runtime consumer compiler     | Kotlin 2.3.0 or later; 2.3.0 consumer coverage in repository tests |
 | Mosaic build                  | Kotlin compiler/Gradle plugin 2.4.20; language/API level 2.4       |
 | Kotlin runtime dependencies   | stdlib and kotlin-test 2.4.20                                      |

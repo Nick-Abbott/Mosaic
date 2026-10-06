@@ -228,18 +228,6 @@ private fun verifyRuntimeConsumer(
       """.trimIndent(),
     )
   }
-  consumer.resolve("src/test/java/SupportedApi.java").apply {
-    parentFile.mkdirs()
-    writeText(
-      """
-      import org.buildmosaic.core.Mosaic;
-      import org.buildmosaic.core.injection.Canvas;
-      class SupportedApi {
-        static Canvas canvas(Mosaic mosaic) { return mosaic.getCanvas(); }
-      }
-      """.trimIndent(),
-    )
-  }
   val result = run(consumer, "test", "dependencies", "--configuration", "testRuntimeClasspath")
   assertEquals(TaskOutcome.SUCCESS, result.task(":test")?.outcome)
   assertTrue(result.output.contains("org.buildmosaic:mosaic-core:$version"), result.output)

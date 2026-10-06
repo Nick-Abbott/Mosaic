@@ -30,12 +30,7 @@ import kotlin.test.assertFailsWith as testAssertFailsWith
  * This receiver delegates to the scoped runtime and owns no coroutine engine.
  * Do not retain it after the execution block returns.
  */
-class TestMosaic private constructor(private val mosaic: Mosaic) : Mosaic {
-  internal companion object {
-    @JvmSynthetic
-    internal operator fun invoke(mosaic: Mosaic): TestMosaic = TestMosaic(mosaic)
-  }
-
+class TestMosaic internal constructor(private val mosaic: Mosaic) : Mosaic {
   override val canvas: Canvas get() = mosaic.canvas
 
   override fun <V> composeAsync(tile: Tile<V>): Deferred<V> = mosaic.composeAsync(tile)
