@@ -18,9 +18,9 @@ Mosaic is a Kotlin library for building backends one response at a time. A **Til
 reusable piece of work that can read request or application data and compose other
 Tiles. A request-scoped Mosaic shares repeated Tile work automatically.
 
-The public stable release is **[0.6.0](https://github.com/BuildMosaic/Mosaic/releases/tag/0.6.0)**.
-For released examples, use the [0.6.0 README](https://github.com/BuildMosaic/Mosaic/blob/0.6.0/README.md);
-`develop` includes unreleased APIs and examples.
+The public stable release is **[0.7.0](https://github.com/BuildMosaic/Mosaic/releases/tag/0.7.0)**.
+For released examples, use the [0.7.0 README](https://github.com/BuildMosaic/Mosaic/blob/0.7.0/README.md);
+`develop` is the integration branch for subsequent unreleased work.
 
 ## 🚀 **Why Mosaic?**
 
@@ -111,7 +111,7 @@ Add Mosaic to a Kotlin/JVM project:
 
 ```kotlin
 dependencies {
-  implementation("org.buildmosaic:mosaic-core:0.6.0")
+  implementation("org.buildmosaic:mosaic-core:0.7.0")
 }
 ```
 
@@ -148,7 +148,7 @@ Bind the request input in a child Canvas, then ask for the page:
 ```kotlin
 suspend fun orderPage(applicationCanvas: Canvas, orderId: String): OrderPage =
   applicationCanvas.withLayer {
-    instance(key = OrderKey, value = orderId)
+    instance(OrderKey, orderId)
   }.withMosaic { compose(OrderPageTile) }
 ```
 

@@ -285,6 +285,76 @@ root result becomes available. Use it to check total lifecycle cost when changin
 scheduling or cleanup. A reliable 0.5.0 full-drain baseline is unavailable, so
 these measurements do not support a release comparison with 0.5.0.
 
+### 0.7.0 scoped and cached baselines
+
+Six existing cells were measured on 2026-10-05 from clean source
+[`15e0be605c3a8df3e1bb18bb2f499be46ac034fe`](https://github.com/BuildMosaic/Mosaic/commit/15e0be605c3a8df3e1bb18bb2f499be46ac034fe).
+These are fresh baselines for the scoped drain and trial-prewarmed cached-read
+fixtures described above. Their changed dispatcher, shutdown, setup, and cache
+locality boundaries prevent regression comparisons with the old fixtures.
+No other JMH cells or application workloads were remeasured.
+
+The host was `Nick-Workstation`: Ryzen 9 9900X (12 cores / 24 threads), NixOS
+26.05, Linux 7.2.7, Zulu JDK 21.0.11+10-LTS (Zulu21.50+19-CA). Both runs used
+CPU affinity `0-5,12-17`, one JMH thread, average µs/op, 10 × 1s warmup,
+10 × 1s measurement, and two forks. JVM options were
+`-Xms512m -Xmx512m -XX:+UseG1GC -XX:ActiveProcessorCount=12`.
+Builds and browser checks were idle during measurement. Timing had no profiler;
+allocation was collected separately using `gc.alloc.rate.norm`.
+
+| Existing cell | Mean µs/op | JMH 99.9% CI half-width µs | Separate normalized allocation B/op |
+| --- | ---: | ---: | ---: |
+| Scoped shared diamond, size 4 | 2.742992 | ±0.004963 | 6730.8 |
+| Scoped sibling consumers, fan-out 4 / depth 0 | 4.035755 | ±0.010311 | 13010.8 |
+| Fully cached MultiTile, 1 key | 0.042369 | ±0.000341 | 400.0 |
+| Fully cached MultiTile, 16 keys | 0.373559 | ±0.005400 | 1866.3 |
+| Fully cached MultiTile, 128 keys | 2.608475 | ±0.020329 | 12170.3 |
+| Fully cached MultiTile, 512 keys | 10.911606 | ±0.067532 | 47498.3 |
+
+The scoped cells include request creation, result composition, cancellation of
+unfinished work, and cleanup. Cached cells exclude trial setup/prewarming but
+include the coroutine bridge, result-map assembly, and sum. These are elapsed
+operation and allocation measurements, not HTTP latency or application CPU/request.
+
+Both runs completed all six cells with two forks and ten warmup/measurement
+iterations per fork: 120 measured samples per run, without execution failures or
+non-finite values. Timing sanity is shown below; ranges are observed values,
+not confidence intervals. Allocation varied by less than 0.01 B/op within each
+cell across measured iterations. No suspicious performance signal was observed;
+the changed fixtures do not support attributing differences from old tables to
+runtime regression or improvement.
+
+| Cell | Timing fork means µs/op | Timing iteration min…max µs/op |
+| --- | --- | --- |
+| Scoped shared diamond, size 4 | 2.742597 / 2.743387 | 2.733685…2.757989 |
+| Scoped sibling consumers, fan-out 4 / depth 0 | 4.040662 / 4.030848 | 4.017745…4.055487 |
+| Fully cached MultiTile, 1 key | 0.042674 / 0.042063 | 0.041608…0.043076 |
+| Fully cached MultiTile, 16 keys | 0.367971 / 0.379147 | 0.365107…0.384515 |
+| Fully cached MultiTile, 128 keys | 2.588060 / 2.628891 | 2.577965…2.640406 |
+| Fully cached MultiTile, 512 keys | 10.983012 / 10.840199 | 10.802816…11.019080 |
+
+Exact commands, run from the measured source checkout:
+
+```bash
+./gradlew :mosaic-benchmarks:jmhJar
+out=performance/results/release-0.7.0-15e0be6
+mkdir -p "$out"
+selection='.*(ExecutionDrainBenchmark\.(sharedDiamond|siblingConsumers)|MultiTileBenchmark\.fullyCached)$'
+taskset -c 0-5,12-17 java -jar mosaic-benchmarks/build/libs/mosaic-benchmarks-0.7.0-jmh.jar \
+  "$selection" -bm avgt -tu us -t 1 -wi 10 -i 10 -w 1s -r 1s -f 2 -foe true \
+  -jvmArgs '-Xms512m -Xmx512m -XX:+UseG1GC -XX:ActiveProcessorCount=12' \
+  -rf json -rff "$out/timing.json" > "$out/timing.log" 2>&1
+taskset -c 0-5,12-17 java -jar mosaic-benchmarks/build/libs/mosaic-benchmarks-0.7.0-jmh.jar \
+  "$selection" -bm avgt -tu us -t 1 -wi 10 -i 10 -w 1s -r 1s -f 2 -foe true \
+  -jvmArgs '-Xms512m -Xmx512m -XX:+UseG1GC -XX:ActiveProcessorCount=12' \
+  -prof gc -rf json -rff "$out/allocation.json" > "$out/allocation.log" 2>&1
+```
+
+The measured JMH JAR SHA-256 was
+`7a0f6e304fc8f2778b27a8a5857295a41effb0c87e867b6bbcee482d686fea89`.
+Raw JSON, logs, commands, host/JDK/source metadata, and per-fork/iteration sanity
+remain in the ignored `performance/results/release-0.7.0-15e0be6/` directory.
+
 ### Release runtime comparison
 
 The [0.6.0 runtime results](releases/0.6.0.md#runtime-cost) compare released tag
@@ -381,8 +451,8 @@ both dispatchers. These are scheduling observations, not API guarantees.
 
 ## Dataset provenance
 
-The published application, startup, JMH timing/allocation, and diagnostic results
-were collected from clean revision
+The original application, startup, JMH timing/allocation, and diagnostic results
+below were collected from clean revision
 [`129b0c73864e82047e4f8e0b861aee31e4e9dc78`](https://github.com/BuildMosaic/Mosaic/commit/129b0c73864e82047e4f8e0b861aee31e4e9dc78),
 using the coalescing runtime. Identify this dataset by revision rather than
 assuming it describes the latest release. The separate 0.6.0 comparison above

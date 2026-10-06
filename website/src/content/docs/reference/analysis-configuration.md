@@ -22,7 +22,7 @@ import org.buildmosaic.gradle.MosaicAnalysisRole
 
 plugins {
   kotlin("jvm") version "2.4.20"
-  id("org.buildmosaic.analysis") version "0.6.0"
+  id("org.buildmosaic.analysis") version "0.7.0"
 }
 
 repositories { mavenCentral() }
@@ -206,7 +206,7 @@ MOSAIC_RECURSIVE_MULTITILE: Recursive MultiTile dependency: SUPPRESSED
 
 Supported direct `withMosaic` evaluates its Canvas receiver before invocation, establishes one fresh standard Mosaic, binds the direct lambda receiver, and analyzes the block once in source order. `compose`, `composeAsync`, `source`, `sourceOr`, and immutable receiver aliases use that same Mosaic and Canvas. An escaping receiver, indirect block value/reference, arbitrary Mosaic helper parameter transfer, or capability-bearing deferred capture is an explicit unknown boundary. Arbitrary higher-order functions are not interpreted.
 
-`CanvasBuilder.instance(value)`, `instance(value, qualifier = "primary")`, and `instance(key, value)` evaluate their supplied expressions at registration time. They register the same normalized type/qualifier keys as `single`; they have no deferred constructor effects. Immutable aliases and supported child layers retain ordinary local-first lookup. Duplicate local keys remain invalid; dynamic keys/qualifiers and unsupported registrations remain conservative. Closing and ownership are runtime concerns outside availability contracts.
+`CanvasBuilder.instance(value)`, `instance<Service>("primary", value)`, and `instance(key, value)` evaluate their supplied expressions at registration time. They register the same normalized type/qualifier keys as `single`; they have no deferred constructor effects. Immutable aliases and supported child layers retain ordinary local-first lookup. Duplicate local keys remain invalid; dynamic keys/qualifiers and unsupported registrations remain conservative. Closing and ownership are runtime concerns outside availability contracts.
 
 Unsupported control flow, general callbacks, arbitrary virtual dispatch, mutable capability aliases, computed/member-dependent Tiles, missing dependency contracts, arbitrary Mosaic helper transfer, and general Deferred state/await linkage remain `UNVERIFIED`. Analysis neither executes the application nor implements runtime cycle detection or general termination/deadlock analysis.
 

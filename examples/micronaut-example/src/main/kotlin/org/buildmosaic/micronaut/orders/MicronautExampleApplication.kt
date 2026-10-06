@@ -80,7 +80,7 @@ class OrderController(private val canvas: Canvas) {
     @PathVariable id: String,
   ): OrderPage =
     canvas.withLayer {
-      instance(key = OrderKey, value = id)
+      instance(OrderKey, id)
     }.withMosaic { compose(OrderPageTile) }
 
   @Get("/{id}/total")
@@ -89,7 +89,7 @@ class OrderController(private val canvas: Canvas) {
   ): Map<String, Double> {
     val total =
       canvas.withLayer {
-        instance(key = OrderKey, value = id)
+        instance(OrderKey, id)
       }.withMosaic { compose(OrderTotalTile) }
     return mapOf("total" to total)
   }

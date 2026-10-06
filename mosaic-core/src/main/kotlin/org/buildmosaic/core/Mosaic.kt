@@ -30,7 +30,11 @@ interface Mosaic {
   suspend fun <V> compose(tile: Tile<V>): V = composeAsync(tile).await()
 
   /**
-   * Returns Mosaic-owned shared work for each key. Each key retains its own success or failure.
+   * Returns Mosaic-owned shared work for each equal key on [tile] within this Mosaic.
+   * Each key retains one terminal success or failure, including successful nullable values.
+   * An omitted provider map entry fails that key; provider failure affects unfinished keys
+   * in that physical invocation. Per-key and chunk factories isolate their invocation failures.
+   * Successful sibling keys remain cached. Exact physical batch boundaries are not guaranteed.
    * Callers may await results freely. To stop waiting, cancel your own coroutine or wait
    * operation rather than cancelling a shared [Deferred], which would affect other consumers.
    *
@@ -45,7 +49,9 @@ interface Mosaic {
   ): Map<K, Deferred<V>>
 
   /**
-   * Await the value of a [MultiTile]
+   * Awaits all requested values of a [MultiTile]. Throws if any requested key fails;
+   * this strict operation does not return a partial map. Successful sibling outcomes
+   * remain cached. Use [composeAsync] to handle each key's outcome separately.
    *
    * @param K the type of the [MultiTile] keys
    * @param V the type of the [MultiTile] return value

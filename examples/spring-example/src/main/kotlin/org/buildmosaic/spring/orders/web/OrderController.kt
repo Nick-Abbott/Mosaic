@@ -19,7 +19,7 @@ class OrderController(private val canvas: Canvas) {
     @PathVariable("id") id: String,
   ): OrderPage =
     canvas.withLayer {
-      instance(key = OrderKey, value = id)
+      instance(OrderKey, id)
     }.withMosaic { compose(OrderPageTile) }
 
   @GetMapping("/{id}/total")
@@ -27,6 +27,6 @@ class OrderController(private val canvas: Canvas) {
     @PathVariable("id") id: String,
   ): Double =
     canvas.withLayer {
-      instance(key = OrderKey, value = id)
+      instance(OrderKey, id)
     }.withMosaic { compose(OrderTotalTile) }
 }

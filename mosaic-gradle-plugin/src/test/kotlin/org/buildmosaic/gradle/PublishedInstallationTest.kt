@@ -128,8 +128,20 @@ class PublishedInstallationTest {
       writeText(
         """
         package app
+        import org.buildmosaic.core.*
         import org.buildmosaic.core.injection.*
-        suspend fun entry(): String = canvas { single<String> { "ready" } }.source<String>()
+        interface Service
+        class ExistingService : Service
+        val OrderKey = CanvasKey(String::class, "order")
+        suspend fun entry(): String = canvas {
+          instance("ready")
+          instance<Service>("primary", ExistingService())
+          instance("secondary", ExistingService())
+          instance(OrderKey, "order-1")
+        }.withMosaic {
+          source<Service>("primary"); source<ExistingService>("secondary")
+          source(OrderKey); source<String>()
+        }
         """.trimIndent(),
       )
     }

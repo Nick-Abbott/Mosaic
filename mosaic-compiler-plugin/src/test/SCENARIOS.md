@@ -153,6 +153,7 @@ unknowns, and missing producer exports. These share existing compiler
 compilations.
 
 `ScopedAnalysisTest` covers direct `withMosaic`, Mosaic identity and aliases,
-registration-time `instance` values and keys, child layers, policy/correctness
+registration-time `instance` values, qualifier-first/interface bindings, positional
+String-valued CanvasKeys, argument evaluation order, child layers, policy/correctness
 recursion classification, source suppression scopes, selected binary cycles,
 and unsupported helper/escaping/member boundaries.
