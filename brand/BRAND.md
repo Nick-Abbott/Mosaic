@@ -46,19 +46,39 @@ outlines and corresponding PNG together when wording changes.
 
 ## Social package
 
-SVG masters in `social/masters/` are the editable source. PNG exports are
-grouped by purpose in `avatars/`, `banners/`, `previews/`, and `posts/`. They are
-opaque sRGB images for platform upload; the same banner serves X and Bluesky.
+The social asset package is managed in Cloudinary rather than this framework
+repository. The four editable SVG masters live in `mosaic/brand/masters`;
+the seven opaque sRGB PNG exports live in `mosaic/brand/exports`, grouped
+into `avatars`, `banners`, `previews`, and `posts`. The same banner serves
+X and Bluesky.
+
+[The archive manifest](social-assets.json) records the Cloudinary identifiers,
+folders, dimensions, byte counts, and SHA-256 checksums. Maintainers with access
+to the `tpeb670p` Cloudinary environment can retrieve originals through the
+Media Library or authenticated API. Delivery uses the `authenticated` type;
+do not commit signed delivery URLs, API credentials, or downloaded copies here.
+Archive public IDs are commit-pinned and must not be overwritten. Store revised
+masters and exports as new versions and update the manifest when replacing the
+canonical package.
+
+Keep reusable brand artwork under `mosaic/brand`. Store newly generated
+post artwork under `mosaic/posts/<campaign-or-date>`; release-specific artwork
+belongs under `mosaic/releases/<version>`. Folders organize the Media Library
+independently of delivery public IDs, so reorganizing assets must preserve any
+published delivery URLs.
+
+The three reusable identity SVGs above and the README, website, and API-doc
+assets remain in the repository because the documentation build uses them.
 
 | Use | Editable master | PNG export (pixels) |
 | --- | --- | --- |
-| X profile | [avatar.svg](social/masters/avatar.svg) | [400 × 400](social/avatars/x-profile-400.png) |
-| Bluesky profile | [avatar.svg](social/masters/avatar.svg) | [1000 × 1000](social/avatars/bluesky-profile-1000.png) |
-| Threads profile | [avatar.svg](social/masters/avatar.svg) | [640 × 640](social/avatars/threads-profile-640.png) |
-| GitHub organization/profile | [avatar.svg](social/masters/avatar.svg) | [500 × 500](social/avatars/github-profile-500.png) |
-| X / Bluesky header | [banner.svg](social/masters/banner.svg) | [1500 × 500](social/banners/x-bluesky-banner-1500x500.png) |
-| GitHub repository/link preview | [github-social-preview.svg](social/masters/github-social-preview.svg) | [1280 × 640](social/previews/github-social-preview-1280x640.png) |
-| Threads square post | [threads-post.svg](social/masters/threads-post.svg) | [1080 × 1080](social/posts/threads-post-1080.png) |
+| X profile | `avatar.svg` | `400 × 400` |
+| Bluesky profile | `avatar.svg` | `1000 × 1000` |
+| Threads profile | `avatar.svg` | `640 × 640` |
+| GitHub organization/profile | `avatar.svg` | `500 × 500` |
+| X / Bluesky header | `banner.svg` | `1500 × 500` |
+| GitHub repository/link preview | `github-social-preview.svg` | `1280 × 640` |
+| Threads square post | `threads-post.svg` | `1080 × 1080` |
 
 X recommends 400 × 400 profiles and 1500 × 500 headers; its headers can lose
 about 60 pixels at either vertical edge. GitHub recommends approximately
