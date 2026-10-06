@@ -11,7 +11,7 @@ The order page and total both reach `LineItemsTile`. Create one request Mosaic a
 
 ```kotlin
 applicationCanvas.withLayer {
-  instance(key = OrderKey, value = orderId)
+  instance(OrderKey, orderId)
 }.withMosaic {
   val page = composeAsync(OrderPageTile)
   val total = composeAsync(OrderTotalTile)

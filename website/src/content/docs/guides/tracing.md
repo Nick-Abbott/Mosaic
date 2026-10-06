@@ -38,7 +38,7 @@ val applicationCanvas = canvas {
 }
 
 val page = applicationCanvas.withLayer {
-  instance(key = OrderKey, value = orderId)
+  instance(OrderKey, orderId)
 }.withMosaic { compose(OrderPageTile) }
 ```
 

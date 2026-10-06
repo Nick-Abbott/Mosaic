@@ -30,7 +30,7 @@ Inside a suspending handler:
 
 ```kotlin
 val page = applicationCanvas.withLayer {
-  instance(key = OrderKey, value = orderId)
+  instance(OrderKey, orderId)
 }.withMosaic { compose(OrderPageTile) }
 ```
 
@@ -74,7 +74,7 @@ canvas {
 }
 ```
 
-`instance` borrows a value: Canvas never closes it, including on construction failure. The framework or application keeps ownership. The request ID is also an existing value, so the child Canvas registers it with `instance(key = OrderKey, value = orderId)`. Neither Canvas owns closeable resources in these examples.
+`instance` borrows a value: Canvas never closes it, including on construction failure. The framework or application keeps ownership. The request ID is also an existing value, so the child Canvas registers it with `instance(OrderKey, orderId)`. Neither Canvas owns closeable resources in these examples.
 
 Use `single { ... }` when Canvas creates and owns a service. If the application Canvas owns `AutoCloseable` services, close it during framework shutdown. If a request child owns local resources, scope it explicitly around composition; `withMosaic` does not close Canvas. See [resource ownership](/guides/resources/).
 

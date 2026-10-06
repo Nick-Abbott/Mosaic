@@ -67,7 +67,7 @@ fun Application.module() {
       val orderId = call.parameters["id"] ?: error("Missing order ID")
       val orderPage =
         applicationCanvas.withLayer {
-          instance(key = OrderKey, value = orderId)
+          instance(OrderKey, orderId)
         }.withMosaic { compose(OrderPageTile) }
       call.respond(orderPage)
     }
@@ -76,7 +76,7 @@ fun Application.module() {
       val orderId = call.parameters["id"] ?: error("Missing order ID")
       val total =
         applicationCanvas.withLayer {
-          instance(key = OrderKey, value = orderId)
+          instance(OrderKey, orderId)
         }.withMosaic { compose(OrderTotalTile) }
       call.respond(mapOf("total" to total))
     }

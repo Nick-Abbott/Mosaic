@@ -757,6 +757,8 @@ internal class SourceContractExtractor(
             return@forEach
           }
           if (resolvedName(statement).endsWith(".instance")) {
+            // prepare already evaluated key/qualifier and value in source order.
+            // Normalize by parameter name, just like single; borrowed values have no constructor effects.
             bindings += Binding(key(statement, prepared, file, owner), site = site(statement))
             return@forEach
           }

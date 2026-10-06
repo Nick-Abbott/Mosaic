@@ -73,8 +73,6 @@ class CanvasBuilder internal constructor(inheritedConfig: MosaicRuntimeConfig = 
    * Registers an externally owned value. Canvas never closes this value, including on
    * construction rollback. The external owner remains responsible for its lifetime.
    * Available eagerly to constructors through [CanvasFactory.paint], with normal local-first lookup.
-   * For String values, use named `key` and `value` arguments to distinguish this overload
-   * from the type/qualifier overload.
    *
    * @param key The typed key under which the existing value is registered
    * @param value The already-existing value to borrow without transferring ownership
@@ -85,16 +83,26 @@ class CanvasBuilder internal constructor(inheritedConfig: MosaicRuntimeConfig = 
   ) = check(bindings.putIfAbsent(key, SingleBinding(value)) == null) { "Duplicate binding for $key" }
 
   /**
-   * Registers an externally owned [value] under type [T] and optional [qualifier].
+   * Registers an externally owned [value] under type [T], without a qualifier.
    * Canvas never closes it, including on construction rollback. Use an explicit type
    * argument to bind under an interface or superclass. Use [single] to construct an owned value.
    *
    * @param value The already-existing value to borrow without transferring ownership
-   * @param qualifier Optional qualifier distinguishing bindings of the same type
+   */
+  inline fun <reified T : Any> instance(value: T) = instance(CanvasKey(T::class), value)
+
+  /**
+   * Registers an externally owned [value] under type [T] and [qualifier].
+   * Canvas never closes it, including on construction rollback. A `null` qualifier means
+   * the unqualified binding. Use an explicit type argument to bind an interface or superclass.
+   * This mirrors `single<T>(qualifier) { ... }` while leaving ownership with the external owner.
+   *
+   * @param qualifier Qualifier distinguishing bindings of the same type, or `null`
+   * @param value The already-existing value to borrow without transferring ownership
    */
   inline fun <reified T : Any> instance(
+    qualifier: String?,
     value: T,
-    qualifier: String? = null,
   ) = instance(CanvasKey(T::class, qualifier), value)
 }
 

@@ -12,7 +12,8 @@ predate this maintained changelog; their release history is not reconstructed he
 - `Canvas.withMosaic` for one request lifetime: producer work inherits the calling
   coroutine; every exit cancels unfinished work and waits for cleanup.
 - Typed, qualified, and CanvasKey `instance(...)` bindings for externally owned
-  values that Canvas never closes, including on construction rollback.
+  values that Canvas never closes, including on construction rollback. Qualifiers
+  precede values, mirroring `single<T>("primary") { ... }`.
 - Analysis recognition of supported `withMosaic` and `instance` usage, proven
   Tile-cycle detection, and configurable/suppressible recursive Tile/MultiTile
   policy with ERROR/WARNING/OFF severities. Proven cycles cannot be disabled.

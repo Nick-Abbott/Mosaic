@@ -3,6 +3,7 @@
 package org.buildmosaic.compiler
 
 import org.buildmosaic.analysis.AnalysisRequest
+import org.buildmosaic.analysis.CanvasExpression
 import org.buildmosaic.analysis.Certainty
 import org.buildmosaic.analysis.Effect
 import org.buildmosaic.analysis.MosaicAnalyzer
@@ -35,7 +36,16 @@ class ScopedAnalysisTest {
 
   @Test
   fun `direct scoped operations aliases and existing instances preserve fidelity`() {
-    for (root in listOf("direct", "qualified", "keyed", "aliased", "child", "optional")) {
+    for (root in listOf(
+      "direct",
+      "qualified",
+      "inferredQualified",
+      "keyed",
+      "strings",
+      "aliased",
+      "child",
+      "optional",
+    )) {
       assertTrue(report(root).policyDecision.passed, "$root: ${report(root)}")
       assertTrue(report(root).findings.none { it.certainty == Certainty.UNVERIFIED }, "$root: ${report(root)}")
     }
@@ -58,9 +68,28 @@ class ScopedAnalysisTest {
       }
     assertEquals(Certainty.MISSING, finding.certainty)
     val contract = module.canvases.single { it.id == "scoped.registerBeforeProvider()" }
-    assertTrue(contract.result.toString().contains("constructorEffects=[]"))
+    val layer = contract.result.evaluatedResult() as CanvasExpression.Layer
+    assertTrue(layer.bindings.last().constructorEffects.isEmpty())
     assertTrue(report("dynamicInstance").findings.any { it.certainty == Certainty.UNVERIFIED })
     assertTrue(report("duplicateInstance").findings.any { it.certainty == Certainty.MISSING })
+  }
+
+  @Test
+  fun `qualified and keyed instance arguments execute eagerly in source order`() {
+    for ((root, first) in listOf("qualifiedArgumentOrder" to "readQualifier", "keyedArgumentOrder" to "readKey")) {
+      val expression = module.canvases.single { it.id == "scoped.$root(org.buildmosaic.core.injection.Canvas)" }.result
+      val effects = (expression as CanvasExpression.WithEffects).effects
+      val calls = effects.filterIsInstance<Effect.Call>().map { it.target }
+      assertEquals(
+        listOf(
+          "scoped.$first(org.buildmosaic.core.injection.Canvas)",
+          "scoped.readValue(org.buildmosaic.core.injection.Canvas)",
+        ),
+        calls,
+      )
+      val layer = expression.evaluatedResult() as CanvasExpression.Layer
+      assertTrue(layer.bindings.single().constructorEffects.isEmpty())
+    }
   }
 
   @Test
@@ -138,7 +167,10 @@ private val scopedSource =
   package scoped
   import org.buildmosaic.core.*
   import org.buildmosaic.core.injection.*
-  class Service
+  interface Client
+  class Service : Client
+  val OrderKey = CanvasKey(String::class, "order")
+  val ClientTile by singleTile { source<Client>("primary"); 1 }
   val Ready by singleTile { source<Service>(); 1 }
   val Qualified by singleTile { source<Service>("primary"); 1 }
   val A: Tile<Int> by singleTile { val current = this; current.compose(A) }
@@ -170,16 +202,23 @@ private val scopedSource =
     val tile by perKeyTile<Int, Int> { it }
   }
   suspend fun direct() = canvas { instance(Service()) }.withMosaic { val m = this; m.compose(Ready) }
-  suspend fun qualified() = canvas { instance(Service(), qualifier = "primary") }.withMosaic { source<Service>("primary"); compose(Qualified) }
+  suspend fun qualified() = canvas { instance<Client>("primary", Service()) }.withMosaic { compose(ClientTile) }
+  suspend fun inferredQualified() = canvas { instance("primary", Service()) }.withMosaic { compose(Qualified) }
   suspend fun keyed() = canvas { val k = CanvasKey(Service::class, "primary"); instance(k, Service()) }.withMosaic { compose(Qualified) }
+  suspend fun strings() = canvas { val orderId = "order-1"; instance(OrderKey, orderId); instance("primary", "value"); instance("plain") }.withMosaic { source(OrderKey); source<String>("primary"); source<String>() }
   suspend fun aliased() { val s = Service(); canvas { val b = this; b.instance(s) }.withMosaic { compose(Ready) } }
   suspend fun child() = canvas {}.withLayer { instance(Service()) }.withMosaic { compose(Ready) }
   suspend fun optional() = canvas {}.withMosaic { sourceOr<Service>(); 1 }
   fun existing(parent: Canvas): Service { parent.source<Service>(); return Service() }
-  suspend fun registerBeforeProvider(): Canvas { val p = canvas {}; return canvas { single<Service> { Service() }; instance(existing(p), "primary") } }
+  suspend fun registerBeforeProvider(): Canvas { val p = canvas {}; return canvas { single<Service> { Service() }; instance("primary", existing(p)) } }
   suspend fun registrationOrder() = registerBeforeProvider().withMosaic { compose(Qualified) }
+  fun readQualifier(parent: Canvas): String { parent.source(String::class, "qualifier"); return "primary" }
+  fun readKey(parent: Canvas): CanvasKey<String> { parent.source(String::class, "key"); return OrderKey }
+  fun readValue(parent: Canvas): String { parent.source(String::class, "value"); return "value" }
+  suspend fun qualifiedArgumentOrder(parent: Canvas) = canvas { instance(readQualifier(parent), readValue(parent)) }
+  suspend fun keyedArgumentOrder(parent: Canvas) = canvas { instance(readKey(parent), readValue(parent)) }
   fun qualifier() = "primary"
-  suspend fun dynamicInstance() = canvas { instance(Service(), qualifier()) }.withMosaic { compose(Qualified) }
+  suspend fun dynamicInstance() = canvas { instance(qualifier(), Service()) }.withMosaic { compose(Qualified) }
   suspend fun duplicateInstance() = canvas { instance(Service()); instance(Service()) }.withMosaic { compose(Ready) }
   suspend fun hard() = canvas {}.withMosaic { compose(A) }
   suspend fun guarded() = canvas {}.withMosaic { compose(Guarded) }

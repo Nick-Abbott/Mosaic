@@ -148,7 +148,7 @@ Bind the request input in a child Canvas, then ask for the page:
 ```kotlin
 suspend fun orderPage(applicationCanvas: Canvas, orderId: String): OrderPage =
   applicationCanvas.withLayer {
-    instance(key = OrderKey, value = orderId)
+    instance(OrderKey, orderId)
   }.withMosaic { compose(OrderPageTile) }
 ```
 

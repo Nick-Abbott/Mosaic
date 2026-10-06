@@ -45,7 +45,7 @@ val GreetingTile by singleTile { "Hello, ${source(UserIdKey)}!" }
 fun main() = runBlocking {
   val applicationCanvas = canvas {}
   val greeting = applicationCanvas.withLayer {
-    instance(key = UserIdKey, value = "user-123")
+    instance(UserIdKey, "user-123")
   }.withMosaic { compose(GreetingTile) }
   println(greeting) // Hello, user-123!
 }
@@ -72,7 +72,7 @@ val WelcomeTile by singleTile {
 fun main() = runBlocking {
   val applicationCanvas = canvas {}
   val response = applicationCanvas.withLayer {
-    instance(key = UserIdKey, value = "user-123")
+    instance(UserIdKey, "user-123")
   }.withMosaic { compose(WelcomeTile) }
   println(response)
 }
