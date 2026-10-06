@@ -49,6 +49,7 @@ internal class MosaicImpl private constructor(
   override val coroutineContext: CoroutineContext = context + job
 
   /** Stop admission through the Job, then await producer and attached-child cleanup. */
+  @JvmSynthetic
   internal suspend fun shutdown() {
     job.cancel()
     withContext(NonCancellable) { job.join() }
