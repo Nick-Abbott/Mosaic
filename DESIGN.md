@@ -181,7 +181,7 @@ The native homepage pairs explanation with evidence, usually in unequal columns 
 | At least 1600px          | Hero top padding grows from 3rem to 4rem.                                                                                                                                                                       |
 | Up to 1100px             | Wrapper has 40px side gutters; paired columns become 0.8fr / 1.2fr with 3rem gaps.                                                                                                                              |
 | Up to 850px              | Wrapper/header have 24px side gutters; hero and explanatory sections stack; code evidence can use a 650px maximum; architecture heading stacks. Inspection remains two columns. Desktop Performance link hides. |
-| Up to 600px              | Wrapper/header have 20px side gutters; native menu replaces desktop navigation; inspection, closing CTA, and footer stack. The detailed SVG composition graph becomes its text-based mobile alternative.        |
+| Up to 600px              | Wrapper/header have 20px side gutters; native menu replaces desktop navigation; inspection, closing CTA, and footer stack. The detailed SVG composition graph becomes a compact vertical dependency graph.      |
 
 Other paired structures use their own ratios: architecture heading 1.1fr / 0.9fr with a 6rem desktop gap, inspection 1fr / 1fr with a 5rem gap. Preserve `min-width: 0` on code-bearing columns so overflow stays inside code rather than widening the page. Framework links become two-column rows with the description beneath the name on mobile. The final CTA changes from a flex row to a vertical sequence.
 
@@ -221,7 +221,7 @@ Evidence panels remain source-driven. Homepage Kotlin snippets are imported from
 
 ### Reuse keys and shared producers
 
-Keys are technical identifiers, not action chips. Small monospace keys use semantic panel fill, one-pixel borders, recorded reuse-key padding, and blue border emphasis for the reused key. A shared producer uses orange/navy and the recorded padding; two blue branches converge into it. Keep the diagram static and label what is actually shared. The composition SVG has a title and description; the narrow version presents the same relationships as a readable text sequence.
+Keys are technical identifiers, not action chips. Small monospace keys use semantic panel fill, one-pixel borders, recorded reuse-key padding, and blue border emphasis for the reused key. A shared producer uses orange/navy and the recorded padding; two blue branches converge into it. Keep the diagram static and label what is actually shared. The composition SVG has a title and description; the narrow version uses six outlined HTML nodes and decorative SVG arrows on a CSS grid. Three separate arrows enter the orange OrderTile, annotated “3 callers · 1 execution”; the diagram’s accessible description names the dependencies and request-scoped reuse.
 
 ### Evidence tables and framework rows
 

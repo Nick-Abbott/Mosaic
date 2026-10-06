@@ -17,7 +17,7 @@ test('composition dependencies use distinct node anchors and never cross or over
   );
   const edges = await page.locator('.graph-edges path').evaluateAll((paths) => {
     const bounds = new Map(
-      Array.from(document.querySelectorAll<SVGGraphicsElement>('[data-tile]')).map((node) => [
+      Array.from(document.querySelectorAll<SVGGraphicsElement>('.composition-figure > svg [data-tile]')).map((node) => [
         node.dataset.tile,
         node.getBBox(),
       ]),
