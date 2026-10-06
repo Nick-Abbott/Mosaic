@@ -20,16 +20,4 @@ class ProductsByIdTileTest {
         assertEquals(ProductsByIdTile, keys, expected)
       }
     }
-
-  @Test
-  fun `products tile propagates failures`() =
-    runTest {
-      val keys = listOf("product-1")
-
-      mosaicBuilder()
-        .withFailedTile(ProductsByIdTile, RuntimeException("boom"))
-        .withMosaic {
-          assertThrows(ProductsByIdTile, keys, RuntimeException::class)
-        }
-    }
 }

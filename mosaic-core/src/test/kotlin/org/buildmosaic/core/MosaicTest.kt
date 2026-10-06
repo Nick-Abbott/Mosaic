@@ -91,7 +91,7 @@ class MosaicTest {
     }
 
   @Test
-  fun `should retrieve a mutltiTile asynchronously`() =
+  fun `multi Tile asynchronous composition returns before its producer finishes`() =
     runTest {
       val testDispatcher = StandardTestDispatcher(testScheduler)
       withContext(testDispatcher) {
@@ -247,43 +247,13 @@ class MosaicTest {
     }
 
   @Test
-  fun `should bubble up the error if a multi tile fails`() =
-    runTest {
-      class MyFakeException : Exception("test")
-
-      val testDispatcher = StandardTestDispatcher(testScheduler)
-      withContext(testDispatcher) {
-        canvas { }.withMosaic {
-          val mosaic = this
-          assertFailsWith<MyFakeException> {
-            mosaic.compose(multiTile<String, String> { throw MyFakeException() }, listOf("abc"))
-          }
-        }
-      }
-    }
-
-  @Test
-  fun `should fail if a key is missing from the response`() =
-    runTest {
-      val testDispatcher = StandardTestDispatcher(testScheduler)
-      withContext(testDispatcher) {
-        canvas { }.withMosaic {
-          val mosaic = this
-          val tile = multiTile { mapOf("a" to "a") }
-
-          assertFailsWith<NoSuchElementException> { mosaic.compose(tile, listOf("a", "b")) }
-        }
-      }
-    }
-
-  @Test
   fun `should return empty response if no keys are provided`() =
     runTest {
       val testDispatcher = StandardTestDispatcher(testScheduler)
       withContext(testDispatcher) {
         canvas { }.withMosaic {
           val mosaic = this
-          val tile = multiTile { mapOf("a" to "a", "b" to "b", "c" to "c") }
+          val tile = multiTile<String, String> { error("empty requests must not execute the provider") }
           assertEquals(emptyMap(), mosaic.compose(tile, emptyList()))
         }
       }

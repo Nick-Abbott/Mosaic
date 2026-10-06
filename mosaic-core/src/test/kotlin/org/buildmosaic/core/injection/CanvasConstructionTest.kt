@@ -859,7 +859,7 @@ class CanvasConstructionTest {
     }
 
   @Test
-  fun `should test Mosaic extension functions`() =
+  fun `scoped Mosaic source helpers resolve its Canvas`() =
     runTest {
       val testCanvas =
         canvas {

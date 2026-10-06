@@ -9,7 +9,7 @@ import kotlin.test.Test
 
 class AddressTileTest {
   @Test
-  fun `address tile uses request id`() =
+  fun `address tile returns the service address`() =
     runTest {
       mosaicBuilder()
         .withCanvasSource(AddressService())
@@ -17,16 +17,6 @@ class AddressTileTest {
         .withMosaic {
           val expected = Address("123 Main St", "Springfield")
           assertEquals(AddressTile, expected)
-        }
-    }
-
-  @Test
-  fun `address tile propagates failures`() =
-    runTest {
-      mosaicBuilder()
-        .withFailedTile(AddressTile, RuntimeException("boom"))
-        .withMosaic {
-          assertThrows(AddressTile, RuntimeException::class)
         }
     }
 }

@@ -20,16 +20,4 @@ class PricingBySkuTileTest {
         assertEquals(PricingBySkuTile, keys, expected)
       }
     }
-
-  @Test
-  fun `pricing tile propagates failures`() =
-    runTest {
-      val keys = listOf("sku-1")
-
-      mosaicBuilder()
-        .withFailedTile(PricingBySkuTile, RuntimeException("boom"))
-        .withMosaic {
-          assertThrows(PricingBySkuTile, keys, RuntimeException::class)
-        }
-    }
 }

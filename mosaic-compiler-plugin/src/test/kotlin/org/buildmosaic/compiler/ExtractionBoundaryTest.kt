@@ -119,7 +119,6 @@ class MosaicReceiverBoundaryTest {
     val report = analyze(module)
     assertEquals(RootStatus.UNVERIFIED, report.roots.single().status, result.toString())
     assertTrue(report.findings.any { it.reason.contains("Mosaic extension receiver") }, report.toString())
-    assertEquals(RootStatus.UNVERIFIED, analyze(module).roots.single().status)
   }
 }
 

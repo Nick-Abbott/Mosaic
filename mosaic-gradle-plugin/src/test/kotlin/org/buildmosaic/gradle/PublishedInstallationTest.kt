@@ -287,14 +287,18 @@ private fun verifyRuntimeConsumer(
   )
   val rejected = reject(consumer, "compileTestKotlin")
   for (diagnostic in listOf(
-    "create",
-    "build",
     "MosaicImpl",
     "TestMosaic",
     "withMosaicExecution",
     "Internal Mosaic test bridge",
   )) {
     assertTrue(rejected.output.contains(diagnostic), rejected.output)
+  }
+  for (removed in listOf("create", "build")) {
+    assertTrue(
+      rejected.output.contains("Unresolved reference '$removed'"),
+      rejected.output,
+    )
   }
   for (internal in listOf("MosaicImpl", "withMosaicExecution")) {
     assertTrue(
