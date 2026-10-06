@@ -1,10 +1,9 @@
 package org.buildmosaic.core.injection
 
-import kotlinx.coroutines.currentCoroutineContext
 import org.buildmosaic.core.Mosaic
-import org.buildmosaic.core.MosaicImpl
 import org.buildmosaic.core.MosaicRuntimeConfig
 import org.buildmosaic.core.exception.MosaicMissingKeyException
+import org.buildmosaic.core.withMosaicExecution
 import kotlin.reflect.KClass
 
 /**
@@ -140,22 +139,4 @@ inline fun <reified T : Any> Canvas.sourceOr(): T? = sourceOr(T::class)
  * }
  * ```
  */
-suspend fun <R> Canvas.withMosaic(block: suspend Mosaic.() -> R): R {
-  val mosaic = MosaicImpl(this, currentCoroutineContext())
-  try {
-    return block(mosaic)
-  } finally {
-    mosaic.shutdown()
-  }
-}
-
-/**
- * Creates an unscoped [Mosaic], without attaching producer work to the calling coroutine.
- * Prefer [withMosaic] and move the complete handler invocation into its block to give
- * work a request lifetime and await cleanup. This function does not close this Canvas.
- */
-@Deprecated(
-  "Use scoped Canvas.withMosaic { ... } to own Mosaic work within the calling coroutine",
-  level = DeprecationLevel.WARNING,
-)
-fun Canvas.create(): Mosaic = MosaicImpl(this)
+suspend fun <R> Canvas.withMosaic(block: suspend Mosaic.() -> R): R = withMosaicExecution(this, block = block)

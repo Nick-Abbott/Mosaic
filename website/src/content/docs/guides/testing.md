@@ -3,7 +3,9 @@ title: 'Test compositions'
 description: 'Replace dependency Tiles with values, failures, and virtual-time delays.'
 ---
 
-Test real response logic by replacing its dependency Tiles. `mosaic-test` uses the same runtime as production, with a test dispatcher and selected substitutions. Use Canvas sources for request input and service fakes.
+Test real response logic by replacing its dependency Tiles. `mosaic-test` uses the same runtime as production, with selected substitutions inside a scoped execution. `withMosaic` inherits the calling coroutine context, including the enclosing `runTest` Job, dispatcher, and virtual-time scheduler. Use Canvas sources for request input and service fakes.
+
+The examples on `develop` use the unreleased scoped test API. For the published 0.7.0 artifact, use the [release test guide](https://github.com/BuildMosaic/Mosaic/blob/0.7.0/mosaic-test/README.md); see [scoped execution migration](/reference/compatibility/#scoped-execution-migration) when updating consumers.
 
 ## Quick Start
 
@@ -24,7 +26,7 @@ Mosaic targets JVM 17 and uses Kotlin 2.4.20 with language/API level 2.4. Runtim
 
 ## Your first Tile test
 
-Inside `runTest`, `mosaicBuilder()` uses the enclosing `TestScope` and its scheduler. This complete test replaces a dependency while leaving the response Tile's formatting logic real:
+Inside `runTest`, call `mosaicBuilder().withMosaic { ... }` to execute in the enclosing coroutine context. This complete test replaces a dependency while leaving the response Tile's formatting logic real:
 
 ```kotlin
 import kotlinx.coroutines.test.runTest
@@ -38,11 +40,11 @@ class GreetingTest {
     val nameTile = singleTile { "Production name" }
     val greetingTile = singleTile { "Hello, ${compose(nameTile)}!" }
 
-    val testMosaic = mosaicBuilder()
+    mosaicBuilder()
       .withMockTile(nameTile, "Jane")
-      .build()
-
-    testMosaic.assertEquals(greetingTile, "Hello, Jane!")
+      .withMosaic {
+        assertEquals(greetingTile, "Hello, Jane!")
+      }
   }
 }
 ```
@@ -62,15 +64,15 @@ fun `greeting reads request input`() = runTest {
   val userIdKey = CanvasKey(String::class, "userId")
   val greetingTile = singleTile { "Hello, ${source(userIdKey)}!" }
 
-  val testMosaic = mosaicBuilder()
+  mosaicBuilder()
     .withCanvasSource(userIdKey, "user-123")
-    .build()
-
-  testMosaic.assertEquals(greetingTile, "Hello, user-123!")
+    .withMosaic {
+      assertEquals(greetingTile, "Hello, user-123!")
+    }
 }
 ```
 
-You can also register a service fake by class with `withCanvasSource(Service::class, fakeService)` or by a qualified key. Only provide the inputs used by real blocks; replacing a Tile bypasses its own Canvas reads.
+You can also register a service fake by class with `withCanvasSource(Service::class, fakeService)` or by a qualified key. These values already belong to the caller. Test Canvas registers them with `instance`, so even `AutoCloseable` sources remain caller-owned and are never closed by Canvas, including during construction rollback. Only provide the inputs used by real blocks; replacing a Tile bypasses its own Canvas reads.
 
 ## Mock MultiTile results
 
@@ -86,15 +88,15 @@ fun `total sums mocked prices for requested SKUs`() = runTest {
     compose(pricingTile, listOf("SKU1", "SKU2")).values.sum()
   }
 
-  val testMosaic = mosaicBuilder()
+  mosaicBuilder()
     .withMockTile(pricingTile, mapOf("SKU1" to 100, "SKU2" to 250))
-    .build()
-
-  testMosaic.assertEquals(totalTile, 350)
+    .withMosaic {
+      assertEquals(totalTile, 350)
+    }
 }
 ```
 
-This verifies composition with mocked prices, not batching efficiency. To verify a Tile's batching behavior, leave that MultiTile real, provide a recording service fake through Canvas, and assert which keys reach the service. See the checked-in [ProductsByIdTile tests](https://github.com/BuildMosaic/Mosaic/blob/0.7.0/examples/tile-library/src/test/kotlin/org/buildmosaic/library/tile/ProductsByIdTileTest.kt) for examples of exercising the real MultiTile.
+This verifies composition with mocked prices, not batching efficiency. To verify a Tile's batching behavior, leave that MultiTile real, provide a recording service fake through Canvas, and assert which keys reach the service. See the checked-in [ProductsByIdTile tests](https://github.com/BuildMosaic/Mosaic/blob/develop/examples/tile-library/src/test/kotlin/org/buildmosaic/library/tile/ProductsByIdTileTest.kt) for examples of exercising the real MultiTile.
 
 ## Verify exception propagation
 
@@ -104,11 +106,11 @@ fun `greeting propagates a dependency failure`() = runTest {
   val nameTile = singleTile { "Production name" }
   val greetingTile = singleTile { "Hello, ${compose(nameTile)}!" }
 
-  val testMosaic = mosaicBuilder()
+  mosaicBuilder()
     .withFailedTile(nameTile, IllegalStateException("Service unavailable"))
-    .build()
-
-  testMosaic.assertThrows(greetingTile, IllegalStateException::class)
+    .withMosaic {
+      assertThrows(greetingTile, IllegalStateException::class)
+    }
 }
 ```
 
@@ -127,13 +129,13 @@ import kotlin.test.assertEquals
 @Test
 fun `delayed mock advances virtual time before returning`() = runTest {
   val dataTile = singleTile { "Production data" }
-  val testMosaic = mosaicBuilder()
+  mosaicBuilder()
     .withDelayedTile(dataTile, "Test data", delayMs = 200)
-    .build()
-
-  val start = currentTime
-  testMosaic.assertEquals(dataTile, "Test data")
-  assertEquals(200L, currentTime - start)
+    .withMosaic {
+      val start = currentTime
+      assertEquals(dataTile, "Test data")
+      assertEquals(200L, currentTime - start)
+    }
 }
 ```
 
@@ -149,7 +151,7 @@ All mock behaviors support both Tile and MultiTile dependencies:
 | `withCustomTile(tile) { ... }`             | Execute a suspending provider with a Mosaic receiver; MultiTile providers also receive a set of keys |
 | `withCanvasSource(key, value)`             | Make input or a service fake available to `source`                                                   |
 
-A custom provider can use `source` and compose dependencies. For a MultiTile, return a map containing the requested keys. Build a fresh test Mosaic for each scenario so caches and mocks do not leak between tests.
+A custom provider can use `source` and compose dependencies. For a MultiTile, return a map containing the requested keys. Each `withMosaic` invocation has a fresh cache and snapshots the configured Tile substitutions, MultiTile substitutions, and Canvas sources before execution starts. Reusing or changing the builder affects later executions, never an execution already in progress. Configure a builder from one coroutine at a time.
 
 | Assertion                                                    | What it verifies                                 |
 | ------------------------------------------------------------ | ------------------------------------------------ |
@@ -158,4 +160,4 @@ A custom provider can use `source` and compose dependencies. For a MultiTile, re
 | `assertThrows(tile, ExceptionType::class)`                   | Tile throws the expected exception type          |
 | `assertThrows(multiTile, listOf(key), ExceptionType::class)` | MultiTile throws for the requested keys          |
 
-Use `testMosaic.compose(...)` with ordinary Kotlin test assertions for custom checks. See the runnable [order example tests](https://github.com/BuildMosaic/Mosaic/tree/0.7.0/examples/tile-library/src/test/kotlin/org/buildmosaic/library/tile) for response composition, request inputs, and real Tile behavior.
+Inside `withMosaic`, use `compose(...)`, `composeAsync(...)`, and `canvas` with ordinary Kotlin test assertions for custom checks. Producer work belongs to this execution: cancelling one waiter preserves shared work, while enclosing coroutine cancellation cancels unfinished producers. Normal or exceptional block exit cancels speculative work and waits for producer and attached-child cleanup. No explicit shutdown is needed. See the runnable [order example tests](https://github.com/BuildMosaic/Mosaic/tree/develop/examples/tile-library/src/test/kotlin/org/buildmosaic/library/tile) for response composition, request inputs, and real Tile behavior.

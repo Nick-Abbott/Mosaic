@@ -204,9 +204,9 @@ private fun verifyRuntimeConsumer(
       """
       import kotlinx.coroutines.test.runTest
       import org.buildmosaic.core.singleTile
-      import org.buildmosaic.test.TestMosaicBuilder
+      import org.buildmosaic.test.mosaicBuilder
       import org.buildmosaic.core.injection.canvas
-      import org.buildmosaic.core.injection.create
+      import org.buildmosaic.core.injection.withMosaic
       import org.buildmosaic.opentelemetry.tracing
       import io.opentelemetry.api.OpenTelemetry
       import kotlin.test.Test
@@ -215,13 +215,23 @@ private fun verifyRuntimeConsumer(
         @Test fun composes() = runTest {
           val input by singleTile { "original" }
           val response by singleTile { compose(input).uppercase() }
-          val mosaic = TestMosaicBuilder(this).withMockTile(input, "published").build()
-          mosaic.assertEquals(response, "PUBLISHED")
-          kotlin.test.assertEquals("response", response.name)
+          mosaicBuilder().withMockTile(input, "published").withMosaic {
+            assertEquals(response, "PUBLISHED")
+            kotlin.test.assertEquals("response", response.name)
+          }
+        }
+        @Test fun lifecycleSurfaceIsScoped() {
+          for (name in listOf("org.buildmosaic.core.MosaicImpl", "org.buildmosaic.test.TestMosaic")) {
+            val type = Class.forName(name)
+            kotlin.test.assertTrue(java.lang.reflect.Modifier.isFinal(type.modifiers))
+            kotlin.test.assertTrue(type.constructors.all { it.isSynthetic })
+          }
+          kotlin.test.assertTrue(org.buildmosaic.test.TestMosaicBuilder::class.java.methods.none { it.name == "build" })
+          kotlin.test.assertTrue(Class.forName("org.buildmosaic.core.injection.CanvasKt").methods.none { it.name == "create" })
         }
         @Test fun tracingInstalls() = runTest {
           val configured = canvas { tracing { OpenTelemetry.noop() } }
-          kotlin.test.assertEquals("published", configured.create().compose(singleTile { "published" }))
+          kotlin.test.assertEquals("published", configured.withMosaic { compose(singleTile { "published" }) })
         }
       }
       """.trimIndent(),
@@ -235,6 +245,35 @@ private fun verifyRuntimeConsumer(
   assertTrue(result.output.contains("io.opentelemetry:opentelemetry-api:"), result.output)
   assertTrue(!result.output.contains("io.opentelemetry:opentelemetry-sdk:"), result.output)
   assertTrue(!result.output.contains("io.opentelemetry:opentelemetry-extension-kotlin:"), result.output)
+
+  consumer.resolve("src/test/kotlin/RemovedLifecycle.kt").writeText(
+    """
+    import org.buildmosaic.core.Mosaic
+    import org.buildmosaic.core.MosaicImpl
+    import org.buildmosaic.core.injection.Canvas
+    import org.buildmosaic.core.injection.*
+    import org.buildmosaic.test.*
+    import org.buildmosaic.core.internal.withTestMosaicExecution
+    fun unscoped(canvas: Canvas) = canvas.create()
+    fun persistentTest() = mosaicBuilder().build()
+    fun constructed(canvas: Canvas) = MosaicImpl(canvas, kotlin.coroutines.EmptyCoroutineContext)
+    class Subclass(canvas: Canvas) : MosaicImpl(canvas, kotlin.coroutines.EmptyCoroutineContext)
+    fun constructedTest(mosaic: Mosaic) = TestMosaic(mosaic)
+    suspend fun unsupportedBridge(canvas: Canvas) = canvas.withTestMosaicExecution(emptyMap(), emptyMap()) {}
+    """.trimIndent(),
+  )
+  val rejected =
+    GradleRunner.create().withProjectDir(consumer)
+      .withArguments(
+        "compileTestKotlin",
+        "--stacktrace",
+        "--gradle-user-home",
+        File(System.getProperty("user.home"), ".gradle").absolutePath,
+      )
+      .buildAndFail()
+  for (diagnostic in listOf("create", "build", "MosaicImpl", "TestMosaic", "Internal Mosaic test bridge")) {
+    assertTrue(rejected.output.contains(diagnostic), rejected.output)
+  }
 }
 
 private fun run(

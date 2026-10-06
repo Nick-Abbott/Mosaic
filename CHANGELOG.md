@@ -5,6 +5,29 @@ predate this maintained changelog; their release history is not reconstructed he
 
 ## [Unreleased]
 
+### Changed
+
+- Scoped execution is the sole supported lifecycle: remove `Canvas.create()` and
+  public `MosaicImpl` construction/subclassing. Move handler calls inside
+  `canvas.withMosaic { handler(this) }`; put dispatcher selection around that call.
+- Replace `TestMosaicBuilder.build()` with suspending `withMosaic { ... }`.
+  Use `mosaicBuilder()` or `TestMosaicBuilder()` without a stored TestScope.
+  Test assertions and composition delegate to the production runtime, inheriting
+  the caller's Job, dispatcher, scheduler, and other context elements. Every exit
+  cancels unfinished producers and joins producer/attached-child cleanup.
+- These removals intentionally break Kotlin source and JVM binary compatibility
+  before 1.0. Recompile consumers. The public `Mosaic` interface remains supported.
+- Compiler source extraction recognizes `withMosaic` as the execution boundary;
+  serialized provenance semantics and analysis metadata versions are unchanged.
+
+### Fixed
+
+- Test Canvas sources use borrowed `instance` bindings and are never closed by
+  Canvas. Callers retain ownership, including on failure.
+- Test executions snapshot Tile substitutions, MultiTile substitutions, and Canvas
+  sources before execution, with a fresh cache per invocation. Later builder
+  changes affect only later executions, including nested custom substitutions.
+
 ## [0.7.0] - 2026-10-05
 
 ### Added

@@ -2,7 +2,7 @@ package org.buildmosaic.core
 
 import kotlinx.coroutines.test.runTest
 import org.buildmosaic.core.injection.canvas
-import org.buildmosaic.core.injection.create
+import org.buildmosaic.core.injection.withMosaic
 import kotlin.reflect.KProperty
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -96,13 +96,15 @@ class TileNamingTest {
       }
       val tileAlias by tile
       val batchAlias by batch
-      val mosaic = canvas {}.create()
-      assertEquals("value", mosaic.compose(tile))
-      assertEquals("value", mosaic.compose(tileAlias))
-      assertEquals("key", mosaic.compose(batch, "key"))
-      assertEquals("key", mosaic.compose(batchAlias, "key"))
-      assertEquals(1, singleCalls)
-      assertEquals(1, batchCalls)
+      canvas {}.withMosaic {
+        val mosaic = this
+        assertEquals("value", mosaic.compose(tile))
+        assertEquals("value", mosaic.compose(tileAlias))
+        assertEquals("key", mosaic.compose(batch, "key"))
+        assertEquals("key", mosaic.compose(batchAlias, "key"))
+        assertEquals(1, singleCalls)
+        assertEquals(1, batchCalls)
+      }
     }
 }
 

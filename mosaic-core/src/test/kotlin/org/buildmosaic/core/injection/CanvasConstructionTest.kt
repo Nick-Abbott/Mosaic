@@ -867,20 +867,21 @@ class CanvasConstructionTest {
           single<TestRepository> { TestRepositoryImpl("default-repo") }
         }
 
-      val mosaic = testCanvas.create()
+      testCanvas.withMosaic {
+        val mosaic = this
+        // Test Mosaic extension functions
+        val service = mosaic.source<TestService>("mosaic-service")
+        val defaultRepo = mosaic.sourceOr<TestRepository>()
+        val missing = mosaic.sourceOr<String>()
+        val missingWithKey = mosaic.sourceOr(CanvasKey(TestService::class, "missing"))
 
-      // Test Mosaic extension functions
-      val service = mosaic.source<TestService>("mosaic-service")
-      val defaultRepo = mosaic.sourceOr<TestRepository>()
-      val missing = mosaic.sourceOr<String>()
-      val missingWithKey = mosaic.sourceOr(CanvasKey(TestService::class, "missing"))
-
-      assertNotNull(service)
-      assertEquals("mosaic-test", service.getValue())
-      assertNotNull(defaultRepo)
-      assertEquals("default-repo", defaultRepo.getData())
-      assertNull(missing)
-      assertNull(missingWithKey)
+        assertNotNull(service)
+        assertEquals("mosaic-test", service.getValue())
+        assertNotNull(defaultRepo)
+        assertEquals("default-repo", defaultRepo.getData())
+        assertNull(missing)
+        assertNull(missingWithKey)
+      }
     }
 
   @Test

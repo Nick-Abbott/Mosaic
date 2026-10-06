@@ -5,7 +5,7 @@ import org.buildmosaic.core.MultiTile
 import org.buildmosaic.core.injection.Canvas
 import org.buildmosaic.core.injection.CanvasKey
 import org.buildmosaic.core.injection.canvas
-import org.buildmosaic.core.injection.create
+import org.buildmosaic.core.injection.withMosaic
 import org.buildmosaic.core.multiTile
 import org.buildmosaic.core.singleTile
 import java.util.concurrent.atomic.AtomicInteger
@@ -62,15 +62,15 @@ internal object MultiTileFixtures {
 
   fun cachedKeys(count: Int, cachedPercent: Int): List<Int> = keys(count).take(count * cachedPercent / 100)
 
-  suspend fun request(
+  suspend fun <R> withRequest(
     count: Int,
     cachedPercent: Int,
     tile: MultiTile<Int, Int> = this.tile,
-  ): org.buildmosaic.core.Mosaic {
-    val mosaic = emptyCanvas.create()
+    block: suspend org.buildmosaic.core.Mosaic.() -> R,
+  ): R = emptyCanvas.withMosaic {
     val cached = cachedKeys(count, cachedPercent)
-    if (cached.isNotEmpty()) mosaic.compose(tile, cached)
-    return mosaic
+    if (cached.isNotEmpty()) compose(tile, cached)
+    block()
   }
 
   fun expectedSum(count: Int): Int = count * count

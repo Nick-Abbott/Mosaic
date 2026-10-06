@@ -81,12 +81,14 @@ class ProjectDependencyIntegrationTest {
         import producer.*
         val MetricsTile by singleTile { source<Metrics>() }
         suspend fun entry(): Metrics {
-          val mosaic = base().create()
-          mosaic.compose(Single)
-          mosaic.compose(Batch, "key")
-          mosaic.compose(PerKey, "key")
-          mosaic.compose(Chunked, "key")
-          return mosaic.compose(MetricsTile)
+          return base().withMosaic {
+            val mosaic = this
+            mosaic.compose(Single)
+            mosaic.compose(Batch, "key")
+            mosaic.compose(PerKey, "key")
+            mosaic.compose(Chunked, "key")
+            mosaic.compose(MetricsTile)
+          }
         }
         """.trimIndent(),
       )

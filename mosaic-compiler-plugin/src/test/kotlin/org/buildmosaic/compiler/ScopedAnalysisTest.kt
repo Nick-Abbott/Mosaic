@@ -176,7 +176,7 @@ private val scopedSource =
   val A: Tile<Int> by singleTile { val current = this; current.compose(A) }
   fun stop() = false
   val Guarded: Tile<Int> by singleTile { if (stop()) return@singleTile 1; compose(Guarded) }
-  val Fresh: Tile<Int> by singleTile { canvas.create().compose(Fresh) }
+  val Fresh: Tile<Int> by singleTile { canvas.withMosaic { compose(Fresh) } }
   val Recursive: MultiTile<Int, Int> by perKeyTile { key -> compose(Recursive, key - 1) }
   @Suppress("MOSAIC_RECURSIVE_MULTITILE")
   val Suppressed: MultiTile<Int, Int> by perKeyTile { key -> compose(Suppressed, key - 1) }

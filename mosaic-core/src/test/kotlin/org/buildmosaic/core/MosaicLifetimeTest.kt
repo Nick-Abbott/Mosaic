@@ -316,4 +316,18 @@ class MosaicLifetimeTest {
         }
       }
     }
+
+  @Test fun eachInvocationGetsAFreshCache() =
+    runTest {
+      val canvas = configured(false)
+      var calls = 0
+      val tile = singleTile { ++calls }
+      repeat(2) { index ->
+        canvas.withMosaic {
+          assertEquals(index + 1, compose(tile))
+          assertEquals(index + 1, compose(tile))
+        }
+      }
+      assertEquals(2, calls)
+    }
 }

@@ -72,7 +72,7 @@ class BuildCacheIntegrationTest {
           import producer.*
           val CapturedTile = singleTile { source<Metrics>(QUALIFIER) }
           val SelectedKey = CanvasKey(Selected::class)
-          suspend fun entry(): Metrics = base().create().compose(CapturedTile)
+          suspend fun entry(): Metrics = base().withMosaic { compose(CapturedTile) }
           fun inlineControl(): Int = ordinaryInline()
           fun apiUse(): Number = api()
           """.trimIndent(),

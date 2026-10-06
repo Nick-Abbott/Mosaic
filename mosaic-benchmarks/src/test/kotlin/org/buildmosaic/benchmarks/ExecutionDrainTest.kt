@@ -2,7 +2,6 @@ package org.buildmosaic.benchmarks
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
@@ -49,10 +48,8 @@ class ExecutionDrainTest {
     release.complete(Unit)
     assertEquals(42, drained.await())
     assertTrue(finished)
-    val job = checkNotNull((mosaic as CoroutineScope).coroutineContext[Job])
-    assertTrue(job.isCancelled)
-    assertTrue(job.isCompleted)
-    assertTrue(job.children.none())
+    assertTrue(drained.isCompleted)
+    assertTrue(drained.children.none())
   }
 
   @Test fun graphResultsSurviveFullDrain() = runBlocking {

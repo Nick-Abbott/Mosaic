@@ -1,11 +1,9 @@
 package org.buildmosaic.core
 
-import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
@@ -28,18 +26,24 @@ import kotlin.coroutines.CoroutineContext
  * Request-scoped Tile execution, caching, and batching, with optional execution observation.
  *
  * @param canvas Dependency bindings and immutable runtime configuration.
- * Prefer [org.buildmosaic.core.injection.withMosaic] for request-owned execution.
- * The public dispatcher constructor retains unscoped execution for compatibility.
+ * Owned by [org.buildmosaic.core.injection.withMosaic].
  */
 @Suppress("LargeClass", "TooManyFunctions") // Keep request ownership and protected startup settlement together.
-open class MosaicImpl internal constructor(
+internal class MosaicImpl private constructor(
   override val canvas: Canvas,
   context: CoroutineContext,
+  private val tileSubstitutions: Map<Tile<*>, Tile<*>>,
+  private val multiTileSubstitutions: Map<MultiTile<*, *>, MultiTile<*, *>>,
 ) : Mosaic, CoroutineScope {
-  constructor(
-    canvas: Canvas,
-    dispatcher: CoroutineDispatcher = Dispatchers.Default,
-  ) : this(canvas, dispatcher as CoroutineContext)
+  internal companion object {
+    @JvmSynthetic
+    internal operator fun invoke(
+      canvas: Canvas,
+      context: CoroutineContext,
+      tiles: Map<Tile<*>, Tile<*>> = emptyMap(),
+      multiTiles: Map<MultiTile<*, *>, MultiTile<*, *>> = emptyMap(),
+    ): MosaicImpl = MosaicImpl(canvas, context, tiles, multiTiles)
+  }
 
   private val job = SupervisorJob(context[Job])
   override val coroutineContext: CoroutineContext = context + job
@@ -56,7 +60,11 @@ open class MosaicImpl internal constructor(
   private val multiStates = ConcurrentHashMap<MultiTile<*, *>, MultiTileState<*, *>>()
 
   @Suppress("UNCHECKED_CAST")
-  override fun <V> composeAsync(tile: Tile<V>): Deferred<V> {
+  override fun <V> composeAsync(tile: Tile<V>): Deferred<V> =
+    composeResolved(tileSubstitutions[tile] as Tile<V>? ?: tile)
+
+  @Suppress("UNCHECKED_CAST")
+  private fun <V> composeResolved(tile: Tile<V>): Deferred<V> {
     val cached = singleCache[tile] as CacheEntry<V>?
     if (cached != null) return consume(cached)
     val entry = newEntry<V>(observation?.let { ProducerPublication(it) })
@@ -74,6 +82,12 @@ open class MosaicImpl internal constructor(
 
   @Suppress("UNCHECKED_CAST")
   override fun <K : Any, V> composeAsync(
+    tile: MultiTile<K, V>,
+    keys: Collection<K>,
+  ): Map<K, Deferred<V>> = composeResolved(multiTileSubstitutions[tile] as MultiTile<K, V>? ?: tile, keys)
+
+  @Suppress("UNCHECKED_CAST")
+  private fun <K : Any, V> composeResolved(
     tile: MultiTile<K, V>,
     keys: Collection<K>,
   ): Map<K, Deferred<V>> {

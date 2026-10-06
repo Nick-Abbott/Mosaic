@@ -106,11 +106,13 @@ class CanvasTest {
         }
 
       // Test the create() extension function
-      val mosaic = testCanvas.create()
-      val service = mosaic.source<TestService>()
+      testCanvas.withMosaic {
+        val mosaic = this
+        val service = mosaic.source<TestService>()
 
-      assertNotNull(service)
-      assertEquals("create-test", service.getValue())
+        assertNotNull(service)
+        assertEquals("create-test", service.getValue())
+      }
     }
 
   @Test

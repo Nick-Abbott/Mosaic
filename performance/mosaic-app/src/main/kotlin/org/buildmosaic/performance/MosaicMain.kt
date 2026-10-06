@@ -3,7 +3,7 @@ package org.buildmosaic.performance
 import kotlinx.coroutines.runBlocking
 import org.buildmosaic.core.injection.CanvasKey
 import org.buildmosaic.core.injection.canvas
-import org.buildmosaic.core.injection.create
+import org.buildmosaic.core.injection.withMosaic
 import org.buildmosaic.core.multiTile
 import org.buildmosaic.core.singleTile
 import org.buildmosaic.core.source
@@ -97,23 +97,23 @@ class MosaicExecutor(services: SimulatedServices) : ScenarioExecutor {
 
   override suspend fun light(input: LightInput): LightResponse =
     applicationCanvas.withLayer { single(CustomerIdKey) { input.customerId } }
-      .create().compose(graph.light)
+      .withMosaic { compose(graph.light) }
 
   override suspend fun aggregate(input: AggregateInput): AggregateResponse =
     applicationCanvas.withLayer { single(CustomerIdKey) { input.customerId } }
-      .create().compose(graph.aggregate)
+      .withMosaic { compose(graph.aggregate) }
 
   override suspend fun batching(input: BatchingInput): BatchingResponse =
     applicationCanvas.withLayer { single(CatalogIdKey) { input.catalogId } }
-      .create().compose(graph.batching)
+      .withMosaic { compose(graph.batching) }
 
   override suspend fun coalescing(input: BatchingInput): BatchingResponse =
     applicationCanvas.withLayer { single(CatalogIdKey) { input.catalogId } }
-      .create().compose(graph.coalescing)
+      .withMosaic { compose(graph.coalescing) }
 
   override suspend fun compute(input: ComputeInput): ComputeResponse =
     applicationCanvas.withLayer { single(ComputeSeedKey) { input.seed } }
-      .create().compose(graph.compute)
+      .withMosaic { compose(graph.compute) }
 }
 
 fun main() {

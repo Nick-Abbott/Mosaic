@@ -217,7 +217,7 @@ class BinaryCanvasKeyExportTest {
         }
         c.source(SharedKey)
         val tile = singleTile { source(SharedKey); "ok" }
-        c.create().compose(tile)
+        c.withMosaic { compose(tile) }
       }
       """.trimIndent(),
     )

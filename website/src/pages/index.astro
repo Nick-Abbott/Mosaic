@@ -228,7 +228,7 @@ const description =
             Replace dependency Tiles with fixture values and leave the real response composition running. Test inputs,
             failures, and virtual-time delays in isolation.
           </p><Code
-            code={'val testMosaic = mosaicBuilder()\n  .withMockTile(OrderSummaryTile, summary)\n  .withMockTile(LogisticsTile, logistics)\n  .build()\n\ntestMosaic.assertEquals(\n  OrderPageTile, OrderPage(summary, logistics)\n)'}
+            code={'mosaicBuilder()\n  .withMockTile(OrderSummaryTile, summary)\n  .withMockTile(LogisticsTile, logistics)\n  .withMosaic {\n    assertEquals(\n      OrderPageTile, OrderPage(summary, logistics)\n    )\n  }'}
             lang="kotlin"
           /><p class="figure-note">Inside <code>runTest</code>; summary and logistics are test fixture values.</p><a
             class="text-link"

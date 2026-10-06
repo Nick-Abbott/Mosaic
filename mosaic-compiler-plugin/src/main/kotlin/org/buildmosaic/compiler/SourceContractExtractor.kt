@@ -584,7 +584,6 @@ internal class SourceContractExtractor(
             effects += Effect.Compose(valueId(call), receiver.mosaic ?: CanvasExpression.Unknown("Unresolved Mosaic receiver transfer", site(call)), argument("tile").tile ?: TileReference.Unknown("Unsupported Tile value provenance", site(call)), if (target.endsWith("composeAsync")) DiscoveryKind.COMPOSE_ASYNC else DiscoveryKind.COMPOSE, multiTileExecution(call), site(call), receiver.mosaicIdentity)
             return Value(callable = isCallableType(call.type))
           }
-          target == "org.buildmosaic.core.injection.create" -> return establishMosaic(call, receiver)
           target == "org.buildmosaic.core.injection.withMosaic" -> {
             val mosaic = establishMosaic(call, receiver)
             val block = lambdaFunction(call.argument("block"))
@@ -865,7 +864,7 @@ internal class SourceContractExtractor(
         "org.buildmosaic.core.Mosaic.<get-canvas>",
         "org.buildmosaic.core.injection.CanvasKey.<init>",
         "org.buildmosaic.core.injection.CanvasFactory.paint", "org.buildmosaic.core.Mosaic.compose",
-        "org.buildmosaic.core.Mosaic.composeAsync", "org.buildmosaic.core.injection.create",
+        "org.buildmosaic.core.Mosaic.composeAsync",
         "org.buildmosaic.core.injection.withMosaic",
         "org.buildmosaic.core.injection.canvas", "org.buildmosaic.core.injection.Canvas.withLayer",
         "org.buildmosaic.core.singleTile", "org.buildmosaic.core.multiTile", "org.buildmosaic.core.perKeyTile",
