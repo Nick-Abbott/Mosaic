@@ -109,7 +109,7 @@ Response composition gives Mosaic its visual language: real Kotlin, dependency r
 
 Canonical blue and orange pieces sit within navy or white reading surfaces. Barlow supplies the display voice, Public Sans supports sustained reading, and JetBrains Mono keeps identifiers and source precise. Flat panels and thin rules supply structure; the visual system does not require animation to explain a relationship.
 
-This is a source-derived record, not a replacement identity. The SVGs in `assets/` own logo geometry and colors; `PRODUCT.md` owns product context; `.impeccable/surfaces/` owns each surface's narrative and direction. `website/AGENTS.md` owns contributor workflow. The tokens above document repeated implemented values; they are not additional CSS variables. When changing a durable visual rule, update its owning stylesheet and this record together. Ordinary Markdown additions inherit the system without a redesign.
+This is a source-derived record, not a replacement identity. `.impeccable/BRAND.md` owns general brand decisions; `PRODUCT.md` owns product context; `.impeccable/surfaces/` owns each surface's narrative and direction. `website/AGENTS.md` owns contributor workflow. The tokens above document repeated implemented values; they are not additional CSS variables. When changing a durable visual rule, update its owning stylesheet and this record together. Ordinary Markdown additions inherit the system without a redesign.
 
 **Key Characteristics:**
 
@@ -199,7 +199,7 @@ Authored homepage surfaces have no box shadows. Tonal section backgrounds, one-p
 
 Rectangular diagram nodes, technical panels, ruled tables, and straight dependency connectors define the form. Controls use the small `control` radius. Expressive Code's configured `code-frame` radius is a scoped soft corner; the implementation is not universally square. Its inner radius is 0.25rem (4px at the default root size); the native frame plugin adds its one-pixel border to produce a 5px outer radius. Preserve this native inner/outer relationship rather than introducing a separate outer-radius override. Diagram connector strokes are 2px; authored link SVG arrows use a 24 × 24 viewBox, currentColor, and approximately 1.7–1.8px strokes at 16–19px display size. Use the shared Arrow component for ordinary internal/external link arrows.
 
-The supplied mark's columns, triangles, central diamond, outlined wordmark, aspect ratio, and light/dark asset choice are defined by the SVGs in `assets/`. Normal website lockups keep their supplied 3:1 proportions. Do not reproduce the logo as CSS primitives.
+The supplied mark's columns, triangles, central diamond, outlined wordmark, aspect ratio, and light/dark asset choice belong to `.impeccable/BRAND.md`. Normal website lockups keep their supplied 3:1 proportions. Do not reproduce the logo as CSS primitives.
 
 ## Components
 
@@ -232,7 +232,7 @@ Performance evidence uses a semantic full-width table with collapsed borders, ro
 ### Do:
 
 - **Do** read PRODUCT.md and the relevant .impeccable/surfaces/ contract before changing a surface; this file records the implemented system.
-- **Do** edit canonical logo SVGs in assets/, shared tokens in website/src/styles/theme.css, homepage layout in home.css, and documentation overrides in docs.css.
+- **Do** edit canonical identity in .impeccable/BRAND.md and logo SVGs in assets/, shared tokens in website/src/styles/theme.css, homepage layout in home.css, and documentation overrides in docs.css.
 - **Do** extend the homepage with real source examples, factual diagrams, and the existing heading/body/link hierarchy; retain the response-composition narrative.
 - **Do** put teaching content in website/src/content/docs/ and API descriptions in KDoc; retain Starlight search, sidebar, contents, theme controls, and code-copy behavior, and native Dokka generation.
 - **Do** check both themes, keyboard focus, code overflow, and mobile stacking; use the website/AGENTS.md viewport matrix and website commands for the changed surface.
