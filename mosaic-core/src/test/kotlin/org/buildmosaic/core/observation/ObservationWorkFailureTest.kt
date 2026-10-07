@@ -108,6 +108,7 @@ class ObservationWorkFailureTest {
         val first = Key(1)
         assertFailsWith<IllegalStateException> { mosaic.composeAsync(tile, listOf(first, Key(2, true))) }
         testScheduler.runCurrent()
+        assertEquals(listOf(setOf(1)), calls)
         assertEquals(1, mosaic.compose(tile, first))
         assertEquals(listOf(setOf(1)), calls)
         if (observed) assertEquals(1, observer.executions.single().start.batchSize)
@@ -135,8 +136,8 @@ class ObservationWorkFailureTest {
         testScheduler.runCurrent()
         assertTrue(results.values.all { it.isCompleted })
         assertEquals(1, results.getValue(1).await())
-        assertFailsWith<IllegalStateException> { results.getValue(2).await() }
-        assertFailsWith<IllegalStateException> { results.getValue(3).await() }
+        assertEquals("private lookup", assertFailsWith<IllegalStateException> { results.getValue(2).await() }.message)
+        assertEquals("private lookup", assertFailsWith<IllegalStateException> { results.getValue(3).await() }.message)
         if (observed) assertEquals(ExecutionOutcome.FAILURE, observer.executions.single().completion?.outcome)
       }
     }
