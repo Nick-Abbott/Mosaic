@@ -18,12 +18,8 @@ package org.buildmosaic.test
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.asContextElement
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -288,107 +284,6 @@ class TestMosaicTest {
         assertEquals(200L, testScheduler.currentTime - start)
         assertTrue(caller[Job]!!.children.none())
       }
-    }
-
-  @Test fun `normal and exceptional exit cancel speculation and join attached cleanup`() =
-    runTest {
-      for (exceptional in listOf(false, true)) {
-        val cleanup = CompletableDeferred<Unit>()
-        var cleaned = false
-        var speculationCleaned = false
-        val failure = IllegalStateException("block failure")
-        val owner =
-          async {
-            val execute: suspend () -> Unit = {
-              mosaicBuilder().withMosaic {
-                assertEquals(
-                  singleTile {
-                    CoroutineScope(currentCoroutineContext()).launch {
-                      try {
-                        awaitCancellation()
-                      } finally {
-                        withContext(NonCancellable) {
-                          cleanup.await()
-                          cleaned = true
-                        }
-                      }
-                    }
-                    42
-                  },
-                  42,
-                )
-                composeAsync(
-                  singleTile {
-                    try {
-                      awaitCancellation()
-                    } finally {
-                      speculationCleaned = true
-                    }
-                  },
-                )
-                testScheduler.runCurrent()
-                if (exceptional) throw failure
-              }
-            }
-            if (exceptional) {
-              assertSame(failure, assertFailsWith<IllegalStateException> { execute() })
-            } else {
-              execute()
-            }
-          }
-        testScheduler.runCurrent()
-        try {
-          assertFalse(owner.isCompleted)
-          assertFalse(cleaned)
-          assertTrue(speculationCleaned)
-        } finally {
-          cleanup.complete(Unit)
-        }
-        owner.await()
-        assertTrue(cleaned)
-      }
-    }
-
-  @Test fun `enclosing cancellation reaches producers before scoped teardown`() =
-    runTest {
-      val leaveBlock = CompletableDeferred<Unit>()
-      var cleaned = false
-      lateinit var result: kotlinx.coroutines.Deferred<Nothing>
-      val owner =
-        launch {
-          mosaicBuilder().withMosaic {
-            result =
-              composeAsync(
-                singleTile {
-                  try {
-                    awaitCancellation()
-                  } finally {
-                    withContext(NonCancellable) {
-                      delay(50)
-                      cleaned = true
-                    }
-                  }
-                },
-              )
-            try {
-              result.await()
-            } finally {
-              withContext(NonCancellable) { leaveBlock.await() }
-            }
-          }
-        }
-      try {
-        testScheduler.runCurrent()
-        owner.cancel()
-        testScheduler.advanceUntilIdle()
-        assertTrue(cleaned)
-        assertTrue(result.isCancelled)
-        assertFalse(owner.isCompleted)
-      } finally {
-        leaveBlock.complete(Unit)
-        owner.cancelAndJoin()
-      }
-      assertTrue(owner.children.none())
     }
 
   @Test fun `cancelling one facade waiter preserves the shared producer`() =

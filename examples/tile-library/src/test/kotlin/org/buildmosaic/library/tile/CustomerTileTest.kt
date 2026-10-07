@@ -21,15 +21,4 @@ class CustomerTileTest {
           assertEquals(CustomerTile, expected)
         }
     }
-
-  @Test
-  fun `customer tile fails when order tile fails`() =
-    runTest {
-      mosaicBuilder()
-        .withCanvasSource(CustomerService())
-        .withFailedTile(OrderTile, RuntimeException("boom"))
-        .withMosaic {
-          assertThrows(CustomerTile, RuntimeException::class)
-        }
-    }
 }

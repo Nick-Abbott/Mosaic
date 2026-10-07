@@ -138,7 +138,7 @@ class BoundarySemanticsTest {
   }
 
   @Test
-  fun `missing conflicting and unfaithful Canvas boundaries preserve local binding`() {
+  fun `missing and unfaithful Canvas boundaries preserve local binding`() {
     val local =
       CanvasExpression.Layer(
         "local",

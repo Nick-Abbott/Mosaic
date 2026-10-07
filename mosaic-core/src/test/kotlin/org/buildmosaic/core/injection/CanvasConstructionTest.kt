@@ -49,94 +49,30 @@ class CanvasConstructionTest {
   }
 
   @Test
-  fun `should register and retrieve a single dependency`() =
+  fun `registration overloads route exact types and distinct qualifiers`() =
     runTest {
+      val unqualified = TestServiceImpl("unqualified")
+      val empty = TestServiceImpl("empty")
+      val primary = TestServiceImpl("primary")
+      val secondary = TestServiceImpl("secondary")
+      val keyed = CanvasKey(TestService::class, "keyed")
+      val value = TestServiceImpl("keyed")
       val testCanvas =
         canvas {
-          single<TestService> { TestServiceImpl("test-value") }
+          single<TestService>(null) { unqualified }
+          single<TestService>("") { empty }
+          single<TestService>("primary") { primary }
+          single(CanvasKey(TestService::class, "secondary")) { secondary }
+          single(keyed) { value }
         }
-
-      val service = testCanvas.source<TestService>()
-      assertNotNull(service)
-      assertEquals("test-value", service.getValue())
-    }
-
-  @Test
-  fun `should register and retrieve multiple different dependencies`() =
-    runTest {
-      val testCanvas =
-        canvas {
-          single<TestService> { TestServiceImpl("service-value") }
-          single<TestRepository> { TestRepositoryImpl("repo-data") }
-        }
-
-      val service = testCanvas.source<TestService>()
-      val repository = testCanvas.source<TestRepository>()
-
-      assertNotNull(service)
-      assertNotNull(repository)
-      assertEquals("service-value", service.getValue())
-      assertEquals("repo-data", repository.getData())
-    }
-
-  @Test
-  fun `should handle qualified dependencies`() =
-    runTest {
-      val testCanvas =
-        canvas {
-          single<TestService>("primary") { TestServiceImpl("primary-service") }
-          single<TestService>("secondary") { TestServiceImpl("secondary-service") }
-        }
-
-      val primaryService = testCanvas.source(TestService::class, "primary")
-      val secondaryService = testCanvas.source(TestService::class, "secondary")
-
-      assertNotNull(primaryService)
-      assertNotNull(secondaryService)
-      assertEquals("primary-service", primaryService.getValue())
-      assertEquals("secondary-service", secondaryService.getValue())
-    }
-
-  @Test
-  fun `should return null for unregistered dependency`() =
-    runTest {
-      val testCanvas = canvas { }
-
-      val service = testCanvas.sourceOr(CanvasKey(TestService::class, null))
-      assertNull(service)
-    }
-
-  @Test
-  fun `should return same instance for singleton dependencies`() =
-    runTest {
-      val testCanvas =
-        canvas {
-          single<TestService> { TestServiceImpl("singleton-test") }
-        }
-
-      val service1 = testCanvas.source<TestService>()
-      val service2 = testCanvas.source<TestService>()
-
-      assertNotNull(service1)
-      assertNotNull(service2)
-      assertEquals(service1, service2) // Same instance
-    }
-
-  @Test
-  fun `should support dependency injection in lambda`() =
-    runTest {
-      val testCanvas =
-        canvas {
-          single<TestRepository> { TestRepositoryImpl("injected-data") }
-          single<TestService> {
-            val repo = paint<TestRepository>()
-            TestServiceImpl("service-with-${repo.getData()}")
-          }
-        }
-
-      val service = testCanvas.source<TestService>()
-      assertNotNull(service)
-      assertEquals("service-with-injected-data", service.getValue())
+      assertSame(unqualified, testCanvas.source<TestService>())
+      assertSame(unqualified, testCanvas.source(TestService::class, null))
+      assertSame(empty, testCanvas.source(TestService::class, ""))
+      assertSame(primary, testCanvas.source(TestService::class, "primary"))
+      assertSame(secondary, testCanvas.source(TestService::class, "secondary"))
+      assertSame(value, testCanvas.source(keyed))
+      assertNull(testCanvas.sourceOr<TestServiceImpl>())
+      assertNull(testCanvas.sourceOr(TestService::class, "missing"))
     }
 
   @Test
@@ -242,51 +178,6 @@ class CanvasConstructionTest {
     }
 
   // Hierarchical resolution tests
-  @Test
-  fun `should fallback to parent canvas for missing dependencies`() =
-    runTest {
-      val parentCanvas =
-        canvas {
-          single<TestService> { TestServiceImpl("parent-service") }
-        }
-
-      val childCanvas =
-        canvas(parentCanvas) {
-          single<TestRepository> { TestRepositoryImpl("child-repo") }
-        }
-
-      val service = childCanvas.source<TestService>()
-      val repository = childCanvas.source<TestRepository>()
-
-      assertNotNull(service)
-      assertNotNull(repository)
-      assertEquals("parent-service", service.getValue())
-      assertEquals("child-repo", repository.getData())
-    }
-
-  @Test
-  fun `should override parent dependencies in child canvas`() =
-    runTest {
-      val parentCanvas =
-        canvas {
-          single<TestService> { TestServiceImpl("parent-service") }
-          single<TestRepository> { TestRepositoryImpl("parent-repo") }
-        }
-
-      val childCanvas =
-        canvas(parentCanvas) {
-          single<TestService> { TestServiceImpl("child-service") }
-        }
-
-      val service = childCanvas.source<TestService>()
-      val repository = childCanvas.source<TestRepository>()
-
-      assertNotNull(service)
-      assertNotNull(repository)
-      assertEquals("child-service", service.getValue()) // Overridden
-      assertEquals("parent-repo", repository.getData()) // From parent
-    }
-
   @Test
   fun `should handle multi-level hierarchy`() =
     runTest {
@@ -514,6 +405,7 @@ class CanvasConstructionTest {
 
       val testCanvas =
         canvas {
+          single<TestService>("regular") { TestServiceImpl("regular") }
           single<TestService>("normal") { normalCloseable }
           single<TestService>("failing") { failingCloseable }
         }
@@ -530,30 +422,6 @@ class CanvasConstructionTest {
 
       // Normal dependency should still be closed
       assertEquals(true, normalCloseable.isClosed)
-    }
-
-  @Test
-  fun `should not close non-AutoCloseable dependencies`() =
-    runTest {
-      val regularService = TestServiceImpl("regular-service")
-      val closeableService = CloseableTestService("closeable-service")
-
-      val testCanvas =
-        canvas {
-          single<TestService>("regular") { regularService }
-          single<TestService>("closeable") { closeableService }
-        }
-
-      val service1 = testCanvas.source(TestService::class, "regular")
-      val service2 = testCanvas.source(TestService::class, "closeable")
-
-      assertNotNull(service1)
-      assertNotNull(service2)
-
-      testCanvas.close()
-
-      // Only the closeable one should be closed
-      assertEquals(true, closeableService.isClosed)
     }
 
   // Canvas DSL and suspend function tests
@@ -641,50 +509,6 @@ class CanvasConstructionTest {
       }
     }
 
-  @Test
-  fun `should allow same type with different qualifiers`() =
-    runTest {
-      canvas {
-        single<TestService>("first") { TestServiceImpl("first-service") }
-        single<TestService>("second") { TestServiceImpl("second-service") }
-      }
-
-      canvas {
-        single(CanvasKey(TestService::class, "first")) { TestServiceImpl("first-service") }
-        single(CanvasKey(TestService::class, "second")) { TestServiceImpl("second-service") }
-      }
-
-      canvas {
-        single<TestService>("first") { TestServiceImpl("first-service") }
-        single<TestService> { TestServiceImpl("second-service") }
-      }
-
-      canvas {
-        single<TestService>("first") { TestServiceImpl("first-service") }
-        single<TestService>(null) { TestServiceImpl("second-service") }
-      }
-
-      canvas {
-        single(CanvasKey(TestService::class, "first")) { TestServiceImpl("first-service") }
-        single(CanvasKey(TestService::class)) { TestServiceImpl("second-service") }
-      }
-
-      canvas {
-        single<TestService> { TestServiceImpl("first-service") }
-        single<TestService>("second") { TestServiceImpl("second-service") }
-      }
-
-      canvas {
-        single<TestService>(null) { TestServiceImpl("first-service") }
-        single<TestService>("second") { TestServiceImpl("second-service") }
-      }
-
-      canvas {
-        single(CanvasKey(TestService::class)) { TestServiceImpl("first-service") }
-        single(CanvasKey(TestService::class, "second")) { TestServiceImpl("second-service") }
-      }
-    }
-
   // Test interfaces for complex dependency graph
   interface DatabaseConfig {
     fun getUrl(): String
@@ -728,36 +552,6 @@ class CanvasConstructionTest {
     }
 
   // Error handling and edge case tests
-  @Test
-  fun `should handle missing dependencies and throw appropriate exceptions`() =
-    runTest {
-      // Test missing unqualified dependency
-      val emptyCanvas = canvas { }
-      var exceptionThrown = false
-      try {
-        emptyCanvas.source<TestService>()
-      } catch (e: MosaicMissingKeyException) {
-        exceptionThrown = true
-        assertEquals(true, e.message?.contains("TestService"))
-      }
-      assertEquals(true, exceptionThrown)
-
-      // Test missing qualified dependency
-      val testCanvas =
-        canvas {
-          single<TestService> { TestServiceImpl("unqualified") }
-        }
-
-      exceptionThrown = false
-      try {
-        testCanvas.source(TestService::class, "missing-qualifier")
-      } catch (e: MosaicMissingKeyException) {
-        exceptionThrown = true
-        assertEquals(true, e.message?.contains("missing-qualifier"))
-      }
-      assertEquals(true, exceptionThrown)
-    }
-
   @Test
   fun `should share one construction across concurrent paint calls`() =
     runTest {
@@ -838,27 +632,6 @@ class CanvasConstructionTest {
     }
 
   @Test
-  fun `should test convenience extension functions`() =
-    runTest {
-      val testCanvas =
-        canvas {
-          single<TestService> { TestServiceImpl("extension-test") }
-          single<TestRepository> { TestRepositoryImpl("repo-extension") }
-        }
-
-      // Test reified extension functions
-      val service = testCanvas.source<TestService>()
-      val repository = testCanvas.sourceOr<TestRepository>()
-      val missing = testCanvas.sourceOr<String>()
-
-      assertNotNull(service)
-      assertEquals("extension-test", service.getValue())
-      assertNotNull(repository)
-      assertEquals("repo-extension", repository.getData())
-      assertNull(missing)
-    }
-
-  @Test
   fun `scoped Mosaic source helpers resolve its Canvas`() =
     runTest {
       val testCanvas =
@@ -882,140 +655,6 @@ class CanvasConstructionTest {
         assertNull(missing)
         assertNull(missingWithKey)
       }
-    }
-
-  @Test
-  fun `should handle canvas with only qualified dependencies`() =
-    runTest {
-      val testCanvas =
-        canvas {
-          single<TestService>("qualified") { TestServiceImpl("qualified-service") }
-        }
-
-      // Unqualified lookup should return null
-      val unqualifiedService = testCanvas.sourceOr<TestService>()
-      assertNull(unqualifiedService)
-
-      // Qualified lookup should work
-      val qualifiedService = testCanvas.source(TestService::class, "qualified")
-      assertNotNull(qualifiedService)
-      assertEquals("qualified-service", qualifiedService.getValue())
-    }
-
-  @Test
-  fun `should handle exceptions in dependency constructors`() =
-    runTest {
-      var exceptionThrown = false
-      try {
-        canvas {
-          single<TestService> {
-            throw RuntimeException("Constructor failed!")
-          }
-        }
-      } catch (e: RuntimeException) {
-        exceptionThrown = true
-        assertEquals("Constructor failed!", e.message)
-      }
-      assertEquals(true, exceptionThrown)
-    }
-
-  @Test
-  fun `should handle null qualifiers consistently`() =
-    runTest {
-      val testCanvas =
-        canvas {
-          single<TestService>(null) { TestServiceImpl("null-qualifier") }
-          single<TestRepository> { TestRepositoryImpl("no-qualifier") }
-        }
-
-      val service1 = testCanvas.source<TestService>()
-      val service2 = testCanvas.source(TestService::class, null)
-      val repository = testCanvas.source<TestRepository>()
-
-      assertNotNull(service1)
-      assertNotNull(service2)
-      assertNotNull(repository)
-      assertEquals(service1, service2) // Should be the same instance
-      assertEquals("null-qualifier", service1.getValue())
-      assertEquals("no-qualifier", repository.getData())
-    }
-
-  @Test
-  fun `should maintain thread safety for singleton access`() =
-    runTest {
-      val testCanvas =
-        canvas {
-          single<TestService> { TestServiceImpl("thread-safe-service") }
-        }
-
-      // Simulate concurrent access
-      val results =
-        coroutineScope {
-          (1..10).map {
-            async {
-              testCanvas.source<TestService>()
-            }
-          }.awaitAll()
-        }
-
-      // All results should be the same instance
-      results.forEach { result ->
-        assertEquals(results.first(), result)
-      }
-    }
-
-  @Test
-  fun `should test CanvasBuilder single method edge cases`() =
-    runTest {
-      val testCanvas =
-        canvas {
-          // Test single with null qualifier (should use default)
-          single<TestService>(null) { TestServiceImpl("null-qualifier") }
-
-          // Test single with empty qualifier (should be treated as qualifier)
-          single<TestRepository>("") { TestRepositoryImpl("empty-qualifier") }
-        }
-
-      // Verify both work
-      val service = testCanvas.source<TestService>()
-      val repository = testCanvas.source(TestRepository::class, "")
-
-      assertNotNull(service)
-      assertEquals("null-qualifier", service.getValue())
-      assertNotNull(repository)
-      assertEquals("empty-qualifier", repository.getData())
-    }
-
-  @Test
-  fun `should test paint method with missing dependency`() =
-    runTest {
-      var exceptionThrown = false
-      try {
-        canvas {
-          single<TestService> {
-            // This will try to paint a missing dependency during canvas construction
-            paint<TestRepository>()
-            TestServiceImpl("should-not-reach")
-          }
-        }
-      } catch (e: MosaicMissingKeyException) {
-        exceptionThrown = true
-        assertEquals(true, e.message?.contains("TestRepository"))
-      }
-      assertEquals(true, exceptionThrown)
-    }
-
-  @Test
-  fun `should test CanvasBuilder single with empty string qualifier`() =
-    runTest {
-      val testCanvas =
-        canvas {
-          single<TestService>("") { TestServiceImpl("empty-qualifier") }
-        }
-
-      val service = testCanvas.source(TestService::class, "")
-      assertNotNull(service)
-      assertEquals("empty-qualifier", service.getValue())
     }
 
   private class Resource(private val onClose: () -> Unit) : AutoCloseable {

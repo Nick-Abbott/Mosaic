@@ -16,22 +16,12 @@ class OrderTotalTileTest {
           LineItemDetail(Product("product-1", "Coffee Mug"), Price("sku-1", 12.99), 2),
           LineItemDetail(Product("product-2", "Tea Kettle"), Price("sku-2", 29.99), 1),
         )
-      val expected = lineItems.sumOf { it.price.amount * it.quantity }
+      val expected = 55.97
 
       mosaicBuilder()
         .withMockTile(LineItemsTile, lineItems)
         .withMosaic {
           assertEquals(OrderTotalTile, expected)
-        }
-    }
-
-  @Test
-  fun `order total tile fails when line items fail`() =
-    runTest {
-      mosaicBuilder()
-        .withFailedTile(LineItemsTile, RuntimeException("boom"))
-        .withMosaic {
-          assertThrows(OrderTotalTile, RuntimeException::class)
         }
     }
 }

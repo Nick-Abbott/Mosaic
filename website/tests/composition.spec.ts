@@ -19,20 +19,26 @@ test('composition dependencies use distinct node anchors and never cross or over
     const bounds = new Map(
       Array.from(document.querySelectorAll<SVGGraphicsElement>('.composition-figure > svg [data-tile]')).map((node) => [
         node.dataset.tile,
-        node.getBBox(),
+        node.getBoundingClientRect(),
       ]),
     );
     const onBorder = (point: number[], box: DOMRect) =>
-      ((point[0] === box.x || point[0] === box.x + box.width) && point[1] >= box.y && point[1] <= box.y + box.height) ||
-      ((point[1] === box.y || point[1] === box.y + box.height) && point[0] >= box.x && point[0] <= box.x + box.width);
-    return paths.map((path) => {
-      const values = path
-        .getAttribute('d')!
-        .match(/[0-9]+/g)!
-        .map(Number);
-      const points = Array.from({ length: values.length / 2 }, (_, i) => values.slice(i * 2, i * 2 + 2));
-      const source = path.getAttribute('data-source')!;
-      const target = path.getAttribute('data-target')!;
+      ((Math.abs(point[0] - box.left) <= 1 || Math.abs(point[0] - box.right) <= 1) &&
+        point[1] >= box.top - 1 &&
+        point[1] <= box.bottom + 1) ||
+      ((Math.abs(point[1] - box.top) <= 1 || Math.abs(point[1] - box.bottom) <= 1) &&
+        point[0] >= box.left - 1 &&
+        point[0] <= box.right + 1);
+    return paths.map((element) => {
+      const path = element as SVGPathElement;
+      const length = path.getTotalLength();
+      const steps = Math.max(1, Math.ceil(length / 4));
+      const points = Array.from({ length: steps + 1 }, (_, index) => {
+        const point = path.getPointAtLength((length * index) / steps).matrixTransform(path.getScreenCTM()!);
+        return [point.x, point.y];
+      });
+      const source = path.dataset.source!;
+      const target = path.dataset.target!;
       return {
         source,
         target,
@@ -54,13 +60,21 @@ test('composition dependencies use distinct node anchors and never cross or over
   );
   for (const edge of edges) expect(edge.anchored, `${edge.source} → ${edge.target}`).toBe(true);
   const segments = edges.map(({ points }) => points.slice(1).map((point, i) => [points[i], point]));
-  // Bounding-box intersection is exact for these orthogonal connector segments.
-  for (const [a, b] of segments.flat()) expect(a[0] === b[0] || a[1] === b[1]).toBe(true);
-  const intersect = (a: number[][], b: number[][]) =>
-    Math.max(Math.min(a[0][0], a[1][0]), Math.min(b[0][0], b[1][0])) <=
-      Math.min(Math.max(a[0][0], a[1][0]), Math.max(b[0][0], b[1][0])) &&
-    Math.max(Math.min(a[0][1], a[1][1]), Math.min(b[0][1], b[1][1])) <=
-      Math.min(Math.max(a[0][1], a[1][1]), Math.max(b[0][1], b[1][1]));
+  // Sample the rendered path, allowing curves, transforms, and any SVG command syntax.
+  const intersect = (a: number[][], b: number[][]) => {
+    const cross = (p: number[], q: number[], r: number[]) =>
+      (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+    const boundsOverlap =
+      Math.max(Math.min(a[0][0], a[1][0]), Math.min(b[0][0], b[1][0])) <=
+        Math.min(Math.max(a[0][0], a[1][0]), Math.max(b[0][0], b[1][0])) &&
+      Math.max(Math.min(a[0][1], a[1][1]), Math.min(b[0][1], b[1][1])) <=
+        Math.min(Math.max(a[0][1], a[1][1]), Math.max(b[0][1], b[1][1]));
+    return (
+      boundsOverlap &&
+      cross(a[0], a[1], b[0]) * cross(a[0], a[1], b[1]) <= 0 &&
+      cross(b[0], b[1], a[0]) * cross(b[0], b[1], a[1]) <= 0
+    );
+  };
   for (let i = 0; i < edges.length; i++) {
     for (let j = i + 1; j < edges.length; j++) {
       expect(

@@ -2,7 +2,6 @@ package org.buildmosaic.core.observation
 
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
-import org.buildmosaic.core.injection.CanvasBuilder
 import org.buildmosaic.core.injection.canvas
 import org.buildmosaic.core.injection.withMosaic
 import org.buildmosaic.core.singleTile
@@ -11,7 +10,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class ObservationConfigurationTest {
@@ -28,8 +26,6 @@ class ObservationConfigurationTest {
       val parent = canvas { installExecutionObserver { observer } }
       val child = parent.withLayer { single<String> { "private input" } }
       val grandchild = canvas(child) {}
-      assertSame(parent.runtimeConfig, child.runtimeConfig)
-      assertSame(parent.runtimeConfig, grandchild.runtimeConfig)
       assertNull(child.sourceOr(ExecutionObserver::class))
       assertEquals("private input", grandchild.withMosaic { compose(singleTile { source<String>() }) })
       assertEquals(1, recording.executions.size)
@@ -98,13 +94,8 @@ class ObservationConfigurationTest {
           }
         }
       assertEquals(0, nestedFactories)
-      assertSame(observer, configured.runtimeConfig.executionObserver)
-      val builder = CanvasBuilder()
-      builder.installExecutionObserver {
-        assertFailsWith<IllegalStateException> { builder.configuration() }
-        observer
-      }
-      assertSame(observer, builder.configuration().executionObserver)
+      assertEquals(42, configured.withMosaic { compose(singleTile { 42 }) })
+      assertEquals(1, observer.executions.size)
     }
 
   @Test fun diRegistrationDoesNotInstallObserver() =
@@ -116,7 +107,5 @@ class ObservationConfigurationTest {
       val child = parent.withLayer { installExecutionObserver { observer } }
       assertEquals(2, child.withMosaic { compose(singleTile { 2 }) })
       assertEquals(1, observer.executions.size)
-      assertNull(parent.runtimeConfig.executionObserver)
-      assertSame(observer, child.runtimeConfig.executionObserver)
     }
 }

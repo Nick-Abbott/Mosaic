@@ -65,7 +65,7 @@ class MosaicGraphTest {
     assertFalse(overview.contains("dependency.unrelatedCanvas()"))
   }
 
-  @Test fun `root findings stay in focused section and show conditional and qualified Canvas details`() {
+  @Test fun `root findings show qualified Canvas provider details`() {
     val key = CanvasKeyIdentity("example.Metrics", "primary")
     val layer =
       CanvasExpression.Layer(

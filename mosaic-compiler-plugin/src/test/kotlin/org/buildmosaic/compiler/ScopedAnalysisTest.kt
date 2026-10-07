@@ -11,7 +11,6 @@ import org.buildmosaic.analysis.MosaicProvenance
 import org.buildmosaic.analysis.MosaicRule
 import org.buildmosaic.analysis.RootSelectionResolver
 import org.buildmosaic.analysis.SelectedRoot
-import org.buildmosaic.analysis.SummaryCodec
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test
@@ -57,7 +56,6 @@ class ScopedAnalysisTest {
     assertEquals(MosaicProvenance.Current, tile.effects.filterIsInstance<Effect.Compose>().single().mosaic)
     val discovered = RootSelectionResolver.resolve(module, emptyList(), emptyList())
     assertTrue(discovered.any { it.target == "scoped.direct()" })
-    assertEquals(module, SummaryCodec.decode(SummaryCodec.encode(module)).module)
   }
 
   @Test

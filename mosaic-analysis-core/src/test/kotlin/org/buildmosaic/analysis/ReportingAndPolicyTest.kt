@@ -159,7 +159,7 @@ class ReportingAndPolicyTest {
   }
 
   @Test
-  fun `missing and invalid construction fail default policy`() {
+  fun `duplicate construction fails default policy`() {
     val duplicate =
       CanvasExpression.Layer(
         "duplicate",

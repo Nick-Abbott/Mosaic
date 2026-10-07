@@ -82,7 +82,12 @@ private fun corpusModule(
       callables = listOf(CallableContract("helper", listOf(canvasParameter, booleanParameter), effects, site, false)),
       overrides =
         listOf(
-          ResolvedOverride("Owner", "base", "impl", listOf(OverrideSlot(canvasParameter, canvasParameter, 0))),
+          ResolvedOverride(
+            "Owner",
+            "base",
+            "impl",
+            listOf(OverrideSlot(canvasParameter, ContractParameter("impl", "renamed", ParameterKind.CANVAS), 0)),
+          ),
         ),
     )
   }

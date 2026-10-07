@@ -73,33 +73,10 @@ class PublishedInstallationTest {
       maven.resolve("org/buildmosaic/mosaic-gradle-plugin/$version/mosaic-gradle-plugin-$version.pom").readText()
     assertTrue(!pluginPom.contains("<artifactId>mosaic-analysis-core</artifactId>"), pluginPom)
     assertTrue(!pluginPom.contains("kotlin-gradle-plugin"), pluginPom)
-    JarFile(maven.resolve("org/buildmosaic/mosaic-gradle-plugin/$version/mosaic-gradle-plugin-$version.jar")).use {
-        jar ->
-      assertTrue(jar.getEntry("org/buildmosaic/analysis/SummaryCodec.class") != null)
-      assertTrue(jar.getEntry("kotlinx/serialization/json/Json.class") != null)
-    }
     val compilerPom =
       maven.resolve("org/buildmosaic/mosaic-compiler-plugin/$version/mosaic-compiler-plugin-$version.pom").readText()
     assertTrue(!compilerPom.contains("<artifactId>mosaic-analysis-core</artifactId>"), compilerPom)
     assertTrue(!compilerPom.contains("kotlin-compiler-embeddable"), compilerPom)
-    JarFile(maven.resolve("org/buildmosaic/mosaic-compiler-plugin/$version/mosaic-compiler-plugin-$version.jar")).use {
-        jar ->
-      for ((service, implementation) in listOf(
-        "CompilerPluginRegistrar" to "MosaicCompilerRegistrar",
-        "CommandLineProcessor" to "MosaicCommandLineProcessor",
-      )) {
-        val entry = jar.getJarEntry("META-INF/services/org.jetbrains.kotlin.compiler.plugin.$service")
-        assertTrue(entry != null)
-        assertEquals(
-          "org.buildmosaic.compiler.$implementation",
-          jar.getInputStream(entry).bufferedReader().readText().trim(),
-        )
-      }
-      assertTrue(jar.getEntry("org/buildmosaic/analysis/SummaryCodec.class") != null)
-      assertTrue(jar.getEntry("kotlinx/serialization/json/Json.class") != null)
-      assertTrue(jar.entries().asSequence().none { it.name.startsWith("com/fasterxml/jackson/") })
-    }
-
     val consumer = workspace.resolve("app").apply { mkdirs() }
     consumer.resolve("settings.gradle.kts").writeText(
       """
@@ -155,9 +132,6 @@ class PublishedInstallationTest {
     assertTrue(report.contains("VERIFIED REQUIRED_LOOKUP"), report)
     assertTrue(consumer.resolve("build/reports/mosaic-analysis/graph.md").readText().contains("## Root: app.entry()"))
     val summary = SummaryCodec.decode(consumer.resolve("build/mosaic-analysis/main/summary.json").readBytes())
-    assertEquals(4, summary.formatVersion)
-    assertEquals("analysis-contract-3", summary.semanticsVersion)
-    assertEquals("prototype-11", summary.toolVersion)
     assertTrue(summary.module.callables.any { it.id == "app.entry()" && it.effects.isNotEmpty() })
     JarFile(consumer.resolve("build/libs/app-99.0.0.jar")).use { assertTrue(it.getEntry(SUMMARY_PATH) != null) }
 

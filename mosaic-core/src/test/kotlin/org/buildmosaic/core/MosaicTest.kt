@@ -231,18 +231,23 @@ class MosaicTest {
     }
 
   @Test
-  fun `should bubble up the error if a single tile fails`() =
+  fun `dependency failures are retained without retry and unrelated work remains usable`() =
     runTest {
-      class MyFakeException : Exception("test")
-
-      val testDispatcher = StandardTestDispatcher(testScheduler)
-      withContext(testDispatcher) {
-        canvas { }.withMosaic {
-          val mosaic = this
-          assertFailsWith<MyFakeException> {
-            mosaic.compose(singleTile<String> { throw MyFakeException() })
-          }
+      val failure = IllegalStateException("dependency")
+      var calls = 0
+      val failed =
+        singleTile<String> {
+          calls++
+          throw failure
         }
+      val subject = singleTile { compose(failed) }
+      canvas {}.withMosaic {
+        repeat(2) {
+          assertEquals(failure.message, assertFailsWith<IllegalStateException> { compose(subject) }.message)
+          assertEquals(failure.message, assertFailsWith<IllegalStateException> { compose(failed) }.message)
+        }
+        assertEquals(1, calls)
+        assertEquals("healthy", compose(singleTile { "healthy" }))
       }
     }
 

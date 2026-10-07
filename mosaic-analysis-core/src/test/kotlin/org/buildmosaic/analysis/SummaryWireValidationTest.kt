@@ -8,25 +8,10 @@ import kotlin.test.assertTrue
 @Suppress("FunctionMaxLength")
 class SummaryWireValidationTest {
   @Test
-  fun `metadata declares separate format semantics producer and payload boundary`() {
+  fun `unsupported metadata format is rejected with regeneration guidance`() {
     val text = SummaryCodec.encode(ModuleContract("sample")).decodeToString()
-    for (field in listOf(
-      "formatVersion", "semanticsVersion", "toolVersion", "kotlinCompilerVersion", "moduleId",
-      "sourceSet", "complete", "payloadHash", "payload",
-    )) {
-      assertTrue(text.contains("\"$field\":"), field)
-    }
-  }
-
-  @Test
-  fun `legacy metadata is rejected with regeneration guidance`() {
-    val prototype =
-      """
-      {"schemaMajor":1,"schemaMinor":1,"toolVersion":"prototype-7","kotlinCompilerVersion":"2.4.20",
-      "moduleId":"sample","sourceSet":"main","complete":true,"payloadHash":"unused",
-      "module":{"id":"sample","canvases":[],"tiles":[],"callables":[],"overrides":[]}}
-      """.trimIndent()
-    val error = assertFailsWith<IllegalArgumentException> { SummaryCodec.decode(prototype.toByteArray()) }
+    val unsupported = text.replace(Regex("\"formatVersion\":[0-9]+"), "\"formatVersion\":999")
+    val error = assertFailsWith<IllegalArgumentException> { SummaryCodec.decode(unsupported.toByteArray()) }
     assertTrue(error.message.orEmpty().contains("Unsupported Mosaic metadata format"))
     assertTrue(
       error.message.orEmpty().contains("Regenerate dependency summaries with the matching Mosaic analysis version"),
@@ -77,7 +62,7 @@ class SummaryWireValidationTest {
   }
 
   @Test
-  fun `malformed kinds and damaged payload are rejected`() {
+  fun `unknown effect variants fail semantic decoding with a valid checksum`() {
     val site = SourceLocation("tile", "Tile.kt", 1, 1)
     val module =
       ModuleContract(
@@ -85,13 +70,17 @@ class SummaryWireValidationTest {
         tiles = listOf(TileContract("tile", listOf(Effect.Unknown("unknown", "reason", site)), site)),
       )
     val text = SummaryCodec.encode(module).decodeToString()
-    for (mutated in listOf(
-      text.replace("\"kind\":\"unknown\"", "\"kind\":\"futureEffect\""),
-      text.replace("\"reason\":\"reason\"", "\"reason\":\"other\""),
-      text.replace("\"complete\":true", "\"complete\":false"),
-      text.dropLast(4),
-    )) {
-      assertFailsWith<IllegalArgumentException> { SummaryCodec.decode(mutated.toByteArray()) }
-    }
+    val mutated = withPayloadHash(text.replace("\"kind\":\"unknown\"", "\"kind\":\"futureEffect\""))
+    val error = assertFailsWith<IllegalArgumentException> { SummaryCodec.decode(mutated.toByteArray()) }
+    assertTrue(error.message.orEmpty().contains("futureEffect"), error.message)
+  }
+
+  @Test
+  fun `checksum corruption and truncated JSON are rejected`() {
+    val text = SummaryCodec.encode(ModuleContract("sample")).decodeToString()
+    val corrupt = text.replace(Regex("\"payloadHash\":\"[0-9a-f]+\""), "\"payloadHash\":\"invalid\"")
+    val error = assertFailsWith<IllegalArgumentException> { SummaryCodec.decode(corrupt.toByteArray()) }
+    assertTrue(error.message.orEmpty().contains("payload hash mismatch"))
+    assertFailsWith<IllegalArgumentException> { SummaryCodec.decode(text.dropLast(4).toByteArray()) }
   }
 }
