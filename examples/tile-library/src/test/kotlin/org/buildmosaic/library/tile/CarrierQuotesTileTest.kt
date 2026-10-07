@@ -26,4 +26,16 @@ class CarrierQuotesTileTest {
           assertEquals(CarrierQuotesTile, carriers, quotes)
         }
     }
+
+  @Test
+  fun `carrier quotes tile fails when address fails`() =
+    runTest {
+      val carriers = listOf("UPS", "FEDEX")
+
+      mosaicBuilder()
+        .withFailedTile(AddressTile, RuntimeException("boom"))
+        .withMosaic {
+          assertThrows(CarrierQuotesTile, carriers, RuntimeException::class)
+        }
+    }
 }

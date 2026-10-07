@@ -29,4 +29,18 @@ class LogisticsTileTest {
           assertEquals(LogisticsTile, expected)
         }
     }
+
+  @Test
+  fun `logistics tile fails when quotes tile fails`() =
+    runTest {
+      val address = Address("123 Main St", "Springfield")
+
+      mosaicBuilder()
+        .withCanvasSource(CarrierService())
+        .withMockTile(AddressTile, address)
+        .withFailedTile(CarrierQuotesTile, RuntimeException("boom"))
+        .withMosaic {
+          assertThrows(LogisticsTile, RuntimeException::class)
+        }
+    }
 }

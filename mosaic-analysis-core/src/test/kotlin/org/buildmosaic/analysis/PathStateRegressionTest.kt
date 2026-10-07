@@ -16,9 +16,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 @Suppress("FunctionMaxLength", "LargeClass", "TooManyFunctions")
-class PathContinuationTest {
+class PathStateRegressionTest {
   @Test
-  fun `opaque Boolean actual retains registration and lookup correlation`() {
+  fun `F1 opaque Boolean actual retains registration and lookup correlation`() {
     val result = correlatedReport(BooleanExpression.Opaque("runtime flag", site("flag")))
 
     assertTrue(result.policyDecision.passed)
@@ -26,7 +26,7 @@ class PathContinuationTest {
   }
 
   @Test
-  fun `aborting opaque alternative leaves conditional continuation`() {
+  fun `F2 aborting opaque alternative leaves conditional continuation`() {
     listOf(false, true).forEach { asChoice ->
       invalidCanvases().forEach { (invalid, kind) ->
         listOf(invalid to CanvasExpression.Empty, CanvasExpression.Empty to invalid).forEach { (yes, no) ->
@@ -37,7 +37,7 @@ class PathContinuationTest {
   }
 
   @Test
-  fun `unknown MultiTile execution retains zero execution continuation`() {
+  fun `F3 unknown MultiTile execution retains zero execution continuation`() {
     invalidCanvases().forEach { (invalid, kind) ->
       val result = multiReport(MultiTileExecution.UNKNOWN, invalid = invalid)
       val later = result.findings.single { it.key == platform }

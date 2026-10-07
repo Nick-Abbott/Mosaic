@@ -88,6 +88,19 @@ for (const width of [320, 390, 430, 600]) {
       await expect(graph).toBeVisible();
       await expect(graph).toHaveAttribute('role', 'img');
 
+      // Every visible label/annotation must belong to a node, including text nodes.
+      const orphanText = await graph.evaluate((el) => {
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        const orphans: string[] = [];
+        while (walker.nextNode()) {
+          const text = walker.currentNode;
+          if (text.textContent?.trim() && !text.parentElement?.closest('.mobile-graph-node[data-tile]')) {
+            orphans.push(text.textContent.trim());
+          }
+        }
+        return orphans;
+      });
+      expect(orphanText).toEqual([]);
       const tiles = [
         'OrderPageTile',
         'OrderSummaryTile',

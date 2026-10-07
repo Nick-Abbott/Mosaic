@@ -4,12 +4,12 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-@Suppress("FunctionMaxLength", "LargeClass") // Activation cases share contract-building fixtures.
-class CallActivationTest {
+@Suppress("MaxLineLength", "LongParameterList", "LargeClass")
+class ActivationRegressionTest {
   private fun site(
     n: String,
     line: Int = 1,
-  ) = SourceLocation(n, "CallActivation.kt", line, 1)
+  ) = SourceLocation(n, "RereviewProbes.kt", line, 1)
 
   private val metrics = CanvasKeyIdentity("Metrics")
   private val service = CanvasKeyIdentity("Service")
@@ -48,21 +48,41 @@ class CallActivationTest {
   private fun analyze(
     effects: List<Effect>,
     extra: List<CallableContract> = emptyList(),
+    canvases: List<CanvasContract> = emptyList(),
+    tiles: List<TileContract> = emptyList(),
+    policy: AnalysisPolicy = AnalysisPolicy.STRICT,
+    limits: AnalysisLimits = AnalysisLimits(),
+    root: SelectedRoot =
+      SelectedRoot(
+        "root",
+        "entry",
+      ),
     parameters: List<ContractParameter> = emptyList(),
   ): AnalysisReport =
     MosaicAnalyzer().analyze(
       AnalysisRequest(
         ModuleContract(
           "app",
+          canvases = canvases,
+          tiles = tiles,
           callables = listOf(CallableContract("entry", parameters, effects, site("entry"))) + extra,
         ),
-        roots = listOf(SelectedRoot("root", "entry")),
-        policy = AnalysisPolicy.STRICT,
+        roots = listOf(root),
+        policy = policy,
+        limits = limits,
       ),
     )
 
+  private fun show(
+    name: String,
+    report: AnalysisReport,
+    expected: (AnalysisReport) -> Boolean,
+  ) {
+    assertTrue(expected(report), "$name: ${report.findings}")
+  }
+
   @Test
-  fun `recursive calls rebind Boolean actuals in a fresh environment`() {
+  fun `boolean swap`() {
     val a = ContractParameter("swap", "a", ParameterKind.BOOLEAN)
     val z = ContractParameter("swap", "binding", ParameterKind.BOOLEAN)
     val recurse =
@@ -106,16 +126,18 @@ class CallActivationTest {
         ),
         site("start"),
       )
-    val r = analyze(listOf(initial), extra = listOf(swap))
-    assertTrue(
+    show(
+      "F2 argument binding overwrites caller Boolean environment",
+      analyze(listOf(initial), extra = listOf(swap)),
+    ) { r ->
       r.findings.any {
         it.key == metrics && it.certainty == Certainty.MISSING
-      } && !r.policyDecision.passed,
-    )
+      } && !r.policyDecision.passed
+    }
   }
 
   @Test
-  fun `recursive calls rebind Canvas actuals in a fresh environment`() {
+  fun `canvas swap`() {
     val x = ContractParameter("swapCanvas", "x", ParameterKind.CANVAS)
     val y = ContractParameter("swapCanvas", "y", ParameterKind.CANVAS)
     val done = ContractParameter("swapCanvas", "done", ParameterKind.BOOLEAN)
@@ -160,24 +182,27 @@ class CallActivationTest {
         ),
         site("startCanvas"),
       )
-    val r = analyze(listOf(initialCanvas), extra = listOf(swapCanvas))
-    assertTrue(
+    show(
+      "F2b argument binding overwrites caller Canvas environment",
+      analyze(listOf(initialCanvas), extra = listOf(swapCanvas)),
+    ) { r ->
       r.findings.any {
         it.key == metrics && it.certainty == Certainty.MISSING
-      } && !r.policyDecision.passed,
-    )
+      } && !r.policyDecision.passed
+    }
   }
 
   @Test
-  fun `unused unknown root inputs do not create obligations`() {
+  fun `unused input`() {
     val unused = ContractParameter("entry", "canvas", ParameterKind.CANVAS)
-    val result = analyze(emptyList(), parameters = listOf(unused))
-    assertTrue(result.policyDecision.passed)
-    assertTrue(result.findings.isEmpty())
+    show(
+      "F3 unused unknown selected-root input",
+      analyze(emptyList(), parameters = listOf(unused)),
+    ) { r -> r.policyDecision.passed && r.findings.isEmpty() }
   }
 
   @Test
-  fun `an allocated alias is not reconstructed after branch refinement`() {
+  fun `alias branch refinement`() {
     val flag = ContractParameter("entry", "flag", ParameterKind.BOOLEAN)
     val alias =
       CanvasExpression.Alias(
@@ -194,7 +219,11 @@ class CallActivationTest {
       )
     val aliasReport =
       analyze(listOf(Effect.ConstructCanvas("let", alias, site("let")), branch), parameters = listOf(flag))
-    assertEquals(1, aliasReport.findings.count { it.kind == FindingKind.CONSTRUCTION_LOOKUP })
+    show("F4 already allocated alias revisited after unrelated Boolean branch", aliasReport) { r ->
+      r.findings.count {
+        it.kind == FindingKind.CONSTRUCTION_LOOKUP
+      } == 1
+    }
     val consumers = aliasReport.findings.filter { it.kind == FindingKind.REQUIRED_LOOKUP }
     assertEquals(2, consumers.size)
     assertEquals(setOf(listOf("flag=false"), listOf("flag=true")), consumers.map { it.pathCondition }.toSet())

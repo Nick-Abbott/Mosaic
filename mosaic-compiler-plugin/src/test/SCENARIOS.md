@@ -18,22 +18,22 @@ and known-empty/known-nonempty/unknown MultiTile execution distinctions. Fresh
 local Tile values have deferred template contracts and invocation-local
 identities; unsupported capability captures remain named unknown.
 
-| Row | Behavioral assertion/family |
+| Row | Existing assertion/family; missing interaction added in EC |
 |---|---|
 | A1 | EC ignored ordinary argument M/V |
 | A2 | IrShape: Canvas actual once; ActivationInvariant: actual order; EC receiver/named/vararg/spread |
 | A3 | ActivationInvariant: missing/conflicting/limited callees, unknown callees; IrShape missing metadata M/U |
 | A4 | DefaultBoundary: used/explicit local and binary defaults; EC literal defaults V |
-| A5 | MosaicReceiverBoundary; inline binary accessor boundary; EC inline getter ordinary/Canvas U |
+| A5 | MosaicReceiverBoundary; inline binary accessor experiment; EC inline getter ordinary/Canvas U |
 | A6 | IrShape Canvas helper prefix; EC getter/function prefix, discard, abort/result, empty/success/unknown prefix |
 | B1 | IrShape lookup follows current and separate Mosaic receivers M/V |
 | B2 | MosaicReceiverBoundary: helper, member extension, Canvas extension; regular parameter U |
-| B3 | EC virtual Canvas method/getter U, final factory V; OverrideDispatch |
-| B4 | OverrideDispatch slots; IrShape renamed slots with ordinary parameter; G enterprise |
-| B5 | OverrideDispatch relay/conflict; IrShape unrelated relay receiver |
-| C1 | LayerSemantics alias once; CanvasEvaluation distinct constructions; ActivationInvariant per invocation; EC aliases |
-| C2 | CallActivation recursive Boolean/Canvas rebinding |
-| C3 | PathContinuation forwarded Boolean, separate opaque actuals |
+| B3 | EC virtual Canvas method/getter U, final factory V; OverrideDispatchRegression |
+| B4 | OverrideDispatchRegression slots; IrShape renamed slots with ordinary parameter; G enterprise |
+| B5 | OverrideDispatchRegression relay/conflict; IrShape unrelated relay receiver |
+| C1 | LayerSemantics alias once; CorrectnessRegression distinct constructions; ActivationInvariant per invocation; EC aliases |
+| C2 | ActivationRegression boolean swap, canvas swap |
+| C3 | PathStateRegression forwarded Boolean, separate opaque actuals |
 | C4 | IdentityAndDiscovery declaration identity; DelegatedTile top-level/local factories M/V, local ordinary/delegated aliases, binary export M/V/U, arbitrary/property-reference/member/captured delegates U; EC member-dependent Tile U and Tile getter creation arguments |
 | C5 | EC unused lambda V, invoked lambda/reference, returned/conditional callable escape U; DSL fixtures |
 | D1 | EnterpriseAnalysis M/V; G binary enterprise M/V |
@@ -41,26 +41,26 @@ identities; unsupported capability captures remain named unknown.
 | D3 | LayerSemantics unused eager, future child, duplicate, failed local |
 | D4 | EC registration argument M, foreign builder/factory U; LayerSemantics eager providers |
 | D5 | KeyAndOptionalSemantics qualifier/unknown/optional; EC optional argument M |
-| D6 | IrShape collection/array normalization; KeyAndOptionalSemantics exact class identity |
+| D6 | IrShape mutable collections and arrays; KeyAndOptionalSemantics exact class identity |
 | D7 | UnknownBoundary local over unknown parent, unknown registrations |
 | E1 | InitializationBoundary stored/backing fields and binary constructors M/U/V |
 | E2 | StoredFieldBoundary; InitializationBoundary domain V; EC object/delegate/super U |
 | E3 | DefaultBoundary binary defaults with/without metadata U |
-| E4 | IrShape const and inline producer/unchanged consumer boundaries |
+| E4 | IrShape const and inline producer/unchanged consumer experiments |
 | F1 | ConditionAnalysis known/free/correlated/exclusive/opaque |
-| F2 | PathContinuation abort survivor, complementary continuing, nested branches |
+| F2 | PathStateRegression abort survivor, complementary continuing, nested branches |
 | F3 | IdentityAndDiscovery MultiTile; IrShape MultiTile request and argument families |
-| F4 | PathContinuation async/synchronous, receiver and eager argument failures |
-| F5 | BoundarySemantics bounded expansion; PathContinuation incomplete opaque continuation |
+| F4 | PathStateRegression async/synchronous, receiver and eager argument failures |
+| F5 | BoundarySemantics bounded expansion; PathStateRegression incomplete opaque continuation |
 | F6 | EC conditional/loop/try/safe-Elvis/mutation U and harmless control V |
 | G1 | RootScope public helper D, specialization, no roots UNCONFIGURED |
-| G2 | ActivationInvariant unknown input required/optional; CanvasEvaluation optional assumption |
+| G2 | ActivationInvariant unknown input required/optional; CorrectnessRegression optional assumption |
 | G3 | UnknownBoundary coexistence; ReportingAndPolicy strict/default/scoped assumptions |
 | G4 | ReportingAndPolicy paths; ActivationInvariant provider capture; EC root reachability guard |
 | H1 | IrShape DSL lookup/overload/suspend fidelity; MosaicReceiverBoundary extension identities; override slots |
 | H2 | ReferenceOwnership unchanged adapter; G platform removal/restoration |
 | H3 | SummaryMetadata invalid/absent required headers and incompatible compiler records; UnknownBoundary conflicts/missing; G metadata loss/corruption |
-| H4 | SummaryWireCorpus variants and receiver provenance; SummaryMetadata ordered effects/actuals; ReportingAndPolicy registry determinism |
+| H4 | SummaryMetadata ordered effects/actuals; SummaryWireCorpus receiver provenance; ReportingAndPolicy registry determinism |
 | I1 | G fresh extraction: unchanged second source, rename, final-source removal |
 | I2 | G rejected extraction removes previous output; packaging task dependencies |
 | I3 | G separate binary artifacts body-only invalidation/restoration with adapter unchanged |
@@ -78,7 +78,7 @@ eligibility/target → execution → continuing result. IR temporaries carry ord
 | Top-level/final | EC discard | EC aliases | IrShape actuals | IrShape helper | EC prefixes |
 | Member | relay fixture | EC ordered receiver | enterprise template | enterprise handle | EC virtual method |
 | Getter/setter | EC getters | stored property | receiver boundaries | initialization fixtures | EC virtual getter |
-| Constructor | defaults fixture | stored domain | enterprise concrete receiver | domain construction | Public Canvas DSL construction and registration order |
+| Constructor | defaults fixture | stored domain | enterprise concrete receiver | domain construction | I: Canvas is final with an internal constructor; DSL consumers compile normally |
 | Template/hook | slot fixture | ordinary call adapter | enterprise concrete receiver | enterprise response | same call adapter; arbitrary factory dispatch U |
 
 Eligibility controls: direct V (enterprise/final); unsupported receiver U
@@ -96,7 +96,7 @@ callbacks/delegates/reflection/complex control and complete JVM initialization.
 Keep the final concrete receiver → inherited final template → direct protected
 abstract suspend hook path strictly V with no assumptions.
 
-Extraction conditions exercised here: K2 represents named-argument reordering using IR
+Compiler facts exercised here: K2 represents named-argument reordering using IR
 blocks/temporaries; external top-level declarations belong to package fragments,
 not source files; unavailable binary defaults are error-expression stubs. Getter
 bodies cannot suspend, so the Canvas getter prefix probe asserts its actual
@@ -110,7 +110,7 @@ lookup is required, and harmless actuals can verify.
 Both ordinary normalization and structural omission must use the same operation
 proof. Arguments/receivers execute before that proof; callable bodies do not
 execute on reference creation. The following covers the whitelist
-and every structural early-return category. Assertions share EC's compilation.
+and every structural early-return category. New assertions share EC's compilation.
 
 | Classifier category | Evidence / expected outcome and EC roots |
 |---|---|

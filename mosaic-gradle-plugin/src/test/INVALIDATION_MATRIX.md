@@ -1,7 +1,6 @@
 # Compiler-integrated invalidation matrix
 
-`SourceShardLifecycleIntegrationTest`, `BuildCacheIntegrationTest`, and
-`BinaryDependencyIntegrationTest` use normal Kotlin 2.4.20 compilation and checks the
+`BinaryIntegrationTest` uses normal Kotlin 2.4.20 compilation and checks the
 complete summary after persistent source and dependency edits. The production
 path launches zero standalone Mosaic K2 compiler processes. Compiler-module
 fixtures still invoke K2 as test infrastructure.
@@ -10,6 +9,7 @@ fixtures still invoke K2 as test infrastructure.
 | --- | --- | --- | --- |
 | Identical second build | `UP_TO_DATE` | `UP_TO_DATE` | Complete summary unchanged |
 | Relocated clean workspace | `FROM_CACHE` in the local fixture | `FROM_CACHE` or assembles | Shards restored with compile output |
+| Deleted shard directory | Restored from cache | `UP_TO_DATE` or assembles | Complete shards available again |
 | Ordinary source body | Executes affected source | May remain `UP_TO_DATE` | Summary semantically unchanged |
 | Tile body, declaration signature, move, or rename | Executes Kotlin affected set | Assembles | Current owner facts only; clean result equal |
 | External public constant or typealias | Kotlin chooses affected callers | Assembles if shards change | Caller contract updates; clean result equal |

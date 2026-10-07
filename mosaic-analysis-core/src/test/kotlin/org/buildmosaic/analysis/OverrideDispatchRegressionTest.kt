@@ -4,7 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 @Suppress("LargeClass", "LongMethod", "FunctionMaxLength")
-class OverrideDispatchTest {
+class OverrideDispatchRegressionTest {
   private val site = SourceLocation("probe", "Probe.kt", 1, 1)
   private val metrics = Fact.Known(CanvasKeyIdentity("probe.Metrics"))
 

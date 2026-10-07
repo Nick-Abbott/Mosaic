@@ -533,7 +533,7 @@ class IrShapeTest {
   }
 
   @Test
-  fun `external const capture and unavailable inline bodies remain distinct boundaries`() {
+  fun `external const is substituted but inline helper body is absent before IR lowering`() {
     val directory = Files.createTempDirectory("mosaic-ir-binary").toFile()
     val producer = File(directory, "Producer.kt")
     producer.writeText(

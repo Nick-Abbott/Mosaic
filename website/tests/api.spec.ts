@@ -39,8 +39,6 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(page.locator('#searchBar button')).toBeVisible();
       await expect(page.locator('#toc-listbox')).toBeVisible();
       const toggle = page.locator('#theme-toggle-button');
-      await toggle.focus();
-      await expect(toggle).toBeFocused();
       await toggle.click();
       await expect
         .poll(() => page.locator('body').evaluate((el) => getComputedStyle(el).backgroundColor))

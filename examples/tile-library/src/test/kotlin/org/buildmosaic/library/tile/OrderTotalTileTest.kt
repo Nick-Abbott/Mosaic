@@ -24,4 +24,14 @@ class OrderTotalTileTest {
           assertEquals(OrderTotalTile, expected)
         }
     }
+
+  @Test
+  fun `order total tile fails when line items fail`() =
+    runTest {
+      mosaicBuilder()
+        .withFailedTile(LineItemsTile, RuntimeException("boom"))
+        .withMosaic {
+          assertThrows(OrderTotalTile, RuntimeException::class)
+        }
+    }
 }

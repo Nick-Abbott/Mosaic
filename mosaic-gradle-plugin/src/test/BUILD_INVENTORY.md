@@ -1,25 +1,29 @@
-# TestKit build ownership
+# TestKit build inventory
 
-TestKit owns real compilation, artifact, dependency, and task boundaries. Runtime
-and evaluator semantics are owned by their unit suites; direct compiler fixtures
-own Kotlin source/IR fidelity. See the [suite map](../../../docs/testing.md).
+This inventory records actual GradleRunner invocations from the baseline JUnit
+output on `d826fb7366fef43b77cde83344849fa80cb2cbb5`, before cleanup.
+The direct compiler fixture count is separate.
 
-| Fixture | Build contract |
-| --- | --- |
-| `SupportedBoundaryIntegrationTest`, `CompilerPluginVersionTest` | Supported Kotlin/Gradle configurations and compiler version input; conservative rejection. |
-| `SourceShardLifecycleIntegrationTest` | Affected sources, unchanged siblings, deletion, rename/move, test-source exclusion, empty main sources, configuration cache, complete metadata, and clean equivalence. |
-| `BuildCacheIntegrationTest` | Relocation and cache restoration, const/typealias/inline compiler inputs, compilation failure/recovery, and clean equivalence. |
-| `BinaryDependencyIntegrationTest` | Binary contract changes independently invalidate verification; missing/malformed metadata; realistic inherited-template consumers. |
-| `ProjectDependencyIntegrationTest` | Project JAR variants supply dependency summaries. |
-| `RuleConfigurationIntegrationTest`, `SelectedOwnerConflictTest` | Rule configuration/suppression and selected dependency-owner conflicts reach real build reports. |
-| `MosaicGraphIntegrationTest` | Gradle graph generation, selected roots, binary dependencies, and report output. |
-| `PublishedInstallationTest` | Published plugin marker/compiler installation; Maven artifacts and runtime dependency isolation; BOM alignment; supported Kotlin consumers; exported summaries. |
+| Fixture concern | Baseline builds | Guarantee |
+| --- | ---: | --- |
+| Supported boundary | 6 | Unsupported configuration and compiler/toolchain rejection |
+| Source shard lifecycle | 13 | Affected sources, deletion, rename, move, empty sources, configuration cache, local metadata |
+| Binary dependency | 14 | Policy wiring, dependency contract invalidation, missing/malformed metadata, enterprise fixture |
+| Build cache and compiler inputs | 13 | Cache restore, const/typealias/inline changes, failure/recovery |
+| Project dependency | 1 | Project JAR variant and summary selection |
+| Clean-equivalence helper | 3 | Fresh result versus incremental result |
+| **Integration total** | **50** | |
+| Published installation | 2 | External consumer installation and build |
 
-Source-lifecycle and cache fixtures use persistent mutation sequences because
-state from an earlier compilation is the integration boundary. Clean comparisons
-validate equivalent contracts and findings. Multiple semantic assertions can
-share a build when they inspect the same artifact.
+The cleanup removes five builds: a repeated unchanged enterprise build, one
+enterprise clean-equivalence build, a second cache restore after manually
+deleting shards, a repeated failure/recovery clean-equivalence build, and an
+empty-source recovery build already exercised by subsequent library verification.
+The remaining integration count is 45; publication remains two. Compiler
+fixtures remain 39 direct K2 invocations because they test distinct IR and
+binary experiments or share one compilation across many semantic assertions.
 
-`TestProject.kt` counts GradleRunner invocations and asserts that production
-builds launch no separate Mosaic K2 process. Counts describe fixture execution;
-they are not a test-reduction goal or a stable compatibility promise.
+The shard lifecycle and cache fixture each retain one sequential mutation
+history. Clean-equivalence remains for source lifecycle and source-resolution
+changes. The shared `TestProject.kt` helpers count every TestKit invocation and
+assert that no separate production Mosaic K2 process launches.

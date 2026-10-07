@@ -16,7 +16,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 @Suppress("FunctionMaxLength", "LargeClass", "MaxLineLength")
-class CanvasEvaluationTest {
+class CorrectnessRegressionTest {
   @Test
   fun `ignored callable Canvas argument is still constructed eagerly`() {
     val parameter = ContractParameter("ignore", "canvas", ParameterKind.CANVAS)
@@ -126,7 +126,7 @@ class CanvasEvaluationTest {
   }
 
   @Test
-  fun `distinct Canvas constructions remain independent`() {
+  fun `genuinely distinct Canvas constructions remain distinct`() {
     val first = observableAlias("first")
     val second = observableAlias("second")
     val caller =

@@ -28,4 +28,14 @@ class OrderSummaryTileTest {
           assertEquals(OrderSummaryTile, expected)
         }
     }
+
+  @Test
+  fun `order summary tile fails when order tile fails`() =
+    runTest {
+      mosaicBuilder()
+        .withFailedTile(OrderTile, RuntimeException("boom"))
+        .withMosaic {
+          assertThrows(OrderSummaryTile, RuntimeException::class)
+        }
+    }
 }
