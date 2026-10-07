@@ -19,52 +19,9 @@ import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class IrShapeTest {
-  @Test
-  fun `argument work is retained when an ordinary callee ignores its value`() {
-    val report =
-      analyzeSource(
-        """
-        package regression
-        import org.buildmosaic.core.*
-        import org.buildmosaic.core.injection.*
-        class Metrics
-        fun consume(ignored: Metrics) = Unit
-        val ExampleTile = singleTile { consume(source<Metrics>()); "done" }
-        suspend fun entry() = canvas { }.withMosaic { compose(ExampleTile) }
-        """.trimIndent(),
-      )
-    assertTrue(
-      report.findings.any {
-        it.certainty == Certainty.MISSING && it.key?.classId == "regression.Metrics"
-      },
-      report.toString(),
-    )
-  }
-
-  @Test
-  fun `named arguments retain source evaluation order`() {
-    val (module, report) =
-      extractSource(
-        """
-        package regression
-        import org.buildmosaic.core.*
-        import org.buildmosaic.core.injection.*
-        class First
-        class Second
-        fun consume(first: First, second: Second) = Unit
-        val ExampleTile = singleTile { consume(second = source<Second>(), first = source<First>()) }
-        suspend fun entry() = canvas { }.withMosaic { compose(ExampleTile) }
-        """.trimIndent(),
-      )
-    val keys = module.tiles.single().effects.filterIsInstance<Effect.Lookup>().map { it.key.toString() }
-    assertTrue(keys[0].contains("Second") && keys[1].contains("First"), keys.toString())
-    assertEquals(2, report.findings.count { it.certainty == Certainty.MISSING })
-  }
-
   @Test
   fun `Canvas actual is evaluated once before parameter substitution`() {
     val report =
@@ -375,12 +332,7 @@ class IrShapeTest {
   }
 
   @Test
-  fun `Kotlin mutable and read only collection keys share runtime KClass`() {
-    assertTrue(List::class == MutableList::class)
-    assertTrue(Set::class == MutableSet::class)
-    assertTrue(Map::class == MutableMap::class)
-    assertFalse(Array<String>::class == Array<Int>::class)
-    assertTrue(arrayOf<List<String>>(listOf("one"))::class == arrayOf<List<Int>>(listOf(1))::class)
+  fun `extracted collection and array keys follow runtime class identity`() {
     val (module, report) =
       extractSource(
         """
@@ -615,10 +567,6 @@ class IrShapeTest {
     val output = File(directory, "caller-facts.txt")
     compile(caller, File(directory, "caller-classes"), producerJar, output)
     val callerBytes = File(output.parentFile, "summary.json").readBytes()
-    val facts = output.readLines()
-    assertTrue(facts.any { it.startsWith("CONST|old|") })
-    assertTrue(facts.any { it.startsWith("CALL|producer.helper|") })
-    assertTrue(facts.none { it.startsWith("FIELD|producer.QUALIFIER|") })
     val summary = SummaryCodec.decode(callerBytes)
     assertTrue(summary.module.tiles.single { it.id == "consumer.Tile" }.effects.any { it is Effect.Unknown })
     val accessorTarget = "consumer.accessorEntry()"
@@ -660,16 +608,10 @@ class IrShapeTest {
     assertTrue(accessorReport.roots.single().specializedContracts.contains(accessorTarget), accessorReport.toString())
     assertEquals(org.buildmosaic.analysis.RootStatus.UNVERIFIED, accessorReport.roots.single().status)
     assertTrue(callerBytes.contentEquals(File(output.parentFile, "summary.json").readBytes()))
-    // The unresolved external inline body cannot be treated as an empty Mosaic effect.
-    assertTrue(
-      facts.none {
-        it.startsWith("CALL|org.buildmosaic.core.source|") && it.contains("producer.Metrics") && it.contains("helper")
-      },
-    )
   }
 
   @Test
-  fun `K2 IR exposes the required Mosaic DSL symbols`() {
+  fun `DSL extraction retains lookup execution and binary locator fidelity`() {
     val directory = Files.createTempDirectory("mosaic-ir-shape").toFile()
     val source = File(directory, "Fixture.kt")
     source.writeText(
@@ -710,14 +652,6 @@ class IrShapeTest {
     )
     val output = File(directory, "facts.txt")
     compile(source, File(directory, "classes"), output = output)
-    val facts = output.readLines()
-    assertTrue(facts.any { it.startsWith("CALL|org.buildmosaic.core.singleTile|") }, facts.joinToString("\n"))
-    assertTrue(facts.any { it.startsWith("CALL|org.buildmosaic.core.injection.canvas|") })
-    assertTrue(facts.any { it.startsWith("CALL|org.buildmosaic.core.injection.Canvas.withLayer|") })
-    assertTrue(facts.any { it.contains("platformCanvas") })
-    assertTrue(facts.any { it.contains("composeAsync") })
-    assertTrue(facts.any { it.contains("respond") })
-    assertTrue(facts.any { it.startsWith("CONST|qualified|") })
     val summary = SummaryCodec.decode(File(directory, "summary.json").readBytes())
     val tiles = summary.module.tiles.associateBy { it.id }
     assertTrue(

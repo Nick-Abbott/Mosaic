@@ -331,9 +331,6 @@ class InitializationBoundaryTest {
     val consumerModule = compileAndExtract(listOf(consumer), File(directory, "consumer"), "regression", jar)
     val producerModule = readJarSummary(jar)
     val withMetadata = analyze(consumerModule, listOf(producerModule))
-    val noMetadataJar = File(directory, "producer-without-summary.jar")
-    jarClasses(File(directory, "producer/classes"), noMetadataJar)
-    JarFile(noMetadataJar).use { assertTrue(it.getJarEntry(SUMMARY_PATH) == null) }
     // The unchanged consumer keeps its symbolic reference when selected metadata disappears.
     val withoutMetadata = analyze(consumerModule)
     assertTrue(

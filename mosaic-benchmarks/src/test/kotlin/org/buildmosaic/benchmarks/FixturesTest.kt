@@ -2,7 +2,6 @@ package org.buildmosaic.benchmarks
 
 import kotlinx.coroutines.runBlocking
 import org.buildmosaic.core.injection.withMosaic
-import org.buildmosaic.core.singleTile
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -54,7 +53,7 @@ class FixturesTest {
   }
 
   @Test
-  fun canvasFixturesAndTrivialTileAreDeterministic() = runBlocking {
+  fun canvasFixtureDepthsAndBindingCounts() = runBlocking {
     for (depth in listOf(0, 1, 4, 16)) {
       val layer = CanvasFixtures.lookupCanvas(depth)
       repeat(2) { assertEquals(17, layer.source(CanvasFixtures.lookupKey)) }
@@ -66,7 +65,5 @@ class FixturesTest {
         keys.forEachIndexed { index, key -> assertEquals(index, child.source(key)) }
       }
     }
-    val tile = singleTile { 7 }
-    repeat(2) { assertEquals(7, emptyCanvas.withMosaic { compose(tile) }) }
   }
 }

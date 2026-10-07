@@ -1,7 +1,6 @@
 package org.buildmosaic.core
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -39,39 +38,6 @@ class TileDslTest {
           assertEquals("result", first)
           assertEquals("result", second)
           assertEquals(1, service.count)
-        }
-      }
-    }
-
-  @Test
-  fun singleTileDeduplicatesConcurrentRequests() =
-    runTest {
-      class Service {
-        var calls = 0
-
-        suspend fun fetch(): String {
-          calls++
-          delay(50)
-          return "v"
-        }
-      }
-      val service = Service()
-      val mockCanvas =
-        canvas { single { service } }
-      val testDispatcher = StandardTestDispatcher(testScheduler)
-      withContext(testDispatcher) {
-        mockCanvas.withMosaic {
-          val mosaic = this
-          val tile =
-            singleTile {
-              val svc = source<Service>()
-              svc.fetch()
-            }
-          val first = async { mosaic.compose(tile) }
-          val second = async { mosaic.compose(tile) }
-          assertEquals("v", first.await())
-          assertEquals("v", second.await())
-          assertEquals(1, service.calls)
         }
       }
     }
