@@ -10,12 +10,14 @@ class SummaryWireValidationTest {
   @Test
   fun `unsupported metadata format is rejected with regeneration guidance`() {
     val text = SummaryCodec.encode(ModuleContract("sample")).decodeToString()
-    val unsupported = text.replace(Regex("\"formatVersion\":[0-9]+"), "\"formatVersion\":999")
-    val error = assertFailsWith<IllegalArgumentException> { SummaryCodec.decode(unsupported.toByteArray()) }
-    assertTrue(error.message.orEmpty().contains("Unsupported Mosaic metadata format"))
-    assertTrue(
-      error.message.orEmpty().contains("Regenerate dependency summaries with the matching Mosaic analysis version"),
-    )
+    for (format in listOf(4, 999)) {
+      val unsupported = text.replace(Regex("\"formatVersion\":[0-9]+"), "\"formatVersion\":$format")
+      val error = assertFailsWith<IllegalArgumentException> { SummaryCodec.decode(unsupported.toByteArray()) }
+      assertTrue(error.message.orEmpty().contains("Unsupported Mosaic metadata format; expected 5."))
+      assertTrue(
+        error.message.orEmpty().contains("Regenerate dependency summaries with the matching Mosaic analysis version"),
+      )
+    }
   }
 
   @Test

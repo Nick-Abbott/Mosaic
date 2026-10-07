@@ -208,8 +208,8 @@ enum class LookupKind {
   REQUIRED,
   OPTIONAL,
 
-  /** Construction-time required lookup; the name is retained as a serialized metadata tag. */
-  PAINT,
+  /** Required lookup while a Canvas provider is being constructed. */
+  CONSTRUCTION,
 }
 
 enum class DiscoveryKind {

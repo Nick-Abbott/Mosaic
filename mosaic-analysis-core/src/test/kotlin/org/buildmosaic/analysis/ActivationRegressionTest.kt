@@ -207,7 +207,10 @@ class ActivationRegressionTest {
     val alias =
       CanvasExpression.Alias(
         "shared",
-        layer("shared", listOf(binding(metrics), binding(service, listOf(lookup("init", kind = LookupKind.PAINT))))),
+        layer(
+          "shared",
+          listOf(binding(metrics), binding(service, listOf(lookup("init", kind = LookupKind.CONSTRUCTION)))),
+        ),
       )
     val branch =
       Effect.Branch(

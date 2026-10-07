@@ -577,7 +577,7 @@ internal class SourceContractExtractor(
             return Value(callable = isCallableType(call.type))
           }
           target == "org.buildmosaic.core.injection.CanvasFactory.source" && call is IrCall -> {
-            effects += Effect.Lookup(valueId(call), receiver.canvas ?: CanvasExpression.Unknown("CanvasFactory receiver transfer is unsupported", site(call)), key(call, actuals, file, owner), LookupKind.PAINT, site(call))
+            effects += Effect.Lookup(valueId(call), receiver.canvas ?: CanvasExpression.Unknown("CanvasFactory receiver transfer is unsupported", site(call)), key(call, actuals, file, owner), LookupKind.CONSTRUCTION, site(call))
             return Value(callable = isCallableType(call.type))
           }
           (target == "org.buildmosaic.core.Mosaic.compose" || target == "org.buildmosaic.core.Mosaic.composeAsync") && call is IrCall -> {

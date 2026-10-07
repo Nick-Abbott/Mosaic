@@ -675,7 +675,9 @@ class IrShapeTest {
       summary.module.canvases.single {
         it.id.startsWith("fixture.layer(")
       }.result.evaluatedResult() as CanvasExpression.Layer
-    assertTrue(layer.bindings.single().constructorEffects.any { it is Effect.Lookup && it.kind == LookupKind.PAINT })
+    assertTrue(
+      layer.bindings.single().constructorEffects.any { it is Effect.Lookup && it.kind == LookupKind.CONSTRUCTION },
+    )
     val entryEffects = summary.module.callables.single { it.id == "fixture.entry()" }.effects
     assertTrue(
       entryEffects.any {

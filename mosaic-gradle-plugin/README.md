@@ -184,7 +184,7 @@ regenerate incompatible summaries with the supported Mosaic analysis toolchain.
 
 The canonical [supported project boundary](https://BuildMosaic.org/reference/analysis-configuration/#supported-project-boundary)
 lists all Kotlin/JVM, source-layout, compiler-option, plugin, and platform
-restrictions. The DSL, format-4 metadata, and report format are provisional.
+restrictions. The DSL, format-5 metadata, and report format are provisional.
 Analysis tooling is not included in the runtime BOM.
 
 ## Publication
