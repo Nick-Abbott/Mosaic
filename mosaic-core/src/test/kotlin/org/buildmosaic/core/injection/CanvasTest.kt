@@ -25,17 +25,20 @@ class CanvasTest {
   fun `required and optional source overloads return the registered instance`() =
     runTest {
       val value = TestServiceImpl("direct")
+      val unqualified = TestServiceImpl("unqualified")
       val key = CanvasKey(TestService::class, "direct-key")
       val testCanvas =
         canvas {
-          single(key) { value }
-          single<TestService> { value }
+          provide(key) { value }
+          provide<TestService> { unqualified }
         }
       assertSame(value, testCanvas.source(TestService::class, "direct-key"))
       assertSame(value, testCanvas.source(key))
-      assertSame(value, testCanvas.source<TestService>())
-      assertSame(value, testCanvas.sourceOr(key))
-      assertSame(value, testCanvas.sourceOr<TestService>())
+      assertSame(unqualified, testCanvas.source<TestService>())
+      assertSame(value, testCanvas.source<TestService>("direct-key"))
+      assertSame(value, testCanvas.sourceOrNull(key))
+      assertSame(unqualified, testCanvas.sourceOrNull<TestService>())
+      assertSame(value, testCanvas.sourceOrNull<TestService>("direct-key"))
     }
 
   @Test
@@ -52,14 +55,15 @@ class CanvasTest {
     }
 
   @Test
-  fun `should return null when source is not found in sourceOr`() =
+  fun `should return null when source is not found in sourceOrNull`() =
     runTest {
       val testCanvas: Canvas =
         canvas {
-          single<TestService>("direct-key") { TestServiceImpl("direct-test") }
+          provide<TestService>("direct-key") { TestServiceImpl("direct-test") }
         }
 
-      assertNull(testCanvas.sourceOr<String>())
-      assertNull(testCanvas.sourceOr(CanvasKey(String::class)))
+      assertNull(testCanvas.sourceOrNull<String>())
+      assertNull(testCanvas.sourceOrNull<TestService>("missing"))
+      assertNull(testCanvas.sourceOrNull(CanvasKey(String::class)))
     }
 }

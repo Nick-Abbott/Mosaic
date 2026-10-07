@@ -56,7 +56,7 @@ class Canvas internal constructor(
    * @return The registered object
    * @throws [MosaicMissingKeyException] if no instance is registered for the type
    */
-  fun <T : Any> source(key: CanvasKey<T>): T = sourceOr(key) ?: throw MosaicMissingKeyException(key)
+  fun <T : Any> source(key: CanvasKey<T>): T = sourceOrNull(key) ?: throw MosaicMissingKeyException(key)
 
   /**
    * Retrieves an instance of the registered object
@@ -67,10 +67,10 @@ class Canvas internal constructor(
    * @param qualifier an optional qualifier for the type
    * @return The registered object
    */
-  fun <T : Any> sourceOr(
+  fun <T : Any> sourceOrNull(
     type: KClass<T>,
     qualifier: String? = null,
-  ): T? = sourceOr(CanvasKey(type, qualifier))
+  ): T? = sourceOrNull(CanvasKey(type, qualifier))
 
   /**
    * Retrieves an instance of the registered object under the [CanvasKey]
@@ -81,13 +81,13 @@ class Canvas internal constructor(
    * @return The registered object
    */
   @Suppress("UNCHECKED_CAST")
-  fun <T : Any> sourceOr(key: CanvasKey<T>): T? = instances[key] as T? ?: parent?.sourceOr(key)
+  fun <T : Any> sourceOrNull(key: CanvasKey<T>): T? = instances[key] as T? ?: parent?.sourceOrNull(key)
 
   /**
    * A DSL method to create another layer on your [Canvas]
    * The returned object will be a new [Canvas] depending on the sources of the parent
    * This does not modify the parent in any way. Child bindings are constructed eagerly;
-   * a child constructor can use [CanvasFactory.paint] to resolve local bindings first and
+   * a child constructor can use [CanvasFactory.source] to resolve local bindings first and
    * then fall back to the parent. Child overrides do not rewire services already created
    * by the parent.
    *
@@ -112,19 +112,21 @@ class Canvas internal constructor(
  * Inline extension function to retrieve a dependency using reified type parameters.
  *
  * @param T The type of the dependency to retrieve
+ * @param qualifier An optional name distinguishing bindings of the same type
  * @return An instance of the requested type
  * @throws [MosaicMissingKeyException] if no instance is registered for the type
  */
-inline fun <reified T : Any> Canvas.source(): T = source(T::class)
+inline fun <reified T : Any> Canvas.source(qualifier: String? = null): T = source(T::class, qualifier)
 
 /**
  * Inline extension function to retrieve a dependency using reified type parameters.
  * Returns null if the source is not found.
  *
  * @param T The type of the dependency to retrieve
+ * @param qualifier An optional name distinguishing bindings of the same type
  * @return An instance of the requested type
  */
-inline fun <reified T : Any> Canvas.sourceOr(): T? = sourceOr(T::class)
+inline fun <reified T : Any> Canvas.sourceOrNull(qualifier: String? = null): T? = sourceOrNull(T::class, qualifier)
 
 /**
  * Executes [block] with a request-owned [Mosaic], inheriting the calling coroutine's context.

@@ -207,6 +207,8 @@ sealed interface TileReference {
 enum class LookupKind {
   REQUIRED,
   OPTIONAL,
+
+  /** Construction-time required lookup; the name is retained as a serialized metadata tag. */
   PAINT,
 }
 

@@ -67,7 +67,7 @@ class ProjectDependencyIntegrationTest {
         val Batch by multiTile<String, Metrics> { source<Metrics>(); emptyMap() }
         val PerKey by perKeyTile<String, Metrics> { source<Metrics>() }
         val Chunked by chunkedMultiTile<String, Metrics>(2) { source<Metrics>(); emptyMap() }
-        suspend fun base(): Canvas = canvas { single<Metrics> { Metrics() } }
+        suspend fun base(): Canvas = canvas { provide<Metrics> { Metrics() } }
         """.trimIndent(),
       )
     }

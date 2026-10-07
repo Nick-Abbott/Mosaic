@@ -106,7 +106,7 @@ private fun roots(
   suspend fun perKeyMissing() = canvas {}.withMosaic { compose(PerKey, "key") }
   suspend fun chunkedMissing() = canvas {}.withMosaic { compose(Chunked, "key") }
   suspend fun supplied() {
-    canvas { single<Required> { Required() } }.withMosaic {
+    canvas { provide<Required> { Required() } }.withMosaic {
       val mosaic = this
       mosaic.compose(Single)
       mosaic.compose(Batch, "key")
@@ -179,7 +179,7 @@ private fun localDelegationSource(): String =
     val batch by multiTile<String, Required> { source<Required>(); emptyMap() }
     val perKey by perKeyTile<String, Required> { source<Required>() }
     val chunked by chunkedMultiTile<String, Required>(2) { source<Required>(); emptyMap() }
-    canvas { single<Required> { Required() } }.withMosaic {
+    canvas { provide<Required> { Required() } }.withMosaic {
       val mosaic = this
       mosaic.compose(batch, "key")
       mosaic.compose(perKey, "key")

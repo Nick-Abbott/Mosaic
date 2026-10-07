@@ -14,7 +14,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import org.buildmosaic.core.exception.MosaicMissingKeyException
 import org.buildmosaic.core.source
-import org.buildmosaic.core.sourceOr
+import org.buildmosaic.core.sourceOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -59,11 +59,11 @@ class CanvasConstructionTest {
       val value = TestServiceImpl("keyed")
       val testCanvas =
         canvas {
-          single<TestService>(null) { unqualified }
-          single<TestService>("") { empty }
-          single<TestService>("primary") { primary }
-          single(CanvasKey(TestService::class, "secondary")) { secondary }
-          single(keyed) { value }
+          provide<TestService>(null) { unqualified }
+          provide<TestService>("") { empty }
+          provide<TestService>("primary") { primary }
+          provide(CanvasKey(TestService::class, "secondary")) { secondary }
+          provide(keyed) { value }
         }
       assertSame(unqualified, testCanvas.source<TestService>())
       assertSame(unqualified, testCanvas.source(TestService::class, null))
@@ -71,25 +71,25 @@ class CanvasConstructionTest {
       assertSame(primary, testCanvas.source(TestService::class, "primary"))
       assertSame(secondary, testCanvas.source(TestService::class, "secondary"))
       assertSame(value, testCanvas.source(keyed))
-      assertNull(testCanvas.sourceOr<TestServiceImpl>())
-      assertNull(testCanvas.sourceOr(TestService::class, "missing"))
+      assertNull(testCanvas.sourceOrNull<TestServiceImpl>())
+      assertNull(testCanvas.sourceOrNull(TestService::class, "missing"))
     }
 
   @Test
-  fun `should paint exact parent instances using reified and qualified keys`() =
+  fun `should source exact parent instances using reified and qualified keys`() =
     runTest {
       val parentService = TestServiceImpl("parent-service")
       val parentRepository = TestRepositoryImpl("parent-repository")
       val childCanvas =
         canvas(
           canvas {
-            single<TestService> { parentService }
-            single<TestRepository>("qualified") { parentRepository }
+            provide<TestService> { parentService }
+            provide<TestRepository>("qualified") { parentRepository }
           },
         ) {
-          single<TestService>("consumer") {
-            val service = paint<TestService>()
-            val repository = paint(CanvasKey(TestRepository::class, "qualified"))
+          provide<TestService>("consumer") {
+            val service = source<TestService>()
+            val repository = source(CanvasKey(TestRepository::class, "qualified"))
             TestServiceImpl("${service.getValue()}-${repository.getData()}")
           }
         }
@@ -102,40 +102,40 @@ class CanvasConstructionTest {
     }
 
   @Test
-  fun `should paint through ancestors`() =
+  fun `should source through ancestors`() =
     runTest {
       val grandparentService = TestServiceImpl("grandparent-service")
       val nearestService = TestServiceImpl("nearest-service")
-      val grandparentCanvas = canvas { single<TestService> { grandparentService } }
+      val grandparentCanvas = canvas { provide<TestService> { grandparentService } }
       val parentCanvas =
         grandparentCanvas.withLayer {
-          single<TestService> { nearestService }
+          provide<TestService> { nearestService }
         }
       val childCanvas =
         canvas(parentCanvas) {
-          single<TestRepository> { TestRepositoryImpl(paint<TestService>().getValue()) }
+          provide<TestRepository> { TestRepositoryImpl(source<TestService>().getValue()) }
         }
 
       assertEquals("nearest-service", childCanvas.source<TestRepository>().getData())
     }
 
   @Test
-  fun `should prefer local paint binding even when registered after its consumer`() =
+  fun `should prefer local source binding even when registered after its consumer`() =
     runTest {
       val parentRepository = TestRepositoryImpl("parent-repository")
       val parentCanvas =
         canvas {
-          single<TestRepository> { parentRepository }
-          single<TestService> { DependentService(paint<TestRepository>()) }
+          provide<TestRepository> { parentRepository }
+          provide<TestService> { DependentService(source<TestRepository>()) }
         }
       val parentService = parentCanvas.source<TestService>()
       val childService = TestServiceImpl("child-service")
       val childCanvas =
         canvas(parentCanvas) {
-          single<TestRepository>("consumer") {
-            TestRepositoryImpl(paint<TestService>().getValue())
+          provide<TestRepository>("consumer") {
+            TestRepositoryImpl(source<TestService>().getValue())
           }
-          single<TestService> { childService }
+          provide<TestService> { childService }
         }
 
       assertSame(childService, childCanvas.source<TestService>())
@@ -148,12 +148,12 @@ class CanvasConstructionTest {
   fun `should preserve missing key details and local constructor failures`() =
     runTest {
       val requestedKey = CanvasKey(TestService::class, "missing")
-      val parentCanvas = canvas { single<TestService> { TestServiceImpl("parent") } }
+      val parentCanvas = canvas { provide<TestService> { TestServiceImpl("parent") } }
       val missingException =
         assertFailsWith<MosaicMissingKeyException> {
           canvas(parentCanvas) {
-            single<TestRepository> {
-              paint(requestedKey)
+            provide<TestRepository> {
+              source(requestedKey)
               TestRepositoryImpl("unreachable")
             }
           }
@@ -164,12 +164,12 @@ class CanvasConstructionTest {
       val failure =
         assertFailsWith<IllegalStateException> {
           canvas(parentCanvas) {
-            single<TestRepository> {
-              paint<TestService>()
+            provide<TestRepository> {
+              source<TestService>()
               constructorContinued = true
               TestRepositoryImpl("unreachable")
             }
-            single<TestService> { error("local failure") }
+            provide<TestService> { error("local failure") }
           }
         }
 
@@ -183,12 +183,12 @@ class CanvasConstructionTest {
     runTest {
       val grandparentCanvas =
         canvas {
-          single<TestService> { TestServiceImpl("grandparent-service") }
+          provide<TestService> { TestServiceImpl("grandparent-service") }
         }
 
       val parentCanvas =
         canvas(grandparentCanvas) {
-          single<TestRepository> { TestRepositoryImpl("parent-repo") }
+          provide<TestRepository> { TestRepositoryImpl("parent-repo") }
         }
 
       val childCanvas =
@@ -210,7 +210,7 @@ class CanvasConstructionTest {
     runTest {
       val parentCanvas =
         canvas {
-          single<TestRepository> { TestRepositoryImpl("parent-repo") }
+          provide<TestRepository> { TestRepositoryImpl("parent-repo") }
         }
 
       val childCanvas =
@@ -218,8 +218,8 @@ class CanvasConstructionTest {
           // No TestService registered anywhere
         }
 
-      val service = childCanvas.sourceOr<TestService>()
-      val repository = childCanvas.sourceOr<TestRepository>()
+      val service = childCanvas.sourceOrNull<TestService>()
+      val repository = childCanvas.sourceOrNull<TestRepository>()
 
       assertNull(service)
       assertNotNull(repository)
@@ -243,19 +243,19 @@ class CanvasConstructionTest {
     runTest {
       val events = mutableListOf<String>()
       val parentResource = Resource { events.add("parent") }
-      val parent = canvas { single { parentResource } }
+      val parent = canvas { provide { parentResource } }
       parent.withLayer {
-        single<Resource>("first") {
+        provide<Resource>("first") {
           events.add("create first")
           Resource { events.add("close first") }
         }
-        single<Resource>("consumer") {
-          assertSame(parentResource, paint<Resource>())
-          paint<Resource>("dependency")
+        provide<Resource>("consumer") {
+          assertSame(parentResource, source<Resource>())
+          source<Resource>("dependency")
           events.add("create consumer")
           Resource { events.add("close consumer") }
         }
-        single<Resource>("dependency") {
+        provide<Resource>("dependency") {
           events.add("create dependency")
           Resource { events.add("close dependency") }
         }
@@ -282,46 +282,46 @@ class CanvasConstructionTest {
     runTest {
       val closed = mutableListOf<String>()
       val parentResource = Resource { closed.add("parent") }
-      val parent = canvas { single { parentResource } }
+      val parent = canvas { provide { parentResource } }
       val failure = AssertionError("failed construction")
       val firstCleanup = IllegalStateException("first cleanup")
-      val paintedCleanup = IllegalArgumentException("painted cleanup")
-      var paintedCount = 0
+      val dependencyCleanup = IllegalArgumentException("dependency cleanup")
+      var dependencyCount = 0
       val thrown =
         assertFailsWith<AssertionError> {
           parent.withLayer {
-            single<Resource>("first") {
+            provide<Resource>("first") {
               Resource {
                 closed.add("first")
                 throw firstCleanup
               }
             }
-            single<Resource>("consumer") {
-              assertSame(parentResource, paint<Resource>())
-              assertSame(paint<Resource>("painted"), paint<Resource>("painted"))
+            provide<Resource>("consumer") {
+              assertSame(parentResource, source<Resource>())
+              assertSame(source<Resource>("dependency"), source<Resource>("dependency"))
               Resource {
                 closed.add("consumer")
                 throw failure
               }
             }
-            single<String> { throw failure }
-            single<Resource>("painted") {
-              paintedCount++
+            provide<String> { throw failure }
+            provide<Resource>("dependency") {
+              dependencyCount++
               Resource {
-                closed.add("painted")
-                throw paintedCleanup
+                closed.add("dependency")
+                throw dependencyCleanup
               }
             }
-            single<Int> { error("must not be constructed") }
+            provide<Int> { error("must not be constructed") }
           }
         }
 
       assertSame(failure, thrown)
-      assertEquals(1, paintedCount)
-      assertEquals(listOf(paintedCleanup, firstCleanup), thrown.suppressed.toList())
-      assertEquals(listOf("consumer", "painted", "first"), closed)
+      assertEquals(1, dependencyCount)
+      assertEquals(listOf(dependencyCleanup, firstCleanup), thrown.suppressed.toList())
+      assertEquals(listOf("consumer", "dependency", "first"), closed)
       parent.close()
-      assertEquals(listOf("consumer", "painted", "first", "parent"), closed)
+      assertEquals(listOf("consumer", "dependency", "first", "parent"), closed)
     }
 
   @Test
@@ -337,9 +337,9 @@ class CanvasConstructionTest {
         launch {
           try {
             canvas {
-              single<Resource>("first") { Resource { closed.add("first") } }
-              single<String> {
-                paint<Resource>("painted")
+              provide<Resource>("first") { Resource { closed.add("first") } }
+              provide<String> {
+                source<Resource>("dependency")
                 entered.complete(Unit)
                 try {
                   awaitCancellation()
@@ -348,9 +348,9 @@ class CanvasConstructionTest {
                   throw failure
                 }
               }
-              single<Resource>("painted") {
+              provide<Resource>("dependency") {
                 Resource {
-                  closed.add("painted")
+                  closed.add("dependency")
                   throw cleanup
                 }
               }
@@ -367,7 +367,7 @@ class CanvasConstructionTest {
       assertSame(constructorFailure, original)
       assertEquals(cancellation.message, original?.message)
       assertEquals(listOf(cleanup), original?.suppressed?.toList())
-      assertEquals(listOf("painted", "first"), closed)
+      assertEquals(listOf("dependency", "first"), closed)
     }
 
   @Test
@@ -377,7 +377,7 @@ class CanvasConstructionTest {
       val building =
         launch {
           canvas {
-            single {
+            provide {
               currentCoroutineContext()[Job]!!.cancel()
               Resource { closed = true }
             }
@@ -405,9 +405,9 @@ class CanvasConstructionTest {
 
       val testCanvas =
         canvas {
-          single<TestService>("regular") { TestServiceImpl("regular") }
-          single<TestService>("normal") { normalCloseable }
-          single<TestService>("failing") { failingCloseable }
+          provide<TestService>("regular") { TestServiceImpl("regular") }
+          provide<TestService>("normal") { normalCloseable }
+          provide<TestService>("failing") { failingCloseable }
         }
 
       // Verify dependencies work
@@ -435,7 +435,7 @@ class CanvasConstructionTest {
 
       val testCanvas =
         canvas {
-          single<TestService> { createAsyncService() }
+          provide<TestService> { createAsyncService() }
         }
 
       val service = testCanvas.source<TestService>()
@@ -448,13 +448,13 @@ class CanvasConstructionTest {
     runTest {
       val baseCanvas =
         canvas {
-          single<TestService> { TestServiceImpl("base-service") }
-          single<TestRepository> { TestRepositoryImpl("base-repo") }
+          provide<TestService> { TestServiceImpl("base-service") }
+          provide<TestRepository> { TestRepositoryImpl("base-repo") }
         }
 
       val layeredCanvas =
         baseCanvas.withLayer {
-          single<TestService> { TestServiceImpl("layered-service") }
+          provide<TestService> { TestServiceImpl("layered-service") }
         }
 
       // Base canvas should remain unchanged
@@ -475,36 +475,36 @@ class CanvasConstructionTest {
     runTest {
       assertFailsWith<IllegalStateException> {
         canvas {
-          single<TestService> { TestServiceImpl("first") }
-          single<TestService> { TestServiceImpl("duplicate") }
+          provide<TestService> { TestServiceImpl("first") }
+          provide<TestService> { TestServiceImpl("duplicate") }
         }
       }
 
       assertFailsWith<IllegalStateException> {
         canvas {
-          single(CanvasKey(TestService::class)) { TestServiceImpl("first") }
-          single(CanvasKey(TestService::class)) { TestServiceImpl("duplicate") }
+          provide(CanvasKey(TestService::class)) { TestServiceImpl("first") }
+          provide(CanvasKey(TestService::class)) { TestServiceImpl("duplicate") }
         }
       }
 
       assertFailsWith<IllegalStateException> {
         canvas {
-          single<TestService>(null) { TestServiceImpl("first") }
-          single<TestService>(null) { TestServiceImpl("duplicate") }
+          provide<TestService>(null) { TestServiceImpl("first") }
+          provide<TestService>(null) { TestServiceImpl("duplicate") }
         }
       }
 
       assertFailsWith<IllegalStateException> {
         canvas {
-          single<TestService>("same-qualifier") { TestServiceImpl("first") }
-          single<TestService>("same-qualifier") { TestServiceImpl("duplicate") }
+          provide<TestService>("same-qualifier") { TestServiceImpl("first") }
+          provide<TestService>("same-qualifier") { TestServiceImpl("duplicate") }
         }
       }
 
       assertFailsWith<IllegalStateException> {
         canvas {
-          single(CanvasKey(TestService::class, "same-qualifier")) { TestServiceImpl("first") }
-          single(CanvasKey(TestService::class, "same-qualifier")) { TestServiceImpl("duplicate") }
+          provide(CanvasKey(TestService::class, "same-qualifier")) { TestServiceImpl("first") }
+          provide(CanvasKey(TestService::class, "same-qualifier")) { TestServiceImpl("duplicate") }
         }
       }
     }
@@ -534,14 +534,14 @@ class CanvasConstructionTest {
     runTest {
       val testCanvas =
         canvas {
-          single<DatabaseConfig> { DatabaseConfigImpl("localhost:5432") }
-          single<TestRepository> {
-            val config = paint<DatabaseConfig>()
+          provide<DatabaseConfig> { DatabaseConfigImpl("localhost:5432") }
+          provide<TestRepository> {
+            val config = source<DatabaseConfig>()
             DatabaseService(config)
           }
-          single<TestService> {
-            val repo = paint<TestRepository>()
-            val config = paint<DatabaseConfig>()
+          provide<TestService> {
+            val repo = source<TestRepository>()
+            val config = source<DatabaseConfig>()
             BusinessService(repo, config)
           }
         }
@@ -553,21 +553,21 @@ class CanvasConstructionTest {
 
   // Error handling and edge case tests
   @Test
-  fun `should share one construction across concurrent paint calls`() =
+  fun `should share one construction across concurrent source calls`() =
     runTest {
       var constructions = 0
       val expected = TestRepositoryImpl("shared")
       val testCanvas =
         canvas {
-          single<TestService> {
+          provide<TestService> {
             val repositories =
               coroutineScope {
-                listOf(async { paint<TestRepository>() }, async { paint<TestRepository>() }).awaitAll()
+                listOf(async { source<TestRepository>() }, async { source<TestRepository>() }).awaitAll()
               }
             repositories.forEach { assertSame(expected, it) }
             DependentService(repositories.first())
           }
-          single<TestRepository> {
+          provide<TestRepository> {
             constructions++
             delay(1)
             expected
@@ -588,21 +588,21 @@ class CanvasConstructionTest {
         assertFailsWith<IllegalStateException> {
           withTimeout(1.seconds) {
             canvas {
-              single<String> {
+              provide<String> {
                 coroutineScope {
-                  listOf(async { paint<TestService>() }, async { paint<TestRepository>() }).awaitAll()
+                  listOf(async { source<TestService>() }, async { source<TestRepository>() }).awaitAll()
                 }
                 "root"
               }
-              single<TestService> {
+              provide<TestService> {
                 serviceStarted.complete(Unit)
                 repositoryStarted.await()
-                DependentService(paint<TestRepository>())
+                DependentService(source<TestRepository>())
               }
-              single<TestRepository> {
+              provide<TestRepository> {
                 repositoryStarted.complete(Unit)
                 serviceStarted.await()
-                TestRepositoryImpl(paint<TestService>().getValue())
+                TestRepositoryImpl(source<TestService>().getValue())
               }
             }
           }
@@ -617,12 +617,12 @@ class CanvasConstructionTest {
         assertFailsWith<IllegalStateException> {
           withTimeout(1.seconds) {
             canvas {
-              single<TestService> {
-                val repo = paint<TestRepository>()
+              provide<TestService> {
+                val repo = source<TestRepository>()
                 TestServiceImpl("service-${repo.getData()}")
               }
-              single<TestRepository> {
-                val service = coroutineScope { async { paint<TestService>() }.await() }
+              provide<TestRepository> {
+                val service = coroutineScope { async { source<TestService>() }.await() }
                 TestRepositoryImpl("repo-${service.getValue()}")
               }
             }
@@ -636,17 +636,17 @@ class CanvasConstructionTest {
     runTest {
       val testCanvas =
         canvas {
-          single<TestService>("mosaic-service") { TestServiceImpl("mosaic-test") }
-          single<TestRepository> { TestRepositoryImpl("default-repo") }
+          provide<TestService>("mosaic-service") { TestServiceImpl("mosaic-test") }
+          provide<TestRepository> { TestRepositoryImpl("default-repo") }
         }
 
       testCanvas.withMosaic {
         val mosaic = this
         // Test Mosaic extension functions
         val service = mosaic.source<TestService>("mosaic-service")
-        val defaultRepo = mosaic.sourceOr<TestRepository>()
-        val missing = mosaic.sourceOr<String>()
-        val missingWithKey = mosaic.sourceOr(CanvasKey(TestService::class, "missing"))
+        val defaultRepo = mosaic.sourceOrNull<TestRepository>()
+        val missing = mosaic.sourceOrNull<String>()
+        val missingWithKey = mosaic.sourceOrNull(CanvasKey(TestService::class, "missing"))
 
         assertNotNull(service)
         assertEquals("mosaic-test", service.getValue())

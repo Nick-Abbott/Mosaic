@@ -10,7 +10,7 @@ K names refer to analysis-core tests; C/B to compiler tests; G to TestKit.
 [public API matrix](PUBLIC_API_MATRIX.md) fixes support decisions and interactions.
 
 Current production guarantee: reified, KClass, and CanvasKey forms share exact
-runtime key identity for lookup, registration, and paint. Immutable top-level
+runtime key identity for lookup, registration, and construction-time lookup. Immutable top-level
 CanvasKey values export explicit facts; unavailable binary exports and dynamic
 key components stay named unknown. Mosaic.canvas carries its current Canvas.
 Canvas layering, Tile creation, and compose/composeAsync retain evaluation order

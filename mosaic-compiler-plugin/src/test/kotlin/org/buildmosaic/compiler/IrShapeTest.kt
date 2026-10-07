@@ -33,7 +33,7 @@ class IrShapeTest {
         class Metrics
         val ExampleTile = singleTile { source<Metrics>(); "ok" }
         suspend fun consume(base: Canvas): String = base.withMosaic { compose(ExampleTile) }
-        suspend fun entry(): String = consume(canvas { single<Metrics> { Metrics() } })
+        suspend fun entry(): String = consume(canvas { provide<Metrics> { Metrics() } })
         """.trimIndent(),
       )
     assertEquals(org.buildmosaic.analysis.RootStatus.VERIFIED, report.roots.single().status, report.toString())
@@ -198,9 +198,9 @@ class IrShapeTest {
         class Metrics
         val SeparateTile = singleTile { canvas { }.withMosaic { source<Metrics>() } }
         val CurrentTile = singleTile { val same = this; same.source<Metrics>() }
-        val OwnCanvasTile = singleTile { canvas { single<Metrics> { Metrics() } }.withMosaic { source<Metrics>() } }
-        suspend fun entry() = canvas { single<Metrics> { Metrics() } }.withMosaic { compose(SeparateTile) }
-        suspend fun currentEntry() = canvas { single<Metrics> { Metrics() } }.withMosaic { compose(CurrentTile) }
+        val OwnCanvasTile = singleTile { canvas { provide<Metrics> { Metrics() } }.withMosaic { source<Metrics>() } }
+        suspend fun entry() = canvas { provide<Metrics> { Metrics() } }.withMosaic { compose(SeparateTile) }
+        suspend fun currentEntry() = canvas { provide<Metrics> { Metrics() } }.withMosaic { compose(CurrentTile) }
         suspend fun ownCanvasEntry() = canvas { }.withMosaic { compose(OwnCanvasTile) }
         """.trimIndent(),
       )
@@ -320,7 +320,7 @@ class IrShapeTest {
         class Metrics
         class Service(val metrics: Metrics)
         val BatchTile = multiTile<String, String> { emptyMap() }
-        suspend fun entry() = canvas { single<Service> { Service(paint<Metrics>()) } }.withMosaic { compose(BatchTile, emptyList()) }
+        suspend fun entry() = canvas { provide<Service> { Service(source<Metrics>()) } }.withMosaic { compose(BatchTile, emptyList()) }
         """.trimIndent(),
       )
     assertTrue(
@@ -342,14 +342,14 @@ class IrShapeTest {
         val StringsTile = singleTile { source<Array<String>>() }
         val ExampleTile = singleTile { source<List<String>>(); source<Set<String>>(); source<Map<String, String>>() }
         suspend fun entry() = canvas {
-          single<MutableList<String>> { mutableListOf() }
-          single<MutableSet<String>> { mutableSetOf() }
-          single<MutableMap<String, String>> { mutableMapOf() }
+          provide<MutableList<String>> { mutableListOf() }
+          provide<MutableSet<String>> { mutableSetOf() }
+          provide<MutableMap<String, String>> { mutableMapOf() }
         }.withMosaic { compose(ExampleTile) }
-        suspend fun mismatch() = canvas { single<Array<Int>> { arrayOf(1) } }.withMosaic { compose(StringsTile) }
-        suspend fun match() = canvas { single<Array<String>> { arrayOf("one") } }.withMosaic { compose(StringsTile) }
+        suspend fun mismatch() = canvas { provide<Array<Int>> { arrayOf(1) } }.withMosaic { compose(StringsTile) }
+        suspend fun match() = canvas { provide<Array<String>> { arrayOf("one") } }.withMosaic { compose(StringsTile) }
         val NestedTile = singleTile { source<Array<List<String>>>() }
-        suspend fun nestedMatch() = canvas { single<Array<List<Int>>> { arrayOf(listOf(1)) } }.withMosaic { compose(NestedTile) }
+        suspend fun nestedMatch() = canvas { provide<Array<List<Int>>> { arrayOf(listOf(1)) } }.withMosaic { compose(NestedTile) }
         """.trimIndent(),
       )
     assertEquals(org.buildmosaic.analysis.RootStatus.VERIFIED, report.roots.single().status, report.toString())
@@ -396,7 +396,7 @@ class IrShapeTest {
         class Metrics
         val NeedsMetrics = singleTile { source<Metrics>() }
         abstract class Base {
-          suspend fun handle() = respond(canvas { }, "marker", canvas { single<Metrics> { Metrics() } })
+          suspend fun handle() = respond(canvas { }, "marker", canvas { provide<Metrics> { Metrics() } })
           protected abstract suspend fun respond(left: Canvas, marker: String, right: Canvas): Metrics
         }
         class Impl : Base() {
@@ -483,7 +483,7 @@ class IrShapeTest {
       import org.buildmosaic.core.injection.*
       const val QUALIFIER = "$value"
       class Metrics
-      suspend fun base(): Canvas = canvas { single<Metrics>(QUALIFIER) { Metrics() } }
+      suspend fun base(): Canvas = canvas { provide<Metrics>(QUALIFIER) { Metrics() } }
       """.trimIndent()
     producer.writeText(producerSource("old"))
     val firstClasses = File(directory, "first-classes")
@@ -627,12 +627,12 @@ class IrShapeTest {
       fun overloaded(value: Int): Int = value
       const val QUALIFIER = "qualified"
       val MetricsTile = singleTile { source<Metrics>() }
-      val OtherTile = perKeyTile<String, String> { sourceOr<Metrics>(); it }
+      val OtherTile = perKeyTile<String, String> { sourceOrNull<Metrics>(); it }
       val BatchTile = multiTile<String, String> { keys -> keys.associateWith { source<GlobalContext>(); it } }
       val ConditionalTile = singleTile { if (System.nanoTime() > 0) source<Metrics>() else null }
       val ExplicitKeyTile = singleTile { source(CanvasKey(Metrics::class, "dynamic")) }
-      suspend fun platformCanvas(): Canvas = canvas { single<GlobalContext> { GlobalContext() }; single<Metrics>(QUALIFIER) { Metrics() } }
-      suspend fun layer(parent: Canvas): Canvas = parent.withLayer { single<Service> { Service(paint<Metrics>()) } }
+      suspend fun platformCanvas(): Canvas = canvas { provide<GlobalContext> { GlobalContext() }; provide<Metrics>(QUALIFIER) { Metrics() } }
+      suspend fun layer(parent: Canvas): Canvas = parent.withLayer { provide<Service> { Service(source<Metrics>()) } }
       suspend fun entry() {
         val base = platformCanvas()
         val aliased = base

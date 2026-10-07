@@ -7,6 +7,14 @@ predate this maintained changelog; their release history is not reconstructed he
 
 ### Changed
 
+- Canvas-owned registration is `provide`, construction-time required lookup is
+  `source`, and optional Canvas/Mosaic lookup is `sourceOrNull`. The former
+  `single`, `paint`, and `sourceOr` names are removed without compatibility aliases.
+  This intentionally breaks Kotlin source and JVM binary compatibility before 1.0;
+  recompile consumers. Eager construction and resource ownership are unchanged.
+- Reified Canvas `source<T>(qualifier)` and `sourceOrNull<T>(qualifier)` accept
+  an optional qualifier, matching Mosaic lookup. Explicit CanvasKey and KClass
+  lookups remain supported.
 - Scoped execution is the sole supported lifecycle: remove `Canvas.create()` and
   public `MosaicImpl` construction/subclassing. Move handler calls inside
   `canvas.withMosaic { handler(this) }`; put dispatcher selection around that call.
