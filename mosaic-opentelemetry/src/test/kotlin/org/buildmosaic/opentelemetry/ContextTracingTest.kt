@@ -134,7 +134,7 @@ class ContextTracingTest {
               otel.telemetry
             }
           }
-        val request = application.withLayer { single<String> { "private request data" } }
+        val request = application.withLayer { provide<String> { "private request data" } }
         withContext(StandardTestDispatcher(testScheduler)) {
           application.withMosaic {
             val a = this

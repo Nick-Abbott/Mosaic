@@ -573,10 +573,10 @@ internal class SourceContractExtractor(
               } else {
                 receiver.mosaic ?: CanvasExpression.Unknown("Unresolved Mosaic receiver transfer", site(call))
               }
-            effects += Effect.Lookup(valueId(call), lookup, key(call, actuals, file, owner), if (target.endsWith("sourceOr")) LookupKind.OPTIONAL else LookupKind.REQUIRED, site(call))
+            effects += Effect.Lookup(valueId(call), lookup, key(call, actuals, file, owner), if (target.endsWith("sourceOrNull")) LookupKind.OPTIONAL else LookupKind.REQUIRED, site(call))
             return Value(callable = isCallableType(call.type))
           }
-          target == "org.buildmosaic.core.injection.CanvasFactory.paint" && call is IrCall -> {
+          target == "org.buildmosaic.core.injection.CanvasFactory.source" && call is IrCall -> {
             effects += Effect.Lookup(valueId(call), receiver.canvas ?: CanvasExpression.Unknown("CanvasFactory receiver transfer is unsupported", site(call)), key(call, actuals, file, owner), LookupKind.PAINT, site(call))
             return Value(callable = isCallableType(call.type))
           }
@@ -745,7 +745,7 @@ internal class SourceContractExtractor(
       body?.statements?.forEach { statement ->
         if (statement is IrCall && resolvedName(statement) in
           setOf(
-            "org.buildmosaic.core.injection.CanvasBuilder.single",
+            "org.buildmosaic.core.injection.CanvasBuilder.provide",
             "org.buildmosaic.core.injection.CanvasBuilder.instance",
           )
         ) {
@@ -757,7 +757,7 @@ internal class SourceContractExtractor(
           }
           if (resolvedName(statement).endsWith(".instance")) {
             // prepare already evaluated key/qualifier and value in source order.
-            // Normalize by parameter name, just like single; borrowed values have no constructor effects.
+            // Normalize by parameter name, just like provide; borrowed values have no constructor effects.
             bindings += Binding(key(statement, prepared, file, owner), site = site(statement))
             return@forEach
           }
@@ -863,7 +863,7 @@ internal class SourceContractExtractor(
       setOf(
         "org.buildmosaic.core.Mosaic.<get-canvas>",
         "org.buildmosaic.core.injection.CanvasKey.<init>",
-        "org.buildmosaic.core.injection.CanvasFactory.paint", "org.buildmosaic.core.Mosaic.compose",
+        "org.buildmosaic.core.injection.CanvasFactory.source", "org.buildmosaic.core.Mosaic.compose",
         "org.buildmosaic.core.Mosaic.composeAsync",
         "org.buildmosaic.core.injection.withMosaic",
         "org.buildmosaic.core.injection.canvas", "org.buildmosaic.core.injection.Canvas.withLayer",

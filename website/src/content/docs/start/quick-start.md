@@ -53,7 +53,7 @@ fun main() = runBlocking {
 
 Run `./gradlew run` if your project has a wrapper, or `gradle run`. The program prints `Hello, user-123!`.
 
-The **Canvas** binds input under a typed key. `instance` registers the existing request value without transferring ownership to Canvas; use `single { ... }` when Canvas constructs and owns a value. `withLayer` adds request values without changing the application Canvas. `withMosaic { ... }` creates a **Mosaic** with its own Tile cache, owned by the calling coroutine. Leaving the block cancels unfinished work and waits for cleanup. `compose(GreetingTile)` executes the Tile and suspends until its value is available. The Tile reads the input using `source`.
+The **Canvas** binds input under a typed key. `instance` registers the existing request value without transferring ownership to Canvas; use `provide { ... }` when Canvas constructs and owns a value. `withLayer` adds request values without changing the application Canvas. `withMosaic { ... }` creates a **Mosaic** with its own Tile cache, owned by the calling coroutine. Leaving the block cancels unfinished work and waits for cleanup. `compose(GreetingTile)` executes the Tile and suspends until its value is available. The Tile reads the input using `source`.
 
 ## Compose the response from Tiles
 

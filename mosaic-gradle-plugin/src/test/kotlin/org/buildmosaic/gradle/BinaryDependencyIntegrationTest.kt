@@ -48,9 +48,9 @@ class BinaryDependencyIntegrationTest {
       class Metrics
       class PlatformConfig
       suspend fun platformCanvas(): Canvas = canvas {
-        single<GlobalContext> { GlobalContext() }
-        single<Metrics> { Metrics() }
-        single<PlatformConfig> { PlatformConfig() }
+        provide<GlobalContext> { GlobalContext() }
+        provide<Metrics> { Metrics() }
+        provide<PlatformConfig> { PlatformConfig() }
       }
       abstract class PlatformComponent {
         suspend fun handle(requestId: String): String = respond(platformCanvas(), requestId)
@@ -152,19 +152,19 @@ class BinaryDependencyIntegrationTest {
         import tilelib.*
         import adapter.applicationBase
         suspend fun applicationLayer(parent: Canvas): Canvas = parent.withLayer {
-          single<Service> { Service(paint<Metrics>()) }
+          provide<Service> { Service(source<Metrics>()) }
         }
         class ApplicationComponent : PlatformComponent() {
           override suspend fun respond(base: Canvas, requestId: String): String {
             val application = applicationLayer(base)
-            val request = application.withLayer { single<RequestContext> { RequestContext(requestId) } }
+            val request = application.withLayer { provide<RequestContext> { RequestContext(requestId) } }
             return request.withMosaic { compose(EnterpriseTile) }
           }
         }
         class FrameworkApplication : PlatformComponent() {
           override suspend fun respond(base: Canvas, requestId: String): String {
             val application = applicationLayer(base)
-            val request = application.withLayer { single<RequestContext> { RequestContext(requestId) } }
+            val request = application.withLayer { provide<RequestContext> { RequestContext(requestId) } }
             return request.withMosaic { compose(EnterpriseTile) }
           }
         }
@@ -176,7 +176,7 @@ class BinaryDependencyIntegrationTest {
         suspend fun slotEntry(): String = SlotApplication().slotHandle()
         suspend fun adapterEntry(): String {
           val application = applicationLayer(applicationBase())
-          val request = application.withLayer { single<RequestContext> { RequestContext("r") } }
+          val request = application.withLayer { provide<RequestContext> { RequestContext("r") } }
           return request.withMosaic { compose(EnterpriseTile) }
         }
         """.trimIndent(),
@@ -257,7 +257,7 @@ class BinaryDependencyIntegrationTest {
     platformSource.writeText(
       originalPlatform
         .replace("platform initialization executed", "platform initialization updated")
-        .replace("  single<PlatformConfig> { PlatformConfig() }\n", ""),
+        .replace("  provide<PlatformConfig> { PlatformConfig() }\n", ""),
     )
     val changedPlatform = run(platform, "jar")
     assertEquals(TaskOutcome.SUCCESS, changedPlatform.task(":extractMosaicMain")?.outcome)

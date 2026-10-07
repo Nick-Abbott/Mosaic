@@ -96,9 +96,9 @@ internal fun isCapabilityType(type: IrType): Boolean =
 internal fun isSource(target: String): Boolean =
   target in
     setOf(
-      "org.buildmosaic.core.source", "org.buildmosaic.core.sourceOr",
-      "org.buildmosaic.core.injection.source", "org.buildmosaic.core.injection.sourceOr",
-      "org.buildmosaic.core.injection.Canvas.source", "org.buildmosaic.core.injection.Canvas.sourceOr",
+      "org.buildmosaic.core.source", "org.buildmosaic.core.sourceOrNull",
+      "org.buildmosaic.core.injection.source", "org.buildmosaic.core.injection.sourceOrNull",
+      "org.buildmosaic.core.injection.Canvas.source", "org.buildmosaic.core.injection.Canvas.sourceOrNull",
     )
 
 internal fun isTileFactory(call: IrFunctionAccessExpression): Boolean =

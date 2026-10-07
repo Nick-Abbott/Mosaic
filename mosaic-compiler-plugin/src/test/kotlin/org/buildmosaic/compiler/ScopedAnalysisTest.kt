@@ -206,9 +206,9 @@ private val scopedSource =
   suspend fun strings() = canvas { val orderId = "order-1"; instance(OrderKey, orderId); instance("primary", "value"); instance("plain") }.withMosaic { source(OrderKey); source<String>("primary"); source<String>() }
   suspend fun aliased() { val s = Service(); canvas { val b = this; b.instance(s) }.withMosaic { compose(Ready) } }
   suspend fun child() = canvas {}.withLayer { instance(Service()) }.withMosaic { compose(Ready) }
-  suspend fun optional() = canvas {}.withMosaic { sourceOr<Service>(); 1 }
+  suspend fun optional() = canvas {}.withMosaic { sourceOrNull<Service>(); 1 }
   fun existing(parent: Canvas): Service { parent.source<Service>(); return Service() }
-  suspend fun registerBeforeProvider(): Canvas { val p = canvas {}; return canvas { single<Service> { Service() }; instance("primary", existing(p)) } }
+  suspend fun registerBeforeProvider(): Canvas { val p = canvas {}; return canvas { provide<Service> { Service() }; instance("primary", existing(p)) } }
   suspend fun registrationOrder() = registerBeforeProvider().withMosaic { compose(Qualified) }
   fun readQualifier(parent: Canvas): String { parent.source(String::class, "qualifier"); return "primary" }
   fun readKey(parent: Canvas): CanvasKey<String> { parent.source(String::class, "key"); return OrderKey }

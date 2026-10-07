@@ -24,7 +24,7 @@ class PrivacyTracingTest {
         withContext(StandardTestDispatcher(testScheduler)) {
           canvas {
             tracing { otel.telemetry }
-            single<String> { payload }
+            provide<String> { payload }
           }.withMosaic {
             val mosaic = this
 

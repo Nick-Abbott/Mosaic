@@ -51,9 +51,13 @@ keep the complete handler invocation inside its block.
 Reuse requires the same Mosaic and Tile instance;
 Tile names are labels, not cache identities. MultiTile batch boundaries depend on
 scheduling. Scope or close a Canvas when its local bindings own resources;
-`withMosaic` does not close its Canvas. Use `single { ... }` for Canvas-owned
+`withMosaic` does not close its Canvas. Use `provide { ... }` for Canvas-owned
 values or `instance(existingValue)` for externally owned bindings that Canvas
-must never close, including on construction failure.
+must never close, including on construction failure. Providers are constructed eagerly;
+inside a `provide` constructor, `source` resolves another required binding. On a built
+Canvas or inside a Tile, use `source<Service>("primary")` for required lookup or
+`sourceOrNull<Service>("primary")` for optional lookup. Both accept an omitted qualifier,
+and explicit `KClass`/`CanvasKey` lookups remain available on Canvas.
 
 MultiTile retains a terminal outcome per key. Present nullable values succeed;
 omitted keys fail individually. A bulk provider exception fails that invocation's

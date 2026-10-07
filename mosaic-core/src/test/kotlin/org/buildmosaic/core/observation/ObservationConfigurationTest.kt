@@ -24,9 +24,9 @@ class ObservationConfigurationTest {
           }
         }
       val parent = canvas { installExecutionObserver { observer } }
-      val child = parent.withLayer { single<String> { "private input" } }
+      val child = parent.withLayer { provide<String> { "private input" } }
       val grandchild = canvas(child) {}
-      assertNull(child.sourceOr(ExecutionObserver::class))
+      assertNull(child.sourceOrNull(ExecutionObserver::class))
       assertEquals("private input", grandchild.withMosaic { compose(singleTile { source<String>() }) })
       assertEquals(1, recording.executions.size)
       grandchild.close()
@@ -101,7 +101,7 @@ class ObservationConfigurationTest {
   @Test fun diRegistrationDoesNotInstallObserver() =
     runTest {
       val observer = RecordingObserver()
-      val parent = canvas { single<ExecutionObserver> { observer } }
+      val parent = canvas { provide<ExecutionObserver> { observer } }
       assertEquals(1, parent.withMosaic { compose(singleTile { 1 }) })
       assertTrue(observer.executions.isEmpty())
       val child = parent.withLayer { installExecutionObserver { observer } }

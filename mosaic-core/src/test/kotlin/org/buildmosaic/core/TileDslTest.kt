@@ -22,7 +22,7 @@ class TileDslTest {
       }
       val service = Service()
       val mockCanvas =
-        canvas { single { service } }
+        canvas { provide { service } }
       val testDispatcher = StandardTestDispatcher(testScheduler)
       withContext(testDispatcher) {
         mockCanvas.withMosaic {
@@ -55,7 +55,7 @@ class TileDslTest {
       }
       val service = Service()
       val mockCanvas =
-        canvas { single { service } }
+        canvas { provide { service } }
       val testDispatcher = StandardTestDispatcher(testScheduler)
       withContext(testDispatcher) {
         mockCanvas.withMosaic {
@@ -91,7 +91,7 @@ class TileDslTest {
       }
       val service = Service()
       val mockCanvas =
-        canvas { single { service } }
+        canvas { provide { service } }
       val testDispatcher = StandardTestDispatcher(testScheduler)
       withContext(testDispatcher) {
         mockCanvas.withMosaic {
@@ -131,7 +131,7 @@ class TileDslTest {
       }
       val service = Service(this)
       val mockCanvas =
-        canvas { single { service } }
+        canvas { provide { service } }
       val testDispatcher = StandardTestDispatcher(testScheduler)
       withContext(testDispatcher) {
         mockCanvas.withMosaic {

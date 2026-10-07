@@ -142,6 +142,12 @@ val applicationCanvas = canvas {
 }
 ```
 
+Use `provide<Service> { Service(source<Config>()) }` when Canvas constructs and owns
+a value. Canvas constructs providers eagerly; `source` resolves a required binding
+during construction. On a built Canvas or inside a Tile, `source` retrieves a required
+value and `sourceOrNull` returns `null` for a missing binding. Both support qualifiers,
+for example `applicationCanvas.source<OrderService>("primary")`.
+
 The [framework examples](examples) show how each application creates these services.
 Bind the request input in a child Canvas, then ask for the page:
 

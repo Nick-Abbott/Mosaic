@@ -26,7 +26,7 @@ class InstanceBindingTest {
       val key = CanvasKey(Any::class, "keyed")
       val canvas =
         canvas {
-          single<List<Any>> { listOf(paint<Any>(), paint<Any>("primary"), paint(key)) }
+          provide<List<Any>> { listOf(source<Any>(), source<Any>("primary"), source(key)) }
           instance(ordinary)
           instance("primary", qualified)
           instance(key, keyed)
@@ -45,12 +45,12 @@ class InstanceBindingTest {
         canvas {
           instance<Service>(ordinary)
           instance<Service>("primary", qualified)
-          single<List<Service>> { listOf(paint(), paint("primary")) }
+          provide<List<Service>> { listOf(source(), source("primary")) }
         }
       assertSame(ordinary, canvas.source<Service>())
       assertSame(qualified, canvas.source(Service::class, "primary"))
-      assertNull(canvas.sourceOr(Resource::class))
-      assertNull(canvas.sourceOr(Resource::class, "primary"))
+      assertNull(canvas.sourceOrNull(Resource::class))
+      assertNull(canvas.sourceOrNull(Resource::class, "primary"))
       assertEquals(listOf(ordinary, qualified), canvas.source<List<Service>>())
       canvas.close()
       assertEquals(listOf(0, 0), listOf(ordinary.closes, qualified.closes))
@@ -64,7 +64,7 @@ class InstanceBindingTest {
           instance("plain")
           instance("primary", "qualified")
           instance(orderKey, "order-1")
-          single<List<String>> { listOf(paint(), paint("primary"), paint(orderKey)) }
+          provide<List<String>> { listOf(source(), source("primary"), source(orderKey)) }
         }
       assertEquals("plain", canvas.source<String>())
       assertEquals("qualified", canvas.source(String::class, "primary"))
@@ -84,7 +84,7 @@ class InstanceBindingTest {
         instance(borrowed)
         instance("primary", qualified)
         instance(key, keyed)
-        single("owned") { owned }
+        provide("owned") { owned }
       }.close()
       assertEquals(listOf(0, 0, 0), listOf(borrowed.closes, qualified.closes, keyed.closes))
       assertEquals(1, owned.closes)
@@ -102,8 +102,8 @@ class InstanceBindingTest {
           instance(borrowed)
           instance("primary", qualified)
           instance(key, keyed)
-          single("owned") { owned }
-          single<String> { error("construction failed") }
+          provide("owned") { owned }
+          provide<String> { error("construction failed") }
         }
       }
       assertEquals(listOf(0, 0, 0), listOf(borrowed.closes, qualified.closes, keyed.closes))
@@ -121,14 +121,14 @@ class InstanceBindingTest {
       }
       assertFailsWith<IllegalStateException> {
         canvas {
-          single(key) { Any() }
+          provide(key) { Any() }
           instance(key, Any())
         }
       }
       assertFailsWith<IllegalStateException> {
         canvas {
           instance(key, Any())
-          single(key) { Any() }
+          provide(key) { Any() }
         }
       }
       assertFailsWith<IllegalStateException> {
@@ -152,7 +152,7 @@ class InstanceBindingTest {
       val child =
         parent.withLayer {
           instance(override)
-          single<List<Resource>> { listOf(paint(), paint("parent")) }
+          provide<List<Resource>> { listOf(source(), source("parent")) }
         }
       assertSame(override, child.source<Resource>())
       assertSame(inherited, parent.source<Resource>())

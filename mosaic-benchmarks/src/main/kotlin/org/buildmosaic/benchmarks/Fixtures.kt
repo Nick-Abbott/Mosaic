@@ -80,7 +80,7 @@ internal object CanvasFixtures {
   val lookupKey = CanvasKey(Int::class, "lookup")
 
   suspend fun lookupCanvas(depth: Int): Canvas {
-    var layer: Canvas = canvas { single(lookupKey) { 17 } }
+    var layer: Canvas = canvas { provide(lookupKey) { 17 } }
     repeat(depth) { layer = layer.withLayer {} }
     return layer
   }
@@ -90,6 +90,6 @@ internal object CanvasFixtures {
 
   suspend fun child(parent: Canvas, keys: List<CanvasKey<Int>>): Canvas =
     parent.withLayer {
-      keys.forEachIndexed { index, key -> single(key) { index } }
+      keys.forEachIndexed { index, key -> provide(key) { index } }
     }
 }

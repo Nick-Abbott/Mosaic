@@ -41,7 +41,7 @@ class BuildCacheIntegrationTest {
       class First
       class Second
       typealias Selected = $selected
-      suspend fun base(): Canvas = canvas { single<Metrics>(QUALIFIER) { Metrics() } }
+      suspend fun base(): Canvas = canvas { provide<Metrics>(QUALIFIER) { Metrics() } }
       inline fun ordinaryInline(): Int = $inlineValue
       fun api(): Int = 1
       """.trimIndent()
