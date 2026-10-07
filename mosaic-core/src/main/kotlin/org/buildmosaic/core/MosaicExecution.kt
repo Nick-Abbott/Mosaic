@@ -1,19 +1,10 @@
 package org.buildmosaic.core
 
-import kotlinx.coroutines.currentCoroutineContext
-import org.buildmosaic.core.injection.Canvas
-
-/** The single owner of runtime creation and teardown, including test executions. */
-internal suspend fun <R> withMosaicExecution(
-  canvas: Canvas,
-  tiles: Map<Tile<*>, Tile<*>> = emptyMap(),
-  multiTiles: Map<MultiTile<*, *>, MultiTile<*, *>> = emptyMap(),
-  block: suspend Mosaic.() -> R,
-): R {
-  val mosaic = MosaicImpl(canvas, currentCoroutineContext(), tiles, multiTiles)
+/** Runs the block with the engine, then awaits producer and attached-child cleanup on every exit. */
+internal suspend fun <R> MosaicImpl.withMosaicExecution(block: suspend Mosaic.() -> R): R {
   try {
-    return block(mosaic)
+    return block(this)
   } finally {
-    mosaic.shutdown()
+    shutdown()
   }
 }

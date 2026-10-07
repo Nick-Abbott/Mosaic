@@ -22,8 +22,9 @@ dependencies {
 }
 ```
 
-The module exposes core and coroutine test APIs. Use the same Mosaic version as
-core, or the [runtime BOM](../mosaic-bom/README.md). See
+The module exposes core and coroutine test APIs. `mosaic-test` must use the same
+Mosaic version as `mosaic-core`; use the [runtime BOM](../mosaic-bom/README.md) to
+keep runtime modules aligned. See
 [runtime compatibility](https://BuildMosaic.org/reference/compatibility/).
 
 ## Test the real composition

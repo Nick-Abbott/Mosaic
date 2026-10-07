@@ -22,7 +22,7 @@ dependencies {
 
 Mosaic targets JVM 17 and uses Kotlin 2.4.20 with language/API level 2.4. Runtime artifacts are tested with Kotlin 2.3.0 consumers and use stdlib/`kotlin-test` 2.4.20 and coroutines core/test 1.11.0. See [runtime compatibility](/reference/compatibility/).
 
-`mosaic-test` exposes Mosaic core and coroutine test APIs. If you use the optional [BOM](https://github.com/BuildMosaic/Mosaic/blob/main/mosaic-bom/README.md), omit the Mosaic dependency version.
+`mosaic-test` exposes Mosaic core and coroutine test APIs and must use the same Mosaic version as `mosaic-core`. Use the [BOM](https://github.com/BuildMosaic/Mosaic/blob/main/mosaic-bom/README.md) to keep runtime modules aligned and omit versions on Mosaic dependencies.
 
 ## Your first Tile test
 

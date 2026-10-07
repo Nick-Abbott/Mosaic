@@ -16,14 +16,13 @@
 
 package org.buildmosaic.test
 
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import org.buildmosaic.core.Mosaic
 import org.buildmosaic.core.MultiTile
 import org.buildmosaic.core.Tile
 import org.buildmosaic.core.injection.CanvasKey
 import org.buildmosaic.core.injection.canvas
-import org.buildmosaic.core.internal.InternalMosaicTestApi
-import org.buildmosaic.core.internal.withTestMosaicExecution
 import org.buildmosaic.core.multiTile
 import org.buildmosaic.core.singleTile
 import kotlin.jvm.JvmName
@@ -380,7 +379,6 @@ class TestMosaicBuilder {
    * Supplied Canvas sources are borrowed: they remain owned by the caller and are never closed.
    * Configure this builder from one coroutine at a time; later changes affect only later executions.
    */
-  @OptIn(InternalMosaicTestApi::class)
   suspend fun <R> withMosaic(block: suspend TestMosaic.() -> R): R {
     val tiles = tileSubstitutions.toMap()
     val multiTiles = multiTileSubstitutions.toMap()
@@ -393,7 +391,9 @@ class TestMosaicBuilder {
         }
       }
     return builtCanvas.use {
-      it.withTestMosaicExecution(tiles, multiTiles) { block(TestMosaic(this)) }
+      SubstitutingMosaic(it, currentCoroutineContext(), tiles, multiTiles).execute {
+        block(TestMosaic(this))
+      }
     }
   }
 }

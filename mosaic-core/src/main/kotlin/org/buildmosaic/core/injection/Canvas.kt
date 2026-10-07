@@ -1,6 +1,8 @@
 package org.buildmosaic.core.injection
 
+import kotlinx.coroutines.currentCoroutineContext
 import org.buildmosaic.core.Mosaic
+import org.buildmosaic.core.MosaicImpl
 import org.buildmosaic.core.MosaicRuntimeConfig
 import org.buildmosaic.core.exception.MosaicMissingKeyException
 import org.buildmosaic.core.withMosaicExecution
@@ -139,4 +141,5 @@ inline fun <reified T : Any> Canvas.sourceOr(): T? = sourceOr(T::class)
  * }
  * ```
  */
-suspend fun <R> Canvas.withMosaic(block: suspend Mosaic.() -> R): R = withMosaicExecution(this, block = block)
+suspend fun <R> Canvas.withMosaic(block: suspend Mosaic.() -> R): R =
+  MosaicImpl(this, currentCoroutineContext()).withMosaicExecution(block)

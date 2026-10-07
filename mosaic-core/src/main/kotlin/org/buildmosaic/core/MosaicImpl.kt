@@ -29,11 +29,9 @@ import kotlin.coroutines.CoroutineContext
  * Owned by [org.buildmosaic.core.injection.withMosaic].
  */
 @Suppress("LargeClass", "TooManyFunctions") // Keep request ownership and protected startup settlement together.
-internal class MosaicImpl(
+internal open class MosaicImpl(
   override val canvas: Canvas,
   context: CoroutineContext,
-  private val tileSubstitutions: Map<Tile<*>, Tile<*>> = emptyMap(),
-  private val multiTileSubstitutions: Map<MultiTile<*, *>, MultiTile<*, *>> = emptyMap(),
 ) : Mosaic, CoroutineScope {
   private val job = SupervisorJob(context[Job])
   override val coroutineContext: CoroutineContext = context + job
@@ -51,11 +49,10 @@ internal class MosaicImpl(
 
   @Suppress("UNCHECKED_CAST")
   override fun <V> composeAsync(tile: Tile<V>): Deferred<V> {
-    val resolvedTile = tileSubstitutions[tile] as Tile<V>? ?: tile
-    val cached = singleCache[resolvedTile] as CacheEntry<V>?
+    val cached = singleCache[tile] as CacheEntry<V>?
     if (cached != null) return consume(cached)
     val entry = newEntry<V>(observation?.let { ProducerPublication(it) })
-    val previous = singleCache.putIfAbsent(resolvedTile, entry) as CacheEntry<V>?
+    val previous = singleCache.putIfAbsent(tile, entry) as CacheEntry<V>?
     if (previous != null) {
       entry.result.cancel()
       entry.producer?.abandon()
@@ -63,7 +60,7 @@ internal class MosaicImpl(
     }
     // A same-Tile capture reentry now sees the winning result and producer, without recapturing.
     val caller = if (job.isActive) observation?.capture() else null
-    launchSingle(resolvedTile, entry, caller)
+    launchSingle(tile, entry, caller)
     return consume(entry)
   }
 
@@ -72,9 +69,8 @@ internal class MosaicImpl(
     tile: MultiTile<K, V>,
     keys: Collection<K>,
   ): Map<K, Deferred<V>> {
-    val resolvedTile = multiTileSubstitutions[tile] as MultiTile<K, V>? ?: tile
     if (keys.isEmpty()) return emptyMap()
-    val state = multiStates.computeIfAbsent(resolvedTile) { MultiTileState<K, V>() } as MultiTileState<K, V>
+    val state = multiStates.computeIfAbsent(tile) { MultiTileState<K, V>() } as MultiTileState<K, V>
     val result = HashMap<K, Deferred<V>>(keys.size)
     val consumed = if (observation != null) ArrayList<ProducerPublication>() else null
     val group = ReservationGroup<K, V>()
@@ -89,7 +85,7 @@ internal class MosaicImpl(
       }
     } finally {
       // Earlier winners remain owned even when later application key code throws.
-      acceptReservations(resolvedTile, state, group)
+      acceptReservations(tile, state, group)
     }
     consumed?.forEach { ObservedExecution.current()?.dependency(it) }
     return result

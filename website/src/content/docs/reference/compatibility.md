@@ -18,7 +18,7 @@ Runtime libraries and optional analysis have different requirements.
 | Repository build and examples | JDK 21; Gradle wrapper 8.14.4                                      |
 | OpenTelemetry adapter         | API 1.66.0; application supplies SDK or agent                      |
 
-The BOM aligns `mosaic-core`, `mosaic-test`, and `mosaic-opentelemetry` at one Mosaic version. It does not include analysis tooling. Runtime use needs no analysis plugin or registration processor.
+`mosaic-test` and `mosaic-core` must use the same Mosaic version. The BOM aligns `mosaic-core`, `mosaic-test`, and `mosaic-opentelemetry` at one Mosaic version. It does not include analysis tooling. Runtime use needs no analysis plugin or registration processor.
 
 ## Optional analysis
 
