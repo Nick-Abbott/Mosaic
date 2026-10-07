@@ -43,4 +43,4 @@ On a built Canvas, reified lookup accepts the same optional qualifier as Mosaic 
 
 Construct an application Canvas for stable services. Add request-specific values in a child layer, then use `withMosaic` to run a new Mosaic owned by that request. Bind only the request values that differ from application defaults.
 
-For services that own closeable resources, read [resource ownership](/guides/resources/). The optional [analysis plugin](/guides/analysis/) checks bindings within supported static boundaries; it cannot guarantee every dynamic lookup.
+`Canvas.close()` is idempotent and concurrency-safe. It attempts locally owned resources once in reverse creation order, then throws the first cleanup failure with later failures suppressed. Borrowed values and parent resources are unaffected. Retaining or using a Canvas after close is unsupported. For lifetime scoping and failure handling, read [resource ownership](/guides/resources/). The optional [analysis plugin](/guides/analysis/) checks bindings within supported static boundaries; it cannot guarantee every dynamic lookup.

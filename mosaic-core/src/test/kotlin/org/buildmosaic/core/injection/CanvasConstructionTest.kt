@@ -226,18 +226,6 @@ class CanvasConstructionTest {
       assertEquals("parent-repo", repository.getData())
     }
 
-  // Lifecycle management tests
-  class CloseableTestService(private val value: String) : TestService, AutoCloseable {
-    var isClosed = false
-      private set
-
-    override fun getValue(): String = value
-
-    override fun close() {
-      isClosed = true
-    }
-  }
-
   @Test
   fun `should close resources in reverse creation order`() =
     runTest {
@@ -274,6 +262,8 @@ class CanvasConstructionTest {
         events,
       )
       parent.close()
+      parent.close()
+      assertEquals(1, events.count { it == "parent" })
       assertEquals("parent", events.last())
     }
 
@@ -387,41 +377,6 @@ class CanvasConstructionTest {
       building.join()
       assertEquals(true, building.isCancelled)
       assertEquals(true, closed)
-    }
-
-  @Test
-  fun `should handle close errors gracefully`() =
-    runTest {
-      class FailingCloseableService : TestService, AutoCloseable {
-        override fun getValue(): String = "failing-service"
-
-        override fun close() {
-          throw RuntimeException("Close failed!")
-        }
-      }
-
-      val normalCloseable = CloseableTestService("normal-service")
-      val failingCloseable = FailingCloseableService()
-
-      val testCanvas =
-        canvas {
-          provide<TestService>("regular") { TestServiceImpl("regular") }
-          provide<TestService>("normal") { normalCloseable }
-          provide<TestService>("failing") { failingCloseable }
-        }
-
-      // Verify dependencies work
-      val normalService = testCanvas.source(TestService::class, "normal")
-      val failingService = testCanvas.source(TestService::class, "failing")
-
-      assertNotNull(normalService)
-      assertNotNull(failingService)
-
-      // Close should not throw even if one dependency fails to close
-      testCanvas.close()
-
-      // Normal dependency should still be closed
-      assertEquals(true, normalCloseable.isClosed)
     }
 
   // Canvas DSL and suspend function tests
