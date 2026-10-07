@@ -35,6 +35,9 @@ class Canvas internal constructor(
   private val parent: Canvas? = null,
   internal val runtimeConfig: MosaicRuntimeConfig = MosaicRuntimeConfig.EMPTY,
 ) : AutoCloseable {
+  private val closeLock = Any()
+  private var closed = false
+
   /**
    * Retrieves an instance of the registered object of the specified type and qualifier
    *
@@ -96,14 +99,36 @@ class Canvas internal constructor(
   suspend fun withLayer(build: CanvasBuilder.() -> Unit): Canvas = canvas(this, build)
 
   /**
-   * Closes locally constructed [AutoCloseable] resources in reverse creation order,
-   * continuing after failures. Parent resources and externally owned [CanvasBuilder.instance]
-   * bindings are unaffected. Finish scoped Mosaic work before closing its Canvas.
+   * Closes locally owned [AutoCloseable] resources once in reverse successful creation order.
+   * Closing is synchronous, idempotent, and safe under concurrent callers. One caller performs
+   * cleanup; other callers wait for it to finish and return without repeating cleanup or failures.
+   * Reentrant calls from a resource's close hook return without repeating cleanup.
+   *
+   * All close hooks are attempted. The first cleanup failure is thrown to the caller performing
+   * cleanup, with later failures suppressed in attempt order, excluding the primary failure itself.
+   * Resources are not retried after failure. Parent resources and borrowed [CanvasBuilder.instance]
+   * bindings are unaffected. Finish scoped Mosaic work before closing its Canvas; retaining or
+   * using the Canvas afterward is unsupported.
    */
+  @Suppress("TooGenericExceptionCaught") // Every resource failure must allow remaining cleanup.
   override fun close() {
-    closeables.asReversed().forEach { closeable ->
-      runCatching { closeable.close() }
-        .onFailure { failure -> System.err.println("Close hook failed: ${failure.message}") }
+    synchronized(closeLock) {
+      if (closed) return
+      closed = true
+
+      var primary: Throwable? = null
+      closeables.asReversed().forEach { resource ->
+        try {
+          resource.close()
+        } catch (failure: Throwable) {
+          if (primary == null) {
+            primary = failure
+          } else if (failure !== primary) {
+            primary.addSuppressed(failure)
+          }
+        }
+      }
+      primary?.let { throw it }
     }
   }
 }
