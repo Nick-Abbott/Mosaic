@@ -47,7 +47,10 @@ Direct `withMosaic` evaluates its receiver, establishes one fresh standard
 Mosaic, and analyzes the direct lambda once in source order. Receiver aliases
 retain identity.
 `instance` evaluates existing values during registration, with no deferred
-constructor effects. Applicable Kotlin Mosaic `@Suppress` annotations travel
+constructor effects. A `provide` constructor resolves required dependencies through
+`CanvasFactory.source`, extracted as `LookupKind.CONSTRUCTION`; built Canvas/Mosaic
+`source` and `sourceOrNull` remain required and optional lookup respectively.
+Applicable Kotlin Mosaic `@Suppress` annotations travel
 with Tile contracts. The canonical [analysis configuration reference](https://BuildMosaic.org/reference/analysis-configuration/)
 explains scope ownership and remaining unknown boundaries.
 

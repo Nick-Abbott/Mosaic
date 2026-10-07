@@ -26,7 +26,11 @@ predate this maintained changelog; their release history is not reconstructed he
 - These removals intentionally break Kotlin source and JVM binary compatibility
   before 1.0. Recompile consumers. The public `Mosaic` interface remains supported.
 - Compiler source extraction recognizes `withMosaic` as the execution boundary;
-  serialized provenance semantics and analysis metadata versions are unchanged.
+  serialized provenance semantics are unchanged.
+- Construction-time lookup uses `LookupKind.CONSTRUCTION` and the serialized
+  `CONSTRUCTION` tag. Analysis metadata moves to format 5; older dependency
+  summaries are rejected with regeneration guidance. Analyzer semantics remain
+  `analysis-contract-3`.
 
 ### Fixed
 

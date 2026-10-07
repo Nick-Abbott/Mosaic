@@ -6,7 +6,7 @@ compiler and Gradle plugins; it is not published separately, an application
 runtime dependency, or a BOM entry.
 It accepts immutable, hand-authored contracts describing Canvas construction,
 lookups, Tile composition, calls, conditions, and selected verification roots.
-It verifies exact Canvas-key availability, eager local singleton construction,
+It verifies exact Canvas-key availability, eager local provider construction,
 and proven cyclic Tile result dependencies while preserving unknown boundaries
 and source provenance.
 Canvas arguments are evaluated eagerly at calls, while aliases and parameter
@@ -103,13 +103,16 @@ locators. Unordered declarations, limitations, and locator entries are sorted;
 effect and argument order is retained. Arguments are ordered parameter/value
 entries, and duplicate parameters are rejected.
 
-Format 4 has separate `formatVersion`, `semanticsVersion`, `toolVersion`,
+Format 5 has separate `formatVersion`, `semanticsVersion`, `toolVersion`,
 `kotlinCompilerVersion`, `moduleId`, `sourceSet`, and `complete` header fields.
-The reader accepts format 4, `analysis-contract-3`, Kotlin 2.4.20, and complete
+The reader accepts format 5, `analysis-contract-3`, Kotlin 2.4.20, and complete
 `main` source-set summaries. The module identity must be nonblank and match the
 payload. A nonblank producer version is required but does not determine semantic
 compatibility. Regenerate incompatible summaries with the supported Mosaic
-analysis toolchain before consuming them.
+analysis toolchain before consuming them. Construction-time required lookup uses
+`LookupKind.CONSTRUCTION` and the serialized `CONSTRUCTION` lookup tag. Required
+and optional lookups use `REQUIRED` and `OPTIONAL`. Older formats are rejected
+with regeneration guidance; analyzer semantics remain `analysis-contract-3`.
 
 `payloadHash` is lowercase SHA-256 of the canonical compact UTF-8 JSON
 serialization of the entire `payload` object (module, limitations, and binary

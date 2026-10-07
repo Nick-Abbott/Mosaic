@@ -38,6 +38,9 @@ class SummaryWireCorpusTest {
         binaryLocators = mapOf("export" to "example/Exports#tile"),
       )
     val restored = SummaryCodec.decode(bytes)
+    assertEquals(5, restored.formatVersion)
+    assertEquals("analysis-contract-3", restored.semanticsVersion)
+    assertTrue(bytes.decodeToString().contains("\"lookupKind\":\"CONSTRUCTION\""))
     assertEquals(module, restored.module)
     assertEquals(mapOf("export" to "example/Exports#tile"), restored.binaryLocators)
     assertEquals(listOf("capture uncertain", "external const origin"), restored.limitations)
@@ -143,7 +146,7 @@ private fun corpusEffects(
     listOf<Effect>(
       Effect.Lookup("required", canvases[3], known, LookupKind.REQUIRED, site),
       Effect.Lookup("optional", CanvasExpression.Current, unknown, LookupKind.OPTIONAL, site),
-      Effect.Lookup("paint", CanvasExpression.Current, known, LookupKind.PAINT, site),
+      Effect.Lookup("construction", CanvasExpression.Current, known, LookupKind.CONSTRUCTION, site),
       Effect.Lookup(
         "runtime", CanvasExpression.Current,
         Fact.Known(
