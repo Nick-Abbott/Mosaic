@@ -7,14 +7,10 @@ predate this maintained changelog; their release history is not reconstructed he
 
 ### Changed
 
-- `Canvas.close()` is synchronous, idempotent, and concurrency-safe. Locally owned
-  resources are attempted once in reverse successful creation order. All close
-  hooks are attempted; the first cleanup failure is thrown with later failures
-  suppressed in attempt order, excluding the primary failure itself. Only the
-  caller performing cleanup receives failures; later calls are no-ops even after
-  failure, and reentrant close calls return harmlessly. Borrowed values and parent
-  resources are unaffected. Retaining or using a Canvas after close is unsupported.
-
+- `Canvas.close()` is idempotent and concurrency-safe. Owned resources close once
+  in reverse creation order; all hooks are attempted and cleanup failures are
+  propagated with later failures suppressed. Borrowed values and parent resources
+  remain unaffected.
 - Canvas-owned registration is `provide`, construction-time required lookup is
   `source`, and optional Canvas/Mosaic lookup is `sourceOrNull`. The former
   `single`, `paint`, and `sourceOr` names are removed without compatibility aliases.
