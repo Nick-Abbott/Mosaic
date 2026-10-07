@@ -37,8 +37,6 @@ suspend fun handleRequest(applicationCanvas: Canvas, userId: String): String =
 
 `canvas` eagerly constructs bindings. A child layer resolves local bindings first, then falls back to its parent. Overrides do not rewire services already constructed by the parent. Concurrent constructor `source` calls share one construction; recursive construction fails with a circular-dependency error.
 
-On a built Canvas, reified lookup accepts the same optional qualifier as Mosaic lookup: `applicationCanvas.source<GreetingService>()`, `applicationCanvas.source<String>("greetingPrefix")`, and `applicationCanvas.sourceOrNull<String>("optionalPrefix")`. Explicit `KClass` and `CanvasKey` lookups are also supported. Construction-time `CanvasFactory.source` is required-only.
-
 ## Application and request scopes
 
 Construct an application Canvas for stable services. Add request-specific values in a child layer, then use `withMosaic` to run a new Mosaic owned by that request. Bind only the request values that differ from application defaults.
