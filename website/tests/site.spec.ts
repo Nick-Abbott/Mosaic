@@ -10,6 +10,8 @@ const routes = [
   '/',
   '/start/quick-start/',
   '/concepts/shared-work/',
+  '/guides/testing/',
+  '/reference/compatibility/',
   '/reference/performance/',
   '/reference/analysis-configuration/',
   '/concepts/tiles/',

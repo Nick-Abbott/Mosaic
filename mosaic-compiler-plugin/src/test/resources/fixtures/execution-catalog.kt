@@ -17,12 +17,12 @@ val LabeledCaptureTile = singleTile tile@ {
     }
     "ok"
 }
-suspend fun capturedLabelEntry() = canvas {}.create().compose(LabeledCaptureTile)
-suspend fun capturedEntry() = canvas {}.create().compose(CapturedTile)
+suspend fun capturedLabelEntry() = canvas {}.withMosaic { compose(LabeledCaptureTile) }
+suspend fun capturedEntry() = canvas {}.withMosaic { compose(CapturedTile) }
 suspend fun suppliedOuter(): Canvas = canvas { single<Metrics> { Metrics() } }
-suspend fun capturedSuppliedEntry() = suppliedOuter().create().compose(CapturedTile)
+suspend fun capturedSuppliedEntry() = suppliedOuter().withMosaic { compose(CapturedTile) }
 suspend fun outerWithPaint(): Canvas = canvas { single<First> { First() }; single<Metrics> { paint<First>(); Metrics() } }
-suspend fun capturedOnceEntry() { val base = outerWithPaint(); val alias = base; alias.create().compose(CapturedTile) }
+suspend fun capturedOnceEntry() { val base = outerWithPaint(); val alias = base; alias.withMosaic { compose(CapturedTile) } }
 suspend fun nestedFactoryMissing(): Canvas = canvas {
     single<String> {
         val retained = this
@@ -49,11 +49,11 @@ val ExposedTile = singleTile { "backing" }
     get() { field; return NeedsMetrics }
 val ComputedWorkTile = chunkedMultiTile<String, String>(empty.source<Int>()) { emptyMap() }
     get() { empty.source<Second>(); return field }
-suspend fun computedEntry() = canvas {}.create().compose(ExposedTile)
-suspend fun computedWorkEntry() = canvas {}.create().compose(ComputedWorkTile, listOf("key"))
-suspend fun directNeedsEntry() = canvas {}.create().compose(NeedsMetrics)
-suspend fun directNeedsSupplied() = suppliedOuter().create().compose(NeedsMetrics)
-suspend fun stableTileAlias() { val alias = NeedsMetrics; suppliedOuter().create().compose(alias) }
+suspend fun computedEntry() = canvas {}.withMosaic { compose(ExposedTile) }
+suspend fun computedWorkEntry() = canvas {}.withMosaic { compose(ComputedWorkTile, listOf("key")) }
+suspend fun directNeedsEntry() = canvas {}.withMosaic { compose(NeedsMetrics) }
+suspend fun directNeedsSupplied() = suppliedOuter().withMosaic { compose(NeedsMetrics) }
+suspend fun stableTileAlias() { val alias = NeedsMetrics; suppliedOuter().withMosaic { compose(alias) } }
 class CallbackValue {
     override fun equals(other: Any?): Boolean { runBlocking { canvas {}.source<Metrics>() }; return true }
     override fun hashCode(): Int { runBlocking { canvas {}.source<Metrics>() }; return 0 }
@@ -62,9 +62,9 @@ class CallbackValue {
 fun structuralEquality() { CallbackValue() == CallbackValue() }
 fun conditionalEquality(a: CallbackValue, b: CallbackValue) { if (a == b) defaults() }
 suspend fun missingReceiver(): Canvas = canvas { single<String> { paint<Metrics>(); "" } }
-suspend fun boundReference(enabled: Boolean) { if (enabled) { val unused = missingReceiver()::create } }
-suspend fun directBoundReference() { val unused = missingReceiver()::create }
-fun deferredCreation(enabled: Boolean) { if (enabled) { val lambda = { empty.source<Metrics>() }; val ref = ::work; val extension = Canvas::create } }
+suspend fun boundReference(enabled: Boolean) { if (enabled) { val unused = missingReceiver()::close } }
+suspend fun directBoundReference() { val unused = missingReceiver()::close }
+fun deferredCreation(enabled: Boolean) { if (enabled) { val lambda = { empty.source<Metrics>() }; val ref = ::work; val extension = Canvas::close } }
 fun primitiveEquality(a: Int, b: Int) { if (a == b) defaults() }
 fun stringEquality(a: String, b: String) { if (a == b) defaults() }
 fun safeCollections() {
@@ -144,12 +144,12 @@ suspend fun virtualMethod() { through(Base()) }
 fun virtualGetter() { throughGetter(Base()) }
 suspend fun finalFactory() { successful() }
 suspend fun make(): Canvas { canvas {}.source<Metrics>(); return canvas {} }
-suspend fun pass(base: Canvas) { base.create(); base.create() }
-suspend fun aliases() { val base = make(); val alias = base; val mosaic = alias.create(); val same = mosaic; same.sourceOr<String>(); pass(alias) }
+suspend fun pass(base: Canvas) { base.withMosaic {}; base.withMosaic {} }
+suspend fun aliases() { val base = make(); val alias = base; alias.withMosaic { val mosaic = this; val same = mosaic; same.sourceOr<String>(); pass(alias) } }
 val SizedTile = chunkedMultiTile<String, String>(empty.source<Int>()) { emptyMap() }
-suspend fun sizedTile() { canvas {}.create().compose(SizedTile, emptyList()) }
+suspend fun sizedTile() { canvas {}.withMosaic { compose(SizedTile, emptyList()) } }
 class Tiles { val MemberTile = singleTile { source<Metrics>() } }
-suspend fun memberTile() { canvas {}.create().compose(Tiles().MemberTile) }
+suspend fun memberTile() { canvas {}.withMosaic { compose(Tiles().MemberTile) } }
 suspend fun unusedLambda() { val unused = { empty.source<Metrics>() } }
 fun invokedLambda() { val work = { empty.source<Metrics>() }; work() }
 fun conditionalCallableEscape() { val f = if (true) { { empty.source<Metrics>(); Unit } } else { {} }; ignoreCallback(f) }
@@ -166,7 +166,7 @@ fun unknownFactoryReceiver(): CanvasFactory = error("not executed")
 suspend fun foreignRegistration() { canvas { unknownBuilder().single<Metrics> { Metrics() } }.source<Metrics>() }
 suspend fun foreignPaint() { canvas { single<Metrics> { Metrics() }; single<String> { unknownFactoryReceiver().paint<Metrics>(); "" } } }
 suspend fun registrationArgument() { val base = canvas {}; canvas { single<String>(base.source<Metrics>().toString()) { "" } } }
-suspend fun optionalArgument() { val base = canvas {}; base.create().sourceOr<String>(base.source<Metrics>().toString()) }
+suspend fun optionalArgument() { val base = canvas {}; base.withMosaic { sourceOr<String>(base.source<Metrics>().toString()) } }
 object Boot { init { empty.source<Metrics>() }; val value = 1 }
 fun objectAccess() { Boot.value }
 val delegated by lazy { empty.source<Metrics>() }

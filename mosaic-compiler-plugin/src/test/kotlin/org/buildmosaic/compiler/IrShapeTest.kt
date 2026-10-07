@@ -34,7 +34,7 @@ class IrShapeTest {
         class Metrics
         fun consume(ignored: Metrics) = Unit
         val ExampleTile = singleTile { consume(source<Metrics>()); "done" }
-        suspend fun entry() = canvas { }.create().compose(ExampleTile)
+        suspend fun entry() = canvas { }.withMosaic { compose(ExampleTile) }
         """.trimIndent(),
       )
     assertTrue(
@@ -57,7 +57,7 @@ class IrShapeTest {
         class Second
         fun consume(first: First, second: Second) = Unit
         val ExampleTile = singleTile { consume(second = source<Second>(), first = source<First>()) }
-        suspend fun entry() = canvas { }.create().compose(ExampleTile)
+        suspend fun entry() = canvas { }.withMosaic { compose(ExampleTile) }
         """.trimIndent(),
       )
     val keys = module.tiles.single().effects.filterIsInstance<Effect.Lookup>().map { it.key.toString() }
@@ -75,7 +75,7 @@ class IrShapeTest {
         import org.buildmosaic.core.injection.*
         class Metrics
         val ExampleTile = singleTile { source<Metrics>(); "ok" }
-        suspend fun consume(base: Canvas): String = base.create().compose(ExampleTile)
+        suspend fun consume(base: Canvas): String = base.withMosaic { compose(ExampleTile) }
         suspend fun entry(): String = consume(canvas { single<Metrics> { Metrics() } })
         """.trimIndent(),
       )
@@ -103,7 +103,7 @@ class IrShapeTest {
           import org.buildmosaic.core.injection.*
           import producer.*
           val ExampleTile = singleTile { consume(source<Metrics>()) }
-          suspend fun entry() = canvas { }.create().compose(ExampleTile)
+          suspend fun entry() = canvas { }.withMosaic { compose(ExampleTile) }
           """.trimIndent(),
         )
       }
@@ -139,7 +139,7 @@ class IrShapeTest {
         class Metrics
         val ExampleTile = singleTile { "ok" }
         suspend fun helper(ignored: Metrics): Canvas = canvas { }
-        suspend fun entry() = helper(canvas { }.create().source<Metrics>()).create().compose(ExampleTile)
+        suspend fun entry() = helper(canvas { }.withMosaic { source<Metrics>() }).withMosaic { compose(ExampleTile) }
         """.trimIndent(),
       )
     assertTrue(
@@ -162,11 +162,13 @@ class IrShapeTest {
         class Metrics
         val ExampleTile = singleTile { "ok" }
         suspend fun helper(): Canvas {
-          val separate = canvas { }.create()
-          separate.source<Metrics>()
+          canvas { }.withMosaic {
+            val separate = this
+            separate.source<Metrics>()
+          }
           return canvas { }
         }
-        suspend fun entry() = helper().create().compose(ExampleTile)
+        suspend fun entry() = helper().withMosaic { compose(ExampleTile) }
         """.trimIndent(),
       )
     assertTrue(
@@ -186,8 +188,8 @@ class IrShapeTest {
         import org.buildmosaic.core.*
         import org.buildmosaic.core.injection.*
         class Metrics
-        class ReadsDuringConstruction(c: Canvas) { init { c.create().source<Metrics>() } }
-        suspend fun entry() { ReadsDuringConstruction(canvas { }) }
+        class ReadsDuringConstruction(m: Mosaic) { init { m.source<Metrics>() } }
+        suspend fun entry() { canvas { }.withMosaic { ReadsDuringConstruction(this) } }
         """.trimIndent(),
       )
     assertTrue(
@@ -237,12 +239,12 @@ class IrShapeTest {
         import org.buildmosaic.core.*
         import org.buildmosaic.core.injection.*
         class Metrics
-        val SeparateTile = singleTile { val other = canvas { }.create(); other.source<Metrics>() }
+        val SeparateTile = singleTile { canvas { }.withMosaic { source<Metrics>() } }
         val CurrentTile = singleTile { val same = this; same.source<Metrics>() }
-        val OwnCanvasTile = singleTile { val other = canvas { single<Metrics> { Metrics() } }.create(); other.source<Metrics>() }
-        suspend fun entry() = canvas { single<Metrics> { Metrics() } }.create().compose(SeparateTile)
-        suspend fun currentEntry() = canvas { single<Metrics> { Metrics() } }.create().compose(CurrentTile)
-        suspend fun ownCanvasEntry() = canvas { }.create().compose(OwnCanvasTile)
+        val OwnCanvasTile = singleTile { canvas { single<Metrics> { Metrics() } }.withMosaic { source<Metrics>() } }
+        suspend fun entry() = canvas { single<Metrics> { Metrics() } }.withMosaic { compose(SeparateTile) }
+        suspend fun currentEntry() = canvas { single<Metrics> { Metrics() } }.withMosaic { compose(CurrentTile) }
+        suspend fun ownCanvasEntry() = canvas { }.withMosaic { compose(OwnCanvasTile) }
         """.trimIndent(),
       )
     assertTrue(
@@ -272,11 +274,11 @@ class IrShapeTest {
         import org.buildmosaic.core.injection.*
         class Metrics
         val BatchTile = multiTile<String, String> { source<Metrics>(); emptyMap() }
-        suspend fun empty() = canvas { }.create().compose(BatchTile, emptyList())
-        suspend fun emptyAsync() = canvas { }.create().composeAsync(BatchTile, emptyList())
-        suspend fun emptyLiteral() = canvas { }.create().composeAsync(BatchTile, listOf<String>())
-        suspend fun nonemptyAsync() = canvas { }.create().composeAsync(BatchTile, listOf("x"))
-        suspend fun unknown(keys: Collection<String>) = canvas { }.create().composeAsync(BatchTile, keys)
+        suspend fun empty() = canvas { }.withMosaic { compose(BatchTile, emptyList()) }
+        suspend fun emptyAsync() = canvas { }.withMosaic { composeAsync(BatchTile, emptyList()) }
+        suspend fun emptyLiteral() = canvas { }.withMosaic { composeAsync(BatchTile, listOf<String>()) }
+        suspend fun nonemptyAsync() = canvas { }.withMosaic { composeAsync(BatchTile, listOf("x")) }
+        suspend fun unknown(keys: Collection<String>) = canvas { }.withMosaic { composeAsync(BatchTile, keys) }
         """.trimIndent(),
         rootTarget = "regression.empty()",
       )
@@ -333,8 +335,10 @@ class IrShapeTest {
         class Metrics
         val BatchTile = multiTile<String, String> { source<Metrics>(); emptyMap() }
         suspend fun entry() {
-          val mosaic = canvas { }.create()
-          mosaic.compose(BatchTile, listOf(mosaic.source<String>()))
+          canvas { }.withMosaic {
+            val mosaic = this
+            mosaic.compose(BatchTile, listOf(mosaic.source<String>()))
+          }
         }
         """.trimIndent(),
       )
@@ -359,7 +363,7 @@ class IrShapeTest {
         class Metrics
         class Service(val metrics: Metrics)
         val BatchTile = multiTile<String, String> { emptyMap() }
-        suspend fun entry() = canvas { single<Service> { Service(paint<Metrics>()) } }.create().compose(BatchTile, emptyList())
+        suspend fun entry() = canvas { single<Service> { Service(paint<Metrics>()) } }.withMosaic { compose(BatchTile, emptyList()) }
         """.trimIndent(),
       )
     assertTrue(
@@ -389,11 +393,11 @@ class IrShapeTest {
           single<MutableList<String>> { mutableListOf() }
           single<MutableSet<String>> { mutableSetOf() }
           single<MutableMap<String, String>> { mutableMapOf() }
-        }.create().compose(ExampleTile)
-        suspend fun mismatch() = canvas { single<Array<Int>> { arrayOf(1) } }.create().compose(StringsTile)
-        suspend fun match() = canvas { single<Array<String>> { arrayOf("one") } }.create().compose(StringsTile)
+        }.withMosaic { compose(ExampleTile) }
+        suspend fun mismatch() = canvas { single<Array<Int>> { arrayOf(1) } }.withMosaic { compose(StringsTile) }
+        suspend fun match() = canvas { single<Array<String>> { arrayOf("one") } }.withMosaic { compose(StringsTile) }
         val NestedTile = singleTile { source<Array<List<String>>>() }
-        suspend fun nestedMatch() = canvas { single<Array<List<Int>>> { arrayOf(listOf(1)) } }.create().compose(NestedTile)
+        suspend fun nestedMatch() = canvas { single<Array<List<Int>>> { arrayOf(listOf(1)) } }.withMosaic { compose(NestedTile) }
         """.trimIndent(),
       )
     assertEquals(org.buildmosaic.analysis.RootStatus.VERIFIED, report.roots.single().status, report.toString())
@@ -444,7 +448,7 @@ class IrShapeTest {
           protected abstract suspend fun respond(left: Canvas, marker: String, right: Canvas): Metrics
         }
         class Impl : Base() {
-          override suspend fun respond(right: Canvas, marker: String, left: Canvas): Metrics = right.create().compose(NeedsMetrics)
+          override suspend fun respond(right: Canvas, marker: String, left: Canvas): Metrics = right.withMosaic { compose(NeedsMetrics) }
         }
         suspend fun entry() = Impl().handle()
         """.trimIndent(),
@@ -474,7 +478,7 @@ class IrShapeTest {
           override suspend fun respond(base: Canvas) { }
         }
         class Bad : Base() {
-          override suspend fun respond(base: Canvas) { base.create().compose(NeedsMetrics) }
+          override suspend fun respond(base: Canvas) { base.withMosaic { compose(NeedsMetrics) } }
         }
         suspend fun relay(other: Base, base: Canvas) { other.respond(base) }
         suspend fun entry() { Good().start() }
@@ -544,7 +548,7 @@ class IrShapeTest {
       import org.buildmosaic.core.injection.*
       import consts.*
       val CapturedTile = singleTile { source<Metrics>(QUALIFIER) }
-      suspend fun entry(): Metrics = base().create().compose(CapturedTile)
+      suspend fun entry(): Metrics = base().withMosaic { compose(CapturedTile) }
       """.trimIndent(),
     )
     val callerFacts = File(directory, "caller/facts.txt")
@@ -605,7 +609,7 @@ class IrShapeTest {
       import producer.*
       val Tile = singleTile { source<Metrics>(QUALIFIER); helper() }
       val AccessorTile = singleTile { inlineMetrics }
-      suspend fun accessorEntry() = canvas { }.create().compose(AccessorTile)
+      suspend fun accessorEntry() = canvas { }.withMosaic { compose(AccessorTile) }
       """.trimIndent(),
     )
     val output = File(directory, "caller-facts.txt")
@@ -691,16 +695,16 @@ class IrShapeTest {
         val base = platformCanvas()
         val aliased = base
         val tile = MetricsTile
-        aliased.create().compose(tile)
-        aliased.create().composeAsync(OtherTile, "one")
-        aliased.create().composeAsync(BatchTile, listOf("one"))
+        aliased.withMosaic { compose(tile) }
+        aliased.withMosaic { composeAsync(OtherTile, "one") }
+        aliased.withMosaic { composeAsync(BatchTile, listOf("one")) }
       }
       abstract class PlatformComponent {
         suspend fun handle(id: String): String = respond(platformCanvas(), id)
         protected abstract suspend fun respond(base: Canvas, id: String): String
       }
       class ApplicationComponent : PlatformComponent() {
-        override suspend fun respond(base: Canvas, id: String): String { layer(base).create().compose(MetricsTile); return id }
+        override suspend fun respond(base: Canvas, id: String): String { layer(base).withMosaic { compose(MetricsTile) }; return id }
       }
       """.trimIndent(),
     )

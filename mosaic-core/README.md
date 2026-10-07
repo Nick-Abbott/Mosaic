@@ -45,8 +45,8 @@ The calling coroutine owns producer work and supplies its dispatcher and context
 Every block exit cancels unfinished speculative work and waits for cleanup. Tile
 failures are supervised; cancelling a consumer's coroutine stops its wait without
 cancelling shared work. Await `composeAsync` results freely, but do not cancel the
-shared Deferred to stop waiting. `Canvas.create()` remains callable with a warning;
-move the complete handler invocation into `withMosaic` when migrating.
+shared Deferred to stop waiting. `withMosaic` is the supported execution boundary;
+keep the complete handler invocation inside its block.
 
 Reuse requires the same Mosaic and Tile instance;
 Tile names are labels, not cache identities. MultiTile batch boundaries depend on

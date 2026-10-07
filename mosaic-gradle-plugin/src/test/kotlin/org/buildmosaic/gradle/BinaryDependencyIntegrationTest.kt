@@ -158,26 +158,26 @@ class BinaryDependencyIntegrationTest {
           override suspend fun respond(base: Canvas, requestId: String): String {
             val application = applicationLayer(base)
             val request = application.withLayer { single<RequestContext> { RequestContext(requestId) } }
-            return request.create().compose(EnterpriseTile)
+            return request.withMosaic { compose(EnterpriseTile) }
           }
         }
         class FrameworkApplication : PlatformComponent() {
           override suspend fun respond(base: Canvas, requestId: String): String {
             val application = applicationLayer(base)
             val request = application.withLayer { single<RequestContext> { RequestContext(requestId) } }
-            return request.create().compose(EnterpriseTile)
+            return request.withMosaic { compose(EnterpriseTile) }
           }
         }
         class SlotApplication : SlotComponent() {
           override suspend fun slotRespond(second: Canvas, marker: String, first: Canvas): String =
-            second.create().compose(MetricsOnlyTile)
+            second.withMosaic { compose(MetricsOnlyTile) }
         }
         suspend fun entry(): String = ApplicationComponent().handle("r")
         suspend fun slotEntry(): String = SlotApplication().slotHandle()
         suspend fun adapterEntry(): String {
           val application = applicationLayer(applicationBase())
           val request = application.withLayer { single<RequestContext> { RequestContext("r") } }
-          return request.create().compose(EnterpriseTile)
+          return request.withMosaic { compose(EnterpriseTile) }
         }
         """.trimIndent(),
       )

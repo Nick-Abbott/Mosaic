@@ -85,8 +85,8 @@ class MosaicReceiverBoundaryTest {
             fun Mosaic.read(): Metrics = source<Metrics>()
             fun invoke(receiver: Mosaic) = receiver.read()
           }
-          val ExampleTile = singleTile { Reader().invoke(canvas { }.create()) }
-          suspend fun entry() = canvas { single<Metrics> { Metrics() } }.create().compose(ExampleTile)
+          val ExampleTile = singleTile { canvas { }.withMosaic { Reader().invoke(this) } }
+          suspend fun entry() = canvas { single<Metrics> { Metrics() } }.withMosaic { compose(ExampleTile) }
           """.trimIndent(),
         )
       }
@@ -110,15 +110,15 @@ class MosaicReceiverBoundaryTest {
           import org.buildmosaic.core.*
           import org.buildmosaic.core.injection.*
           suspend fun Mosaic.expose(): Canvas = canvas { }
-          suspend fun entry(): Canvas = canvas { }.create().expose()
+          suspend fun entry(): Canvas = canvas { }.withMosaic { expose() }
           """.trimIndent(),
         )
       }
     val module = compileAndExtract(listOf(source), directory, "regression")
     val result = module.canvases.single { it.id == "regression.entry()" }.result as CanvasExpression.WithEffects
-    val unknown = result.evaluatedResult() as CanvasExpression.Unknown
-    assertTrue(unknown.reason.contains("Mosaic extension receiver"))
-    assertEquals(RootStatus.UNVERIFIED, analyze(module).roots.single().status)
+    val report = analyze(module)
+    assertEquals(RootStatus.UNVERIFIED, report.roots.single().status, result.toString())
+    assertTrue(report.findings.any { it.reason.contains("Mosaic extension receiver") }, report.toString())
   }
 }
 
@@ -242,7 +242,7 @@ class InitializationBoundaryTest {
           import org.buildmosaic.core.*
           import org.buildmosaic.core.injection.*
           class Metrics
-          val startupMetrics = runBlocking { canvas { }.create().source<Metrics>() }
+          val startupMetrics = runBlocking { canvas { }.withMosaic { source<Metrics>() } }
           """.trimIndent(),
         )
       }
@@ -271,7 +271,7 @@ class InitializationBoundaryTest {
           import org.buildmosaic.core.*
           import org.buildmosaic.core.injection.*
           class Metrics
-          val startupMetrics: Metrics = runBlocking { canvas { }.create().source<Metrics>() }
+          val startupMetrics: Metrics = runBlocking { canvas { }.withMosaic { source<Metrics>() } }
             get() = field
           fun entry() { startupMetrics }
           """.trimIndent(),
@@ -316,7 +316,7 @@ class InitializationBoundaryTest {
           import org.buildmosaic.core.injection.*
           class Metrics
           class Boot {
-            init { runBlocking { canvas { }.create().source<Metrics>() } }
+            init { runBlocking { canvas { }.withMosaic { source<Metrics>() } } }
           }
           """.trimIndent(),
         )
@@ -373,7 +373,7 @@ class StoredFieldBoundaryTest {
           import org.buildmosaic.core.*
           import org.buildmosaic.core.injection.*
           class Metrics
-          @JvmField val startupMetrics = runBlocking { canvas { }.create().source<Metrics>() }
+          @JvmField val startupMetrics = runBlocking { canvas { }.withMosaic { source<Metrics>() } }
           fun entry() { startupMetrics }
           """.trimIndent(),
         )
@@ -398,16 +398,18 @@ private fun extensionReceiverFixtureSource(): String =
   val Mosaic.metricsValue: Metrics get() = source<Metrics>()
   fun parameterRead(receiver: Mosaic): Metrics = receiver.source<Metrics>()
   val ExampleTile = singleTile {
-    val other = canvas { }.create()
-    other.readMetrics()
+    canvas { }.withMosaic {
+      val other = this
+      other.readMetrics()
+    }
   }
-  val SuppliedTile = singleTile { canvas { single<Metrics> { Metrics() } }.create().readMetrics() }
-  val ParameterTile = singleTile { parameterRead(canvas { }.create()) }
-  val AccessorTile = singleTile { canvas { }.create().metricsValue }
-  suspend fun entry() = canvas { single<Metrics> { Metrics() } }.create().compose(ExampleTile)
-  suspend fun suppliedEntry() = canvas { single<Metrics> { Metrics() } }.create().compose(SuppliedTile)
-  suspend fun parameterEntry() = canvas { single<Metrics> { Metrics() } }.create().compose(ParameterTile)
-  suspend fun accessorEntry() = canvas { single<Metrics> { Metrics() } }.create().compose(AccessorTile)
+  val SuppliedTile = singleTile { canvas { single<Metrics> { Metrics() } }.withMosaic { readMetrics() } }
+  val ParameterTile = singleTile { canvas { }.withMosaic { parameterRead(this) } }
+  val AccessorTile = singleTile { canvas { }.withMosaic { metricsValue } }
+  suspend fun entry() = canvas { single<Metrics> { Metrics() } }.withMosaic { compose(ExampleTile) }
+  suspend fun suppliedEntry() = canvas { single<Metrics> { Metrics() } }.withMosaic { compose(SuppliedTile) }
+  suspend fun parameterEntry() = canvas { single<Metrics> { Metrics() } }.withMosaic { compose(ParameterTile) }
+  suspend fun accessorEntry() = canvas { single<Metrics> { Metrics() } }.withMosaic { compose(AccessorTile) }
   """.trimIndent()
 
 private fun assertBinaryTileProperties(
@@ -461,8 +463,8 @@ private fun localDefaultFixtureSource(): String =
   suspend fun entry() { consume(canvas { }) }
   suspend fun explicitEntry() { consume(canvas { }, ignored = Metrics()) }
   suspend fun suppliedEntry() { consume(canvas { single<Metrics> { Metrics() } }) }
-  suspend fun constructorEntry() { Holder(canvas { }.create()) }
-  suspend fun explicitConstructorEntry() { Holder(canvas { }.create(), metrics = Metrics()) }
+  suspend fun constructorEntry() { canvas { }.withMosaic { Holder(this) } }
+  suspend fun explicitConstructorEntry() { canvas { }.withMosaic { Holder(this, metrics = Metrics()) } }
   """.trimIndent()
 
 private fun binaryDefaultConsumerSource(): String =
@@ -471,10 +473,10 @@ private fun binaryDefaultConsumerSource(): String =
   import org.buildmosaic.core.*
   import org.buildmosaic.core.injection.*
   import producer.*
-  suspend fun stableTileEntry() { val alias = NeedsMetrics; canvas { single<Metrics> { Metrics() } }.create().compose(alias) }
-  suspend fun computedTileEntry() = canvas {}.create().compose(ExposedTile)
+  suspend fun stableTileEntry() { val alias = NeedsMetrics; canvas { single<Metrics> { Metrics() } }.withMosaic { compose(alias) } }
+  suspend fun computedTileEntry() = canvas {}.withMosaic { compose(ExposedTile) }
   suspend fun entry() { consume(canvas { }) }
-  suspend fun constructorEntry() { Holder(canvas { }.create()) }
+  suspend fun constructorEntry() { canvas { }.withMosaic { Holder(this) } }
   """.trimIndent()
 
 private fun analyze(

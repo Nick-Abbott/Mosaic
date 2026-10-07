@@ -2,7 +2,6 @@ package org.buildmosaic.core.injection
 
 import kotlinx.coroutines.test.runTest
 import org.buildmosaic.core.exception.MosaicMissingKeyException
-import org.buildmosaic.core.source
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -95,22 +94,6 @@ class CanvasTest {
 
       assertNull(testCanvas.sourceOr<String>())
       assertNull(testCanvas.sourceOr(CanvasKey(String::class)))
-    }
-
-  @Test
-  fun `should test canvas create function`() =
-    runTest {
-      val testCanvas =
-        canvas {
-          single<TestService> { TestServiceImpl("create-test") }
-        }
-
-      // Test the create() extension function
-      val mosaic = testCanvas.create()
-      val service = mosaic.source<TestService>()
-
-      assertNotNull(service)
-      assertEquals("create-test", service.getValue())
     }
 
   @Test

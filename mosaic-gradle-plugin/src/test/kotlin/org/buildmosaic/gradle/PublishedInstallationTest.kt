@@ -204,9 +204,9 @@ private fun verifyRuntimeConsumer(
       """
       import kotlinx.coroutines.test.runTest
       import org.buildmosaic.core.singleTile
-      import org.buildmosaic.test.TestMosaicBuilder
+      import org.buildmosaic.test.mosaicBuilder
       import org.buildmosaic.core.injection.canvas
-      import org.buildmosaic.core.injection.create
+      import org.buildmosaic.core.injection.withMosaic
       import org.buildmosaic.opentelemetry.tracing
       import io.opentelemetry.api.OpenTelemetry
       import kotlin.test.Test
@@ -215,13 +215,14 @@ private fun verifyRuntimeConsumer(
         @Test fun composes() = runTest {
           val input by singleTile { "original" }
           val response by singleTile { compose(input).uppercase() }
-          val mosaic = TestMosaicBuilder(this).withMockTile(input, "published").build()
-          mosaic.assertEquals(response, "PUBLISHED")
-          kotlin.test.assertEquals("response", response.name)
+          mosaicBuilder().withMockTile(input, "published").withMosaic {
+            assertEquals(response, "PUBLISHED")
+            kotlin.test.assertEquals("response", response.name)
+          }
         }
         @Test fun tracingInstalls() = runTest {
           val configured = canvas { tracing { OpenTelemetry.noop() } }
-          kotlin.test.assertEquals("published", configured.create().compose(singleTile { "published" }))
+          kotlin.test.assertEquals("published", configured.withMosaic { compose(singleTile { "published" }) })
         }
       }
       """.trimIndent(),

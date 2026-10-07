@@ -16,190 +16,207 @@
 
 package org.buildmosaic.core
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.buildmosaic.core.injection.canvas
+import org.buildmosaic.core.injection.withMosaic
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.collections.mapValues
-import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
 
 @Suppress("FunctionOnlyReturningConstant", "FunctionMaxLength", "LargeClass")
 class MosaicConcurrencyTest {
-  private lateinit var mosaic: Mosaic
-
-  @BeforeTest
-  fun setUp() {
-    val emptyCanvas =
-      runBlocking { canvas {} }
-    mosaic = MosaicImpl(emptyCanvas)
-  }
-
   @Test
   fun `should handle concurrent single tile composition`() =
     runTest {
-      val constructorCallCount = AtomicInteger(0)
+      withContext(Dispatchers.Default) {
+        canvas {}.withMosaic {
+          val mosaic = this
+          val constructorCallCount = AtomicInteger(0)
 
-      val testTile =
-        singleTile {
-          constructorCallCount.incrementAndGet()
-          delay(10) // Simulate some work
-          "test-value"
+          val testTile =
+            singleTile {
+              constructorCallCount.incrementAndGet()
+              delay(10) // Simulate some work
+              "test-value"
+            }
+
+          // Launch multiple concurrent compose calls
+          val results =
+            coroutineScope {
+              (1..10).map {
+                async { mosaic.compose(testTile) }
+              }.awaitAll()
+            }
+
+          // All should return the same value
+          results.forEach { result ->
+            assertEquals("test-value", result)
+          }
+
+          // The tile block should only be executed once (synchronized worked)
+          assertEquals(1, constructorCallCount.get())
         }
-
-      // Launch multiple concurrent compose calls
-      val results =
-        coroutineScope {
-          (1..10).map {
-            async { mosaic.compose(testTile) }
-          }.awaitAll()
-        }
-
-      // All should return the same value
-      results.forEach { result ->
-        assertEquals("test-value", result)
       }
-
-      // The tile block should only be executed once (synchronized worked)
-      assertEquals(1, constructorCallCount.get())
     }
 
   @Test
   fun `should handle concurrent single tile async composition`() =
     runTest {
-      val constructorCallCount = AtomicInteger(0)
+      withContext(Dispatchers.Default) {
+        canvas {}.withMosaic {
+          val mosaic = this
+          val constructorCallCount = AtomicInteger(0)
 
-      val testTile =
-        singleTile {
-          constructorCallCount.incrementAndGet()
-          delay(10) // Simulate some work
-          "test-value"
+          val testTile =
+            singleTile {
+              constructorCallCount.incrementAndGet()
+              delay(10) // Simulate some work
+              "test-value"
+            }
+
+          // Launch multiple concurrent composeAsync calls
+          val deferredResults =
+            coroutineScope {
+              (1..10).map {
+                async { mosaic.composeAsync(testTile) }
+              }.awaitAll()
+            }
+
+          // All deferred results should be the same instance (cached)
+          val firstDeferred = deferredResults[0]
+          deferredResults.forEach { deferred ->
+            assertSame(firstDeferred, deferred)
+          }
+
+          // All should return the same value
+          val results = deferredResults.awaitAll()
+          results.forEach { result ->
+            assertEquals("test-value", result)
+          }
+
+          // The tile block should only be executed once (synchronized worked)
+          assertEquals(1, constructorCallCount.get())
         }
-
-      // Launch multiple concurrent composeAsync calls
-      val deferredResults =
-        coroutineScope {
-          (1..10).map {
-            async { mosaic.composeAsync(testTile) }
-          }.awaitAll()
-        }
-
-      // All deferred results should be the same instance (cached)
-      val firstDeferred = deferredResults[0]
-      deferredResults.forEach { deferred ->
-        assertSame(firstDeferred, deferred)
       }
-
-      // All should return the same value
-      val results = deferredResults.awaitAll()
-      results.forEach { result ->
-        assertEquals("test-value", result)
-      }
-
-      // The tile block should only be executed once (synchronized worked)
-      assertEquals(1, constructorCallCount.get())
     }
 
   @Test
   fun `should handle concurrent MultiTile access`() =
     runTest {
-      val fetched = ConcurrentLinkedQueue<Set<String>>()
+      withContext(Dispatchers.Default) {
+        canvas {}.withMosaic {
+          val mosaic = this
+          val fetched = ConcurrentLinkedQueue<Set<String>>()
 
-      val testTile =
-        multiTile { keys: Set<String> ->
-          fetched += keys
-          delay(5) // Simulate network call
-          keys.associateWith { it.replace("key", "value") }
+          val testTile =
+            multiTile { keys: Set<String> ->
+              fetched += keys
+              delay(5) // Simulate network call
+              keys.associateWith { it.replace("key", "value") }
+            }
+
+          // Launch concurrent calls that might hit the mutex
+          val results =
+            coroutineScope {
+              listOf(
+                async { mosaic.compose(testTile, listOf("key1", "key2")) },
+                async { mosaic.compose(testTile, listOf("key2", "key3")) },
+                async { mosaic.compose(testTile, listOf("key1", "key3")) },
+              ).awaitAll()
+            }
+
+          // Verify all results are correct
+          assertEquals(mapOf("key1" to "value1", "key2" to "value2"), results[0])
+          assertEquals(mapOf("key2" to "value2", "key3" to "value3"), results[1])
+          assertEquals(mapOf("key1" to "value1", "key3" to "value3"), results[2])
+
+          assertEquals(listOf("key1", "key2", "key3"), fetched.flatMap { it }.sorted())
         }
-
-      // Launch concurrent calls that might hit the mutex
-      val results =
-        coroutineScope {
-          listOf(
-            async { mosaic.compose(testTile, listOf("key1", "key2")) },
-            async { mosaic.compose(testTile, listOf("key2", "key3")) },
-            async { mosaic.compose(testTile, listOf("key1", "key3")) },
-          ).awaitAll()
-        }
-
-      // Verify all results are correct
-      assertEquals(mapOf("key1" to "value1", "key2" to "value2"), results[0])
-      assertEquals(mapOf("key2" to "value2", "key3" to "value3"), results[1])
-      assertEquals(mapOf("key1" to "value1", "key3" to "value3"), results[2])
-
-      assertEquals(listOf("key1", "key2", "key3"), fetched.flatMap { it }.sorted())
+      }
     }
 
   @Test
   fun `should handle concurrent MultiTile access with async composition`() =
     runTest {
-      val fetched = ConcurrentLinkedQueue<Set<String>>()
+      withContext(Dispatchers.Default) {
+        canvas {}.withMosaic {
+          val mosaic = this
+          val fetched = ConcurrentLinkedQueue<Set<String>>()
 
-      val testTile =
-        multiTile { keys: Set<String> ->
-          fetched += keys
-          delay(5) // Simulate network call
-          keys.associateWith { it.replace("key", "value") }
+          val testTile =
+            multiTile { keys: Set<String> ->
+              fetched += keys
+              delay(5) // Simulate network call
+              keys.associateWith { it.replace("key", "value") }
+            }
+
+          // Launch concurrent async calls that might hit the mutex
+          val deferredResults =
+            coroutineScope {
+              listOf(
+                async { mosaic.composeAsync(testTile, listOf("key1", "key2")) },
+                async { mosaic.composeAsync(testTile, listOf("key2", "key3")) },
+                async { mosaic.composeAsync(testTile, listOf("key1", "key3")) },
+              ).awaitAll()
+            }
+
+          // Await all results
+          val results =
+            deferredResults.map { deferredMap ->
+              deferredMap.mapValues { it.value.await() }
+            }
+
+          // Verify all results are correct
+          assertEquals(mapOf("key1" to "value1", "key2" to "value2"), results[0])
+          assertEquals(mapOf("key2" to "value2", "key3" to "value3"), results[1])
+          assertEquals(mapOf("key1" to "value1", "key3" to "value3"), results[2])
+
+          assertEquals(listOf("key1", "key2", "key3"), fetched.flatMap { it }.sorted())
         }
-
-      // Launch concurrent async calls that might hit the mutex
-      val deferredResults =
-        coroutineScope {
-          listOf(
-            async { mosaic.composeAsync(testTile, listOf("key1", "key2")) },
-            async { mosaic.composeAsync(testTile, listOf("key2", "key3")) },
-            async { mosaic.composeAsync(testTile, listOf("key1", "key3")) },
-          ).awaitAll()
-        }
-
-      // Await all results
-      val results =
-        deferredResults.map { deferredMap ->
-          deferredMap.mapValues { it.value.await() }
-        }
-
-      // Verify all results are correct
-      assertEquals(mapOf("key1" to "value1", "key2" to "value2"), results[0])
-      assertEquals(mapOf("key2" to "value2", "key3" to "value3"), results[1])
-      assertEquals(mapOf("key1" to "value1", "key3" to "value3"), results[2])
-
-      assertEquals(listOf("key1", "key2", "key3"), fetched.flatMap { it }.sorted())
+      }
     }
 
   @Test
   fun `should handle single key MultiTile concurrent access`() =
     runTest {
-      val fetched = ConcurrentLinkedQueue<Set<String>>()
+      withContext(Dispatchers.Default) {
+        canvas {}.withMosaic {
+          val mosaic = this
+          val fetched = ConcurrentLinkedQueue<Set<String>>()
 
-      val testTile =
-        multiTile { keys: Set<String> ->
-          fetched += keys
-          delay(5) // Simulate network call
-          keys.associateWith { it.replace("key", "value") }
+          val testTile =
+            multiTile { keys: Set<String> ->
+              fetched += keys
+              delay(5) // Simulate network call
+              keys.associateWith { it.replace("key", "value") }
+            }
+
+          // Launch concurrent calls for single keys
+          val results =
+            coroutineScope {
+              listOf(
+                async { mosaic.compose(testTile, "key1") },
+                async { mosaic.compose(testTile, "key2") },
+                async { mosaic.compose(testTile, "key1") },
+              ).awaitAll()
+            }
+
+          // Verify all results are correct
+          assertEquals("value1", results[0])
+          assertEquals("value2", results[1])
+          assertEquals("value1", results[2]) // Same as first
+
+          assertEquals(listOf("key1", "key2"), fetched.flatMap { it }.sorted())
         }
-
-      // Launch concurrent calls for single keys
-      val results =
-        coroutineScope {
-          listOf(
-            async { mosaic.compose(testTile, "key1") },
-            async { mosaic.compose(testTile, "key2") },
-            async { mosaic.compose(testTile, "key1") },
-          ).awaitAll()
-        }
-
-      // Verify all results are correct
-      assertEquals("value1", results[0])
-      assertEquals("value2", results[1])
-      assertEquals("value1", results[2]) // Same as first
-
-      assertEquals(listOf("key1", "key2"), fetched.flatMap { it }.sorted())
+      }
     }
 }

@@ -124,7 +124,7 @@ val B: Tile<Int> by singleTile { compose(A) }
 suspend fun entry() = canvas {}.withMosaic { compose(A) }
 ```
 
-The reported path is `A -> B -> A`. Sharing a Canvas does not mean sharing a Mosaic cache: `withMosaic` and deprecated `create()` each create a fresh standard Mosaic. Analysis distinguishes those instances from the Mosaic executing the current Tile and preserves established immutable aliases. Unknown receivers, unsupported execution steps, fresh Tile allocation identities, opaque execution alternatives, and keyed recursion do not establish this proof.
+The reported path is `A -> B -> A`. Sharing a Canvas does not mean sharing a Mosaic cache: each `withMosaic` invocation creates a fresh standard Mosaic. Analysis distinguishes those instances from the Mosaic executing the current Tile and preserves established immutable aliases. Unknown receivers, unsupported execution steps, fresh Tile allocation identities, opaque execution alternatives, and keyed recursion do not establish this proof.
 
 An async launcher does not imply waiting. If A starts B asynchronously and B/C synchronously require each other, the independent witness is `B -> C -> B`; it does not claim A waits. Arbitrary `Deferred.await()` relationships are outside the proof boundary. The finding is called a cyclic Tile dependency, not a thread deadlock.
 
@@ -133,7 +133,7 @@ An async launcher does not imply waiting. If A starts B asynchronously and B/C s
 Reports a stable Tile declaration that requests itself, directly or through other Tiles or MultiTiles, when the stronger cyclic-result proof is unavailable. Examples include async edges, unknown Mosaic identity, separate Mosaics, and mixed Tile/MultiTile recursion. The diagnostic explicitly says the same-Mosaic cyclic result dependency was **not proven**.
 
 ```kotlin
-val A: Tile<Int> by singleTile { canvas.create().compose(A) }
+val A: Tile<Int> by singleTile { canvas.withMosaic { compose(A) } }
 ```
 
 This constructs separate Mosaic caches. The recursion is still rejected by default. Unsupported helper/capture/control-flow boundaries are not filled in to invent a recursive edge.
@@ -146,7 +146,7 @@ mosaicAnalysis {
 
 ```kotlin
 @Suppress("MOSAIC_RECURSIVE_TILE")
-val A: Tile<Int> by singleTile { canvas.create().compose(A) }
+val A: Tile<Int> by singleTile { canvas.withMosaic { compose(A) } }
 ```
 
 ### MOSAIC_RECURSIVE_MULTITILE
@@ -185,7 +185,7 @@ package app.categories
 
 ```kotlin
 @Suppress("MOSAIC_RECURSIVE_TILE", "MOSAIC_RECURSIVE_MULTITILE")
-val RecursiveTile: Tile<Int> by singleTile { canvas.create().compose(RecursiveTile) }
+val RecursiveTile: Tile<Int> by singleTile { canvas.withMosaic { compose(RecursiveTile) } }
 ```
 
 Supported scopes are Tile declarations/properties, file annotations, and inherited containing class/object scopes on Tile templates that extraction can establish. Local immutable value annotations are retained on their extracted templates. These scopes do not expand supported Tile identity: stable exported Tile properties remain top-level immutable declarations. Arbitrary member-dependent/computed Tiles remain unknown, even with a containing-class annotation.

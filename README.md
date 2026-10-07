@@ -209,12 +209,12 @@ Tests can swap out dependency Tiles while leaving the page's composition untouch
 ```kotlin
 @Test
 fun `order page combines summary and logistics`() = runTest {
-  val testMosaic = mosaicBuilder()
+  mosaicBuilder()
     .withMockTile(OrderSummaryTile, mockSummary)
     .withMockTile(LogisticsTile, mockLogistics)
-    .build()
-
-  testMosaic.assertEquals(OrderPageTile, OrderPage(mockSummary, mockLogistics))
+    .withMosaic {
+      assertEquals(OrderPageTile, OrderPage(mockSummary, mockLogistics))
+    }
 }
 ```
 
