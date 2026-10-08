@@ -107,11 +107,12 @@ entries, and duplicate parameters are rejected.
 `producer.analysisVersion`, `producer.compilerVersion`, `moduleId`, `sourceSet`,
 and `complete` header fields. The Analysis version comes from its bundled build
 resource; the compiler version is normalized to the supported Kotlin 2.4.20.
-The reader accepts only contract version 6, Kotlin 2.4.20, and complete
-`main` source-set summaries. The module identity must be nonblank and match the
-payload. A nonblank producer version is required but does not determine semantic
-compatibility. Regenerate incompatible summaries with the supported Mosaic
-analysis toolchain before consuming them. Construction-time required lookup uses
+The writer and extractor support only Kotlin 2.4.20; the reader accepts valid
+contract-6, complete `main` summaries from other nonblank Analysis and compiler
+producer versions, preserving those identities as provenance. Successful decoding
+does not certify compiler, Runtime, or Gradle interoperability. The module identity
+must be nonblank and match the payload. Regenerate incompatible summaries with the
+supported Mosaic analysis toolchain before consuming them. Construction-time required lookup uses
 `LookupKind.CONSTRUCTION` and the serialized `CONSTRUCTION` lookup tag. Required
 and optional lookups use `REQUIRED` and `OPTIONAL`. Older formats are rejected
 with regeneration guidance.

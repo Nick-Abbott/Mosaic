@@ -14,7 +14,7 @@ import org.buildmosaic.analysis.metadata.toWire
 import java.security.MessageDigest
 import java.util.Properties
 
-/** Compiler and Gradle plugin version supported by this analysis contract reader and writer. */
+/** Compiler and Gradle plugin version supported by the analysis extractor and metadata writer. */
 const val ANALYSIS_KOTLIN_VERSION = "2.4.20"
 
 /** Internal JAR resource. Compatibility is decided by the header, not this path. */
@@ -97,9 +97,7 @@ object SummaryCodec {
           "expected $CONTRACT_VERSION. $regeneration"
       }
       val envelope = json.decodeFromJsonElement(WireEnvelope.serializer(), element)
-      require(envelope.producer.compilerVersion == ANALYSIS_KOTLIN_VERSION) {
-        "Unsupported Kotlin compiler ${envelope.producer.compilerVersion}. $regeneration"
-      }
+      require(envelope.producer.compilerVersion.isNotBlank()) { "Missing Mosaic producer compiler version" }
       require(envelope.producer.analysisVersion.isNotBlank()) { "Missing Mosaic producer analysis version" }
       require(envelope.complete) { "Partial Mosaic summary cannot be used as complete" }
       require(envelope.moduleId.isNotBlank() && envelope.moduleId == envelope.payload.module.id) {
