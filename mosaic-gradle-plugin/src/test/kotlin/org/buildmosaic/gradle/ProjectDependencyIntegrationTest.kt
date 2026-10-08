@@ -40,10 +40,7 @@ class ProjectDependencyIntegrationTest {
         """
         plugins { kotlin("jvm") version "2.4.20"; id("org.buildmosaic.analysis") }
         group = "fixture"
-        repositories {
-          flatDir { dirs("${pluginJar.parentFile.invariantSeparatorsPath}") }
-          mavenCentral()
-        }
+        ${fixtureRepositories(pluginJar)}
         dependencies {
           implementation(files("${coreJar.invariantSeparatorsPath}"))
           implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")

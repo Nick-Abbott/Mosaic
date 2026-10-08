@@ -20,7 +20,7 @@ import kotlin.test.assertTrue
 
 class ScopedAnalysisTest {
   private companion object {
-    val directory = Files.createTempDirectory("mosaic-scoped-analysis").toFile()
+    val directory: File = Files.createTempDirectory("mosaic-scoped-analysis").toFile()
     val module by lazy {
       val source = File(directory, "Tiles.kt").apply { writeText(scopedSource) }
       val fileScope = File(directory, "FileScope.kt").apply { writeText(fileSource) }
