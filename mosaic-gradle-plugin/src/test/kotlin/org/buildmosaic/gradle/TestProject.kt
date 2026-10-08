@@ -50,10 +50,7 @@ internal fun project(
         id("org.buildmosaic.analysis")
       }
       group = "fixture"
-      repositories {
-        flatDir { dirs("${pluginJar.parentFile.invariantSeparatorsPath}") }
-        mavenCentral()
-      }
+      ${fixtureRepositories(pluginJar)}
       dependencies {
         $dependencies
         implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
@@ -66,6 +63,21 @@ internal fun project(
       """.trimIndent(),
     )
   }
+
+// A flat directory alone loses to Maven metadata for the same published version.
+// Keep compiler coordinates exclusive to the checkout; runtime JARs use files(...).
+internal fun fixtureRepositories(pluginJar: File): String =
+  """
+  repositories {
+    exclusiveContent {
+      forRepository {
+        flatDir { dirs("${pluginJar.parentFile.invariantSeparatorsPath}") }
+      }
+      filter { includeModule("org.buildmosaic", "mosaic-compiler-plugin") }
+    }
+    mavenCentral()
+  }
+  """.trimIndent()
 
 internal fun assertFreshEquivalent(
   project: File,
