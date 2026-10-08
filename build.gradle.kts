@@ -37,3 +37,27 @@ dependencies {
 dokka {
   moduleName.set("Mosaic")
 }
+
+// Deliberately disconnected from build/check/test and all validation workflows.
+listOf(
+  "certifyKotlin" to "all",
+  "certifyKotlinRuntime" to "runtime",
+  "certifyKotlinAnalysis" to "analysis",
+).forEach { (taskName, scope) ->
+  tasks.register<Exec>(taskName) {
+    group = "compatibility"
+    description = "On-demand $scope certification of an exact -Pcompat.kotlin version"
+    commandLine(
+      "python3",
+      layout.projectDirectory.file("compatibility/certify.py").asFile.absolutePath,
+      "--kotlin",
+      providers.gradleProperty("compat.kotlin").getOrElse(""),
+      "--scope",
+      scope,
+      "--java-installations",
+      providers.gradleProperty("org.gradle.java.installations.paths").getOrElse(""),
+    )
+    // Certification always produces fresh evidence, including failures.
+    outputs.upToDateWhen { false }
+  }
+}
