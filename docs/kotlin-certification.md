@@ -1,4 +1,4 @@
-# On-demand Kotlin certification
+# On-demand Kotlin compatibility harness
 
 Maintainers can test an exact Kotlin compiler against candidate Mosaic artifacts:
 
@@ -13,10 +13,12 @@ compiler processes. If necessary, add
 `-Porg.gradle.java.installations.paths=/absolute/path/to/jdk17` to the command.
 The harness uses the checked-in Gradle wrapper; it has no distribution selector.
 
-`compat.kotlin` is mandatory. Only exact release, RC, or Beta versions are accepted.
-Dynamic selectors, version ranges, snapshots, omitted versions, and fallback to
-another compiler are rejected. Resolution or compiler ABI failures fail the
-requested certification; they are evidence of the candidate's actual boundary.
+`compat.kotlin` is mandatory. Only exact stable Kotlin versions in
+`major.minor.patch` format are accepted, such as `2.4.20`, `2.3.21`, or `2.2.0`.
+RCs, Betas, snapshots, other preview versions, dynamic selectors, version ranges,
+and omitted versions fail promptly with a diagnostic. There is no fallback to
+another compiler. Resolution or compiler ABI failures fail the requested harness
+scope; they are evidence of the candidate's actual boundary.
 
 To run one scope:
 
@@ -25,10 +27,13 @@ To run one scope:
 ./gradlew certifyKotlinAnalysis -Pcompat.kotlin=2.4.20
 ```
 
-A successful scoped run certifies only that scope. It records other areas as
-`not-run` and sets `completeCertification` to `false`. Full certification requires
-every area to pass. No command publishes external artifacts or changes support
-policy. Production Kotlin/KGP version guards remain authoritative.
+`harnessResult=pass` means every required area of the requested scope passed.
+`harnessComplete=true` means `scope=all` and all four harness areas passed.
+A successful scoped run sets `harnessComplete=false` and records unexecuted
+areas as `not-run`. Neither result establishes full Mosaic compatibility
+certification: Gradle/KGP integration and the remaining compatibility-matrix
+dimensions are outside this harness. No command publishes external artifacts or
+changes support policy. Production Kotlin/KGP version guards remain authoritative.
 
 ## Artifacts and isolation
 
@@ -77,10 +82,14 @@ Each invocation writes fresh evidence under
   one command/log per isolated compiler invocation, and compiler-produced summaries.
 - `repository/`: private candidate publications used by that invocation.
 
-Required failures or unavailable prerequisites yield a nonzero exit code. Metadata
+Required failures or unavailable prerequisites yield a nonzero exit code. Areas
+skipped after failed preparation or extraction remain `not-run` with diagnostics
+and still fail the required scope. Metadata
 coverage still runs when the selected compiler is unavailable or its extractor
-cannot load. Full certification never promotes a partial result. Reports describe
-observations, not an automatic support announcement or compatibility registry.
+cannot load. Required areas that fail or cannot run make `harnessResult=fail` and
+`harnessComplete=false`; partial results never imply complete harness coverage.
+Reports describe observations, not full Mosaic compatibility certification, an
+automatic support announcement, or a compatibility registry.
 
 ## Validation boundary
 

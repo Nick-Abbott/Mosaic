@@ -46,7 +46,7 @@ listOf(
 ).forEach { (taskName, scope) ->
   tasks.register<Exec>(taskName) {
     group = "compatibility"
-    description = "On-demand $scope certification of an exact -Pcompat.kotlin version"
+    description = "On-demand $scope compatibility harness for an exact stable -Pcompat.kotlin version"
     commandLine(
       "python3",
       layout.projectDirectory.file("compatibility/certify.py").asFile.absolutePath,
@@ -57,7 +57,7 @@ listOf(
       "--java-installations",
       providers.gradleProperty("org.gradle.java.installations.paths").getOrElse(""),
     )
-    // Certification always produces fresh evidence, including failures.
+    // The harness always produces fresh evidence, including failures.
     outputs.upToDateWhen { false }
   }
 }

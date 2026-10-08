@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""On-demand artifact consumer and direct compiler certification (stdlib only)."""
+"""On-demand Kotlin compatibility harness (stdlib only)."""
 
 import argparse
 import hashlib
@@ -19,8 +19,8 @@ AREAS = ("runtime", "directCompiler", "metadata", "semanticComparison")
 
 def exact_version(version):
     # Maven ranges, dynamic selectors, mutable snapshots and implicit versions are forbidden.
-    if not re.fullmatch(r"\d+\.\d+\.\d+(?:-(?:RC|Beta)\d*)?", version):
-        raise ValueError("compat.kotlin requires an exact release, RC or Beta version (for example 2.3.21)")
+    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+        raise ValueError("compat.kotlin requires an exact stable Kotlin version in major.minor.patch format (for example 2.3.21)")
     return version
 
 
@@ -28,7 +28,7 @@ def required_areas(scope):
     return set(AREAS if scope == "all" else ("runtime",) if scope == "runtime" else AREAS[1:])
 
 
-def complete(report):
+def scope_passed(report):
     return all(report["areas"][name]["result"] == "pass" for name in required_areas(report["scope"]))
 
 
@@ -54,7 +54,7 @@ class Harness:
         self.directory.mkdir(parents=True)
         self.report = {
             "requestedCompilerVersion": version, "actualCompilerVersion": None, "scope": scope,
-            "certification": "not-run", "completeCertification": False,
+            "harnessResult": "not-run", "harnessComplete": False,
             "areas": {name: {"result": "not-run", "suites": []} for name in AREAS},
             "commands": [], "environment": {"platform": sys.platform, "python": sys.version},
             "failureDiagnostics": [],
@@ -77,13 +77,14 @@ class Harness:
         return log.read_text()
 
     def area(self, name, operation):
+        self.report["areas"][name]["result"] = "fail"
         try:
             operation()
             self.report["areas"][name]["result"] = "pass"
         except Exception as failure:
-            self.report["areas"][name].update(result="fail", diagnostic=str(failure))
+            self.report["areas"][name]["diagnostic"] = str(failure)
             self.report["failureDiagnostics"].append(f"{name}: {failure}")
-            print(f"Compatibility: {name} FAILED: {failure}", flush=True)
+            print(f"Compatibility: {name} {self.report['areas'][name]['result'].upper()}: {failure}", flush=True)
 
     def prepare(self):
         exact_version(self.version)
@@ -227,7 +228,8 @@ class Harness:
     def compare(self):
         self.report["areas"]["semanticComparison"]["suites"] = ["all compiler-produced summaries versus control"]
         if self.report["areas"]["directCompiler"]["result"] != "pass":
-            reason = "Semantic comparison cannot certify incomplete/failed compiler fixture execution"
+            reason = "Semantic comparison cannot run after incomplete/failed compiler fixture execution"
+            self.report["areas"]["semanticComparison"]["result"] = "not-run"
             self.report["semanticComparison"] = {
                 "result": "not-run", "reason": reason,
                 "controlSummaries": len(list((self.directory / "control/summaries").glob("*.json"))),
@@ -240,12 +242,13 @@ class Harness:
             raise RuntimeError(f"Semantic summaries differ: {comparison}")
 
     def finish(self):
-        passed = complete(self.report)
-        self.report["certification"] = "pass" if passed else "fail"
-        self.report["completeCertification"] = passed and self.scope == "all"
+        passed = scope_passed(self.report)
+        self.report["harnessResult"] = "pass" if passed else "fail"
+        self.report["harnessComplete"] = passed and self.scope == "all"
         (self.directory / "report.json").write_text(json.dumps(self.report, indent=2) + "\n")
-        lines = [f"# Kotlin {self.version or '(missing)'} compatibility: {self.report['certification']}", "",
-                 f"Scope: {self.scope}; complete certification: {self.report['completeCertification']}",
+        lines = [f"# Kotlin {self.version or '(missing)'} compatibility harness: {self.report['harnessResult']}", "",
+                 f"Scope: {self.scope}; all harness areas passed: {self.report['harnessComplete']}",
+                 "Harness evidence only; this is not full Mosaic compatibility certification. Gradle/KGP integration is not tested.",
                  f"Actual compiler: {self.report['actualCompilerVersion'] or 'not run'}",
                  f"Candidate: {self.report.get('candidateVersion', 'not built')}", "",
                  "| Area | Result | Suites |", "| --- | --- | --- |"]
@@ -264,9 +267,9 @@ class Harness:
         for command in self.report["commands"]:
             lines += [f"- `{shlex.join(command['argv'])}`; exit {command.get('exitCode', 'unavailable')}; log: {command['log']}"]
         lines += ["", "## Failure diagnostics", "", *(self.report["failureDiagnostics"] or ["None."]), "",
-                  "No support policy or registry was changed. Gradle/KGP integration was not certified."]
+                  "No support policy or registry was changed. Gradle/KGP integration was not tested."]
         (self.directory / "report.md").write_text("\n".join(lines) + "\n")
-        print(f"Compatibility {self.report['certification']}: {self.directory / 'report.md'}", flush=True)
+        print(f"Compatibility harness {self.report['harnessResult']}: {self.directory / 'report.md'}", flush=True)
         return 0 if passed else 1
 
 
@@ -307,8 +310,9 @@ def main():
         harness.prepare()
     except Exception as failure:
         harness.report["failureDiagnostics"].append(str(failure))
+        print(f"Compatibility harness cannot run: {failure}", flush=True)
         for name in required_areas(args.scope):
-            harness.report["areas"][name].update(result="fail", diagnostic=f"Cannot run: {failure}")
+            harness.report["areas"][name]["diagnostic"] = f"Cannot run: {failure}"
     else:
         if args.scope in ("all", "runtime"):
             harness.area("runtime", harness.runtime)

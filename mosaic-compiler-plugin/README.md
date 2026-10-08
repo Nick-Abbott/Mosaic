@@ -141,7 +141,7 @@ and invalidation. Put a regression's decisive assertion at the cheapest layer
 that exposes it, and extend a relevant compiled fixture before adding another
 compiler or build invocation. Keep distinct failure guarantees covered.
 
-Maintainers can run the [on-demand Kotlin certification harness](../docs/kotlin-certification.md)
+Maintainers can run the [on-demand Kotlin compatibility harness](../docs/kotlin-certification.md)
 to test an exact compiler against candidate Runtime artifacts and this extractor.
 It reuses these direct compiler fixtures in isolated compiler processes and keeps
-metadata decoding separate. Ordinary validation does not run certification.
+metadata decoding separate. Ordinary validation does not run the harness.
