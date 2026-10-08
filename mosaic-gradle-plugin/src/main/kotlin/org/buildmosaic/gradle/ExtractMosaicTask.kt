@@ -4,7 +4,6 @@ import org.buildmosaic.analysis.ANALYSIS_KOTLIN_VERSION
 import org.buildmosaic.analysis.SourceShardCodec
 import org.buildmosaic.analysis.SourceShardPaths
 import org.buildmosaic.analysis.SummaryCodec
-import org.buildmosaic.analysis.SummaryProducer
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
@@ -40,8 +39,6 @@ abstract class ExtractMosaicTask : DefaultTask() {
   abstract val shardFiles: ConfigurableFileCollection
 
   @get:Internal abstract val shardDirectory: DirectoryProperty
-
-  @get:Classpath abstract val compilerClasspath: ConfigurableFileCollection
 
   @get:Classpath abstract val additionalCompilerPlugins: ConfigurableFileCollection
 
@@ -101,30 +98,12 @@ abstract class ExtractMosaicTask : DefaultTask() {
           throw GradleException("Invalid Mosaic compiler shard for $sourceId", error)
         }
       }
-    val bytes =
-      SourceShardCodec.assemble(
-        moduleId.get(),
-        shards,
-        SummaryProducer(SummaryCodec.analysisVersion, executingCompilerVersion()),
-      )
+    val bytes = SourceShardCodec.assemble(moduleId.get(), shards)
     SummaryCodec.decode(bytes)
     output.parentFile.mkdirs()
     val pending = File(output.parentFile, "${output.name}.pending")
     pending.writeBytes(bytes)
     Files.move(pending.toPath(), output.toPath(), StandardCopyOption.REPLACE_EXISTING)
-  }
-
-  private fun executingCompilerVersion(): String {
-    val versions =
-      compilerClasspath.files.filter { it.extension == "jar" }.mapNotNull { file ->
-        JarFile(file).use { jar ->
-          jar.getJarEntry("META-INF/compiler.version")?.let { entry ->
-            jar.getInputStream(entry).bufferedReader().use { it.readLine() }
-          }
-        }
-      }
-    requireSupported(versions.size == 1, "Mosaic extraction requires exactly one versioned Kotlin compiler")
-    return versions.single()
   }
 
   private fun validateSources() {

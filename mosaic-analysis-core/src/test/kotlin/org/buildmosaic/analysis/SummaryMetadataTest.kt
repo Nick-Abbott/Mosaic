@@ -4,13 +4,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
-internal val testProducer = SummaryProducer("test-analysis", ANALYSIS_KOTLIN_VERSION)
-
 @Suppress("FunctionMaxLength")
 class SummaryMetadataTest {
   @Test
   fun `H3 absent required metadata cannot acquire optimistic defaults`() {
-    val bytes = SummaryCodec.encode(ModuleContract("sample"), testProducer).decodeToString()
+    val bytes = SummaryCodec.encode(ModuleContract("sample")).decodeToString()
     for (field in listOf(
       "complete",
       "analysisVersion",
@@ -29,8 +27,10 @@ class SummaryMetadataTest {
     assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(bytes.replace("\"payload\":", "\"missingPayload\":").toByteArray())
     }
-    assertFailsWith<IllegalArgumentException> {
-      SummaryCodec.decode(bytes.replace("2.4.20", "2.2.10").toByteArray())
+    for (compiler in listOf("2.2.10", "2.4.20-release-1")) {
+      assertFailsWith<IllegalArgumentException> {
+        SummaryCodec.decode(bytes.replace("2.4.20", compiler).toByteArray())
+      }
     }
   }
 
@@ -63,7 +63,7 @@ class SummaryMetadataTest {
     val expression = CanvasExpression.WithEffects(listOf(initialize, Effect.Unknown("later", "unknown", site)), call)
     val contract = CanvasContract("entry", result = expression, site = site)
     val module = ModuleContract("ordered", canvases = listOf(contract))
-    val restored = SummaryCodec.decode(SummaryCodec.encode(module, testProducer)).module
+    val restored = SummaryCodec.decode(SummaryCodec.encode(module)).module
     assertEquals(module, restored)
     val plan = restored.canvases.single().result as CanvasExpression.WithEffects
     assertEquals(listOf("allocation", "later"), plan.effects.map { it.id })
@@ -72,7 +72,7 @@ class SummaryMetadataTest {
 
   @Test
   fun `invalid summaries are rejected`() {
-    val bytes = SummaryCodec.encode(ModuleContract("sample"), testProducer).decodeToString()
+    val bytes = SummaryCodec.encode(ModuleContract("sample")).decodeToString()
     assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(bytes.replace("\"complete\":true", "\"complete\":false").toByteArray())
     }
@@ -83,7 +83,7 @@ class SummaryMetadataTest {
     }
     assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(
-        bytes.replace("\"analysisVersion\":\"test-analysis\"", "\"analysisVersion\":\"\"").toByteArray(),
+        bytes.replace(Regex("\"analysisVersion\":\"[^\"]+\""), "\"analysisVersion\":\"\"").toByteArray(),
       )
     }
     assertFailsWith<IllegalArgumentException> {

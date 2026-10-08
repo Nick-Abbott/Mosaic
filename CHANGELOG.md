@@ -32,9 +32,9 @@ predate this maintained changelog; their release history is not reconstructed he
 - Compiler source extraction recognizes `withMosaic` as the execution boundary;
   serialized provenance semantics are unchanged.
 - Construction-time lookup uses `LookupKind.CONSTRUCTION` and the serialized
-  `CONSTRUCTION` tag. Analysis metadata uses `contractVersion = 6` for serialized
-  structure and meaning, with artifact/compiler provenance in `producer`. Legacy
-  format 5 summaries are rejected with regeneration guidance.
+  `CONSTRUCTION` tag. Analysis metadata moves to format 5; older dependency
+  summaries are rejected with regeneration guidance. Analyzer semantics remain
+  `analysis-contract-3`.
 
 ### Fixed
 

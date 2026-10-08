@@ -37,7 +37,7 @@ data class SummaryMetadata(
 object SummaryCodec {
   private const val CONTRACT_VERSION = 6
 
-  val analysisVersion: String =
+  private val analysisVersion: String =
     Properties().apply {
       val stream =
         requireNotNull(SummaryCodec::class.java.getResourceAsStream("version.properties")) {
@@ -56,7 +56,6 @@ object SummaryCodec {
 
   fun encode(
     module: ModuleContract,
-    producer: SummaryProducer,
     moduleId: String = module.id,
     sourceSet: String = "main",
     limitations: List<String> = emptyList(),
@@ -73,7 +72,7 @@ object SummaryCodec {
     val envelope =
       WireEnvelope(
         CONTRACT_VERSION,
-        WireProducer(producer.analysisVersion, producer.compilerVersion),
+        WireProducer(analysisVersion, ANALYSIS_KOTLIN_VERSION),
         moduleId,
         sourceSet,
         true,
@@ -98,11 +97,7 @@ object SummaryCodec {
           "expected $CONTRACT_VERSION. $regeneration"
       }
       val envelope = json.decodeFromJsonElement(WireEnvelope.serializer(), element)
-      require(
-        envelope.producer.compilerVersion.matches(
-          Regex("${Regex.escape(ANALYSIS_KOTLIN_VERSION)}(?:-release-[0-9]+)?"),
-        ),
-      ) {
+      require(envelope.producer.compilerVersion == ANALYSIS_KOTLIN_VERSION) {
         "Unsupported Kotlin compiler ${envelope.producer.compilerVersion}. $regeneration"
       }
       require(envelope.producer.analysisVersion.isNotBlank()) { "Missing Mosaic producer analysis version" }

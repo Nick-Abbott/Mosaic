@@ -22,7 +22,6 @@ class SummaryWireRequiredFieldsTest {
       val call = Effect.Call("invoke", "target", arguments, site)
       return SummaryCodec.encode(
         ModuleContract("sample", callables = listOf(CallableContract("call", effects = listOf(call), site = site))),
-        testProducer,
       )
     }
     assertTrue(!encoded(listOf(first, second)).contentEquals(encoded(listOf(second, first))))
@@ -42,7 +41,7 @@ class SummaryWireRequiredFieldsTest {
             CallableContract("call", effects = listOf(Effect.Call("invoke", "target", site = site)), site = site),
           ),
       )
-    val text = SummaryCodec.encode(module, testProducer).decodeToString()
+    val text = SummaryCodec.encode(module).decodeToString()
     for (field in listOf("bindings", "effects", "target")) {
       val missing = withoutPayloadField(text, field)
       val error = assertFailsWith<IllegalArgumentException>(field) { SummaryCodec.decode(missing.toByteArray()) }
@@ -74,7 +73,7 @@ class SummaryWireRequiredFieldsTest {
             ),
           ),
       )
-    val text = SummaryCodec.encode(module, testProducer).decodeToString()
+    val text = SummaryCodec.encode(module).decodeToString()
     val argumentEntry =
       """{"parameter":{"owner":"call","name":"canvas","kind":"CANVAS"},"value":""" +
         """{"kind":"canvas","expression":{"kind":"empty"}}}"""
