@@ -1,0 +1,177 @@
+{
+  "tests-shared-2.3.0": {
+    "tests": 89,
+    "failures": 88,
+    "testkitBuilds": 0
+  },
+  "gradle-2.4.20": {
+    "tests": 12,
+    "failures": 0,
+    "testkitBuilds": 61
+  },
+  "automatic-aligned-2.3.0-compiler-2.4.20": {
+    "tests": 3,
+    "failures": 0,
+    "testkitBuilds": 38
+  },
+  "automatic-2.4.20-compiler-2.4.20": {
+    "tests": 3,
+    "failures": 0,
+    "testkitBuilds": 38
+  },
+  "tests-shared-2.4.0": {
+    "tests": 89,
+    "failures": 0,
+    "testkitBuilds": 0
+  },
+  "tests-oldbinary-2.3.21": {
+    "tests": 89,
+    "failures": 85,
+    "testkitBuilds": 0
+  },
+  "gradle-2.3.21": {
+    "tests": 12,
+    "failures": 0,
+    "testkitBuilds": 61
+  },
+  "tests-shared-2.4.20": {
+    "tests": 89,
+    "failures": 0,
+    "testkitBuilds": 0
+  },
+  "automatic-aligned-2.4.20-compiler-2.3.0": {
+    "tests": 3,
+    "failures": 0,
+    "testkitBuilds": 38
+  },
+  "automatic-bta-2.3.0-compiler-2.4.20": {
+    "tests": 3,
+    "failures": 3,
+    "testkitBuilds": 3
+  },
+  "automatic-aligned-2.4.20-compiler-2.4.0": {
+    "tests": 3,
+    "failures": 0,
+    "testkitBuilds": 38
+  },
+  "automatic-2.4.20-compiler-2.3.21": {
+    "tests": 3,
+    "failures": 3,
+    "testkitBuilds": 3
+  },
+  "tests-oldbinary-2.4.20": {
+    "tests": 89,
+    "failures": 88,
+    "testkitBuilds": 0
+  },
+  "automatic-2.3.0-compiler-2.4.20": {
+    "tests": 3,
+    "failures": 3,
+    "testkitBuilds": 3
+  },
+  "gradle-2.3.0": {
+    "tests": 12,
+    "failures": 0,
+    "testkitBuilds": 61
+  },
+  "tests-matching-stdlib-2.3.0": {
+    "tests": 89,
+    "failures": 0,
+    "testkitBuilds": 0
+  },
+  "tests-shared-2.3.21": {
+    "tests": 89,
+    "failures": 88,
+    "testkitBuilds": 0
+  },
+  "tests-matching-stdlib-2.3.21": {
+    "tests": 89,
+    "failures": 0,
+    "testkitBuilds": 0
+  },
+  "baseline-mosaic-gradle-plugin": {
+    "tests": 12,
+    "failures": 0,
+    "testkitBuilds": 61
+  },
+  "automatic-2.3.0-compiler-2.3.0": {
+    "tests": 3,
+    "failures": 0,
+    "testkitBuilds": 38
+  },
+  "gradle-2.4.0": {
+    "tests": 12,
+    "failures": 0,
+    "testkitBuilds": 61
+  },
+  "automatic-2.4.20-compiler-2.3.0": {
+    "tests": 3,
+    "failures": 3,
+    "testkitBuilds": 3
+  },
+  "tests-exact-2.3.21": {
+    "tests": 89,
+    "failures": 0,
+    "testkitBuilds": 0
+  },
+  "automatic-bta-2.4.20-compiler-2.4.0": {
+    "tests": 3,
+    "failures": 3,
+    "testkitBuilds": 3
+  },
+  "automatic-bta-2.4.20-compiler-2.3.0": {
+    "tests": 3,
+    "failures": 3,
+    "testkitBuilds": 3
+  },
+  "tests-oldbinary-2.4.0": {
+    "tests": 89,
+    "failures": 88,
+    "testkitBuilds": 0
+  },
+  "automatic-2.3.21-compiler-2.3.21": {
+    "tests": 3,
+    "failures": 0,
+    "testkitBuilds": 38
+  },
+  "automatic-2.4.0-compiler-2.4.0": {
+    "tests": 3,
+    "failures": 0,
+    "testkitBuilds": 38
+  },
+  "baseline-mosaic-compiler-plugin": {
+    "tests": 89,
+    "failures": 0,
+    "testkitBuilds": 0
+  },
+  "tests-matching-stdlib-2.4.0": {
+    "tests": 89,
+    "failures": 0,
+    "testkitBuilds": 0
+  },
+  "automatic-aligned-2.4.20-compiler-2.3.21": {
+    "tests": 3,
+    "failures": 0,
+    "testkitBuilds": 38
+  },
+  "automatic-bta-2.4.20-compiler-2.3.21": {
+    "tests": 3,
+    "failures": 3,
+    "testkitBuilds": 3
+  },
+  "tests-matching-stdlib-2.4.20": {
+    "tests": 89,
+    "failures": 0,
+    "testkitBuilds": 0
+  },
+  "tests-oldbinary-2.3.0": {
+    "tests": 89,
+    "failures": 0,
+    "testkitBuilds": 0
+  },
+  "automatic-2.4.20-compiler-2.4.0": {
+    "tests": 3,
+    "failures": 3,
+    "testkitBuilds": 3
+  }
+}

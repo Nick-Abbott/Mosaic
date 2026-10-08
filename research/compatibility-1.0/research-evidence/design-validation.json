@@ -1,0 +1,44 @@
+{
+  "scope": "Illustration, date arithmetic, source integrity and release inventory only; no runtime/analysis certification",
+  "baseline": "2026-10-07",
+  "stableVersions": [
+    "2.2.0",
+    "2.2.10",
+    "2.2.20",
+    "2.2.21",
+    "2.3.0",
+    "2.3.10",
+    "2.3.20",
+    "2.3.21",
+    "2.4.0",
+    "2.4.10",
+    "2.4.20"
+  ],
+  "statuses": [
+    {
+      "id": "runtime-only",
+      "state": "active"
+    },
+    {
+      "id": "new-runtime-only",
+      "state": "active"
+    },
+    {
+      "id": "older-analysis-newer-runtime",
+      "state": "active"
+    },
+    {
+      "id": "expired-history",
+      "state": "expired"
+    },
+    {
+      "id": "untested-patch",
+      "state": "not-certified"
+    },
+    {
+      "id": "unknown-runtime-semantics",
+      "state": "incompatible"
+    }
+  ],
+  "checks": "passed"
+}

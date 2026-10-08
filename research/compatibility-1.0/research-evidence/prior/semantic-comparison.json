@@ -1,0 +1,18 @@
+{
+  "2.3.0": {
+    "summaries": 43,
+    "byte_identical_to_control": 43
+  },
+  "2.3.21": {
+    "summaries": 43,
+    "byte_identical_to_control": 43
+  },
+  "2.4.0": {
+    "summaries": 43,
+    "byte_identical_to_control": 43
+  },
+  "2.4.20": {
+    "summaries": 43,
+    "byte_identical_to_control": 43
+  }
+}

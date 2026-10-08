@@ -1,0 +1,68 @@
+[
+  {
+    "id": "kotlin-releases",
+    "url": "https://kotlinlang.org/docs/releases.html",
+    "sha256": "4eb392df63bbaaf208609baaef69e1fb2daa85471d77f736be7d05fababeaf4b",
+    "bytes": 59252
+  },
+  {
+    "id": "kotlin-bta",
+    "url": "https://kotlinlang.org/docs/build-tools-api.html",
+    "sha256": "970fcfd0ac2888c6047db5c8d242f2a6248b062d947cc0f7dd518d599a7c9ebf",
+    "bytes": 13077
+  },
+  {
+    "id": "kotlin-compiler-version",
+    "url": "https://kotlinlang.org/api/kotlin-gradle-plugin/kotlin-gradle-plugin-api/org.jetbrains.kotlin.gradle.dsl/-kotlin-top-level-extension/compiler-version.html",
+    "sha256": "ce5532097996bcc80284e857d6f0dc6346591e637e55934cf682ff7e7ac217f7",
+    "bytes": 36838
+  },
+  {
+    "id": "kotlin-gradle-compatibility",
+    "url": "https://kotlinlang.org/docs/gradle-configure-project.html",
+    "sha256": "e432923eca7b460df36f64ea406f3ebbb9aae54e3bc9030713626c8f9288579e",
+    "bytes": 87239
+  },
+  {
+    "id": "gradle-configuration-cache",
+    "url": "https://docs.gradle.org/current/userguide/configuration_cache_requirements.html",
+    "sha256": "61ee505ba8d6a19a5a7e155aaeb8555a37a5258fdef22f5806d30872e658d447",
+    "bytes": 299118
+  },
+  {
+    "id": "gradle-transforms",
+    "url": "https://docs.gradle.org/current/userguide/artifact_transforms.html",
+    "sha256": "6a5c580108f16fbcf79040e77576a775eecda8026fabf3af052d92f603533312",
+    "bytes": 226620
+  },
+  {
+    "id": "gradle-composite",
+    "url": "https://docs.gradle.org/current/userguide/composite_builds.html",
+    "sha256": "9c1f543392e0493183f98e9973c6b536ddfd31d95be222a6e1bd5f8384184f55",
+    "bytes": 205026
+  },
+  {
+    "id": "gradle-plugin-publication",
+    "url": "https://docs.gradle.org/current/userguide/publishing_gradle_plugins.html",
+    "sha256": "2c49900b4e782ccf30a78f48ca5f4602b71709852e805369f241761069f5e02d",
+    "bytes": 173254
+  },
+  {
+    "id": "github-releases-api",
+    "url": "https://docs.github.com/en/rest/releases/releases",
+    "sha256": "0a9bcd61de51c82e7adc96d984c28d8f936c51db371c246bb04018c9bf4c0fa3",
+    "bytes": 468107
+  },
+  {
+    "id": "github-schedule",
+    "url": "https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax",
+    "sha256": "7c4cec6241b51e7524fa6afe6815d4f9cfd764848295cac94ca7bd2493cfc689",
+    "bytes": 2096202
+  },
+  {
+    "id": "github-workflow-trigger",
+    "url": "https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow",
+    "sha256": "cb87487954842d9e10ee79ddbcba6fe5b0f23258391c6b2c86a0ea3149ff064b",
+    "bytes": 570174
+  }
+]

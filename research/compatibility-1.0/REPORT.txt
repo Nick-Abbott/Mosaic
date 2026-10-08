@@ -1,0 +1,1564 @@
+MOSAIC 1.0 COMPATIBILITY AND INDEPENDENT ANALYSIS ARCHITECTURE
+Design for review — no implementation or certification claim
+
+Repository: BuildMosaic/Mosaic
+Inspected baseline: cf490954c8e669c48c4263b36214b641fb9ce9f4 (origin/develop, PR #100)
+Policy assessment date: 2026-10-07, America/Phoenix
+Original investigation workspace: /data/dev/Mosaic-compatibility-architecture
+Report submission: research/compatibility-1.0 on a separate report-only branch
+Authoritative contract: website/src/content/docs/reference/compatibility.md at that commit
+
+Evidence labels used throughout:
+  OBSERVED: read directly from the baseline, official release inventory, or saved research.
+  DEMONSTRATED PREVIOUSLY: executed in the prior research, with its stated limitations.
+  PROPOSED: architecture or acceptance criteria, not implemented or certified here.
+
+1. EXECUTIVE RECOMMENDATION
+
+Keep one repository, two release versions, and one public org.buildmosaic.analysis
+plugin. Publish the four Runtime modules together. Publish the Analysis plugin and
+all selected extractor binaries together under the Analysis version; keep the
+compiler-independent implementation internal and bundled as today.
+
+The first implementation priority is a fail-closed Runtime semantic handshake,
+BEFORE expanding the compiler allowlist. Give Runtime JARs a stable, small
+compatibility descriptor. An analyzer accepts it only if it understands every
+required, immutable semantic capability. Initially use ONE coarse capability,
+"mosaic.canvas-analysis/1", covering the existing public API analysis matrix and
+its deliberate unknown boundaries. Do not create a capability for each API method.
+Keep the summary format and summary interpretation epoch separate. Use additional
+capabilities only when evidence establishes independently useful variation.
+
+This is candidate D, a small hybrid of B and C. A versioned capability is a semantic
+contract, not a minimum Analysis release. A later Runtime with unchanged semantics
+can require the same capability indefinitely. A later Runtime introducing a new
+analysis obligation declares it in the OLD descriptor grammar; an old analyzer
+must reject the unknown token. Release numbers are identity and diagnostics, never
+the semantic comparison algorithm.
+
+Use one checked-in machine-readable registry with explicit complete combinations,
+artifact identities, reusable evidence references, and Kotlin family release dates.
+Generate the selector, runtime requirements, website lookup/static view, and README
+summary from it. Certification is not a transitive closure of pairwise tables.
+Every advertised complete tuple gets a small real external-consumer end-to-end
+check, with larger suites reused only within explicit, content-identified scopes.
+
+At the assessment date, eleven stable compiler/KGP matching pairs are in scope:
+2.2.0, 2.2.10, 2.2.20, 2.2.21, 2.3.0, 2.3.10, 2.3.20, 2.3.21,
+2.4.0, 2.4.10, 2.4.20. Kotlin 2.2 expires on 2026-12-23; it cannot be omitted
+from an October 1.0 certification plan. The release date of Mosaic 1.0 is not yet
+known; re-evaluate this list on that actual date. No 1.0 artifact has been certified
+by this investigation. Prior research substantially reduces technical uncertainty
+for four versions, but does not fill the final release-certification rows.
+
+Two limits must remain explicit:
+* Existing 0.x analyzer binaries do not implement the handshake. A descriptor
+  cannot make arbitrary already-shipped code read it. Establish the protocol before
+  the first Analysis release certified for Runtime 1.0; do not grandfather old
+  plugins based on their number or a successful compile.
+* The published Runtime itself must be consumable on Kotlin 2.2. The current build
+  emits language/API 2.4 output and uses current dependencies. Passing extraction
+  tests on 2.3 does not prove 2.2 Runtime consumption. Resolve that before 1.0.
+
+2. OBSERVED SYSTEM AND PRESERVED EVIDENCE
+
+The prior worktree was read without modification. Its full research-evidence and
+research-tools directories remain preserved in the original local workspace at
+research-evidence/prior/compiler-research.tar.gz; that archive is not committed.
+REPORT.txt, test-results.json and semantic-comparison.json are also copied beside
+that archive for easy review. The original base is 79d28c039a8261b266ea3be5fb9e9a0ec30714fc.
+Only README.md and the authoritative compatibility page changed between that
+base and cf49095; no extraction/runtime implementation difference invalidates the
+prior observations. This is reuse of research, not promotion to release evidence.
+
+Prior demonstrations:
+* 2.4.20-built extractor works on 2.4.0 and 2.4.20. It fails on 2.3.0 and 2.3.21
+  with the ExtensionPointDescriptor registration ABI change.
+* Recompiling the same extraction sources for 2.3.0 and 2.3.21 yields working
+  binaries. A 2.3.0 binary fails on 2.3.21 because a getter's JVM return descriptor
+  changed from IrDeclarationOriginImpl to IrDeclarationOrigin.
+* Each of the four successful compiler lanes passed 89 tests / 45 real compiler
+  invocations. All 43 captured summaries matched the control. Headers were then
+  hardcoded to 2.4.20, so that comparison does NOT establish truthful provenance.
+* Each matching KGP lane passed 12 TestKit tests comprising 61 nested builds.
+  PublishedInstallationTest was excluded. Both matching-stdlib fixture runs and
+  16 producer/consumer binary combinations passed. The cross-version experiment
+  manually corrected compiler headers and used a trial exact-version reader.
+* Four mixed KGP/compiler cases passed a narrower three-test subset only after
+  BTA/default scripting artifact alignment. Plain Kotlin controls failed without
+  that alignment. Mixed tuples are research candidates, not certified support.
+* A reused local/public 0.7.0 coordinate could select a cached published JAR rather
+  than the checkout JAR. The prior report saved a fixture-isolation patch and a
+  successful isolated baseline build. Future certification must forbid this
+  ambiguity with exclusive repositories, fresh coordinates and verified hashes.
+
+Relevant baseline implementation (all paths relative to cf49095):
+* mosaic-core and mosaic-test own public runtime APIs. mosaic-test compiles with
+  friend access to core's internal engine. mosaic-opentelemetry exposes installation
+  plus the observation integration; its POM supplies API, not an application SDK.
+* buildSrc/src/main/kotlin/kotlin.convention.gradle.kts uses JDK 21 to build,
+  JVM 17 bytecode, languageVersion/API version 2.4, and stable moduleName.
+* gradle.properties has mosaic.version=0.7.0. There is no root version.properties.
+  The Gradle plugin generates org/buildmosaic/gradle/version.properties from
+  project.version; the installed plugin reads that resource.
+* base.convention applies the single version to all projects. release and
+  releaseToMavenCentral publish both trains; release.yml expects a numeric tag
+  matching mosaic.version and then publishes Central plus the Plugin Portal.
+* The BOM already constrains only core, test, and opentelemetry. Keep this scope.
+* analysis-core has no publication. Compiler and Gradle JARs each bundle it and
+  its dependencies. Compiler API/KGP dependencies are compileOnly. Preserve that
+  ownership; independently published analysis-core would add an unnecessary
+  consumer alignment problem.
+* SourceContractExtractor.operation/isIntrinsic recognize fully qualified runtime
+  names, parameter names, types and selected factory/delegate patterns. For example
+  compose overloads share a recognized owner/name. There are meaningful Unknown
+  branches, but no runtime-release or runtime-semantics validation. An added
+  overload could match an old intrinsic path; unknown fallback alone is inadequate.
+* SummaryCodec: resource META-INF/mosaic-analysis/v1/summary.json, format 5,
+  semantics analysis-contract-3, toolVersion prototype-11, compiler 2.4.20.
+  The writer hardcodes all these. The reader checks format, semantics, exact
+  compiler, completeness, main source set, module identity, hash, model and
+  duplicate locators. No independently negotiated capability set exists today.
+* SourceShardCodec uses shardVersion 2 without compiler/extractor identity.
+  extractMosaicMain assembles current-source shards and an explicit empty summary.
+* MosaicSummaryTransform copies only the selected summary resource. No resource
+  means no output, preserving missing-metadata unknowns. MosaicDependencyReader
+  decodes all selected summaries and reports errors using transformed filenames;
+  it discards producer metadata after decoding to ModuleContract.
+* MosaicAnalysisPlugin selects one fixed compiler artifact. Its
+  productionCompilerVersion is the KGP package version, not necessarily the
+  effective compiler. ExtractMosaicTask validates exact KGP and artifact manifest
+  versions, and recognizes Kotlin default artifacts by 2.4.20 filenames.
+* VerifyMosaicTask validates local metadata, then LIBRARY returns a library report
+  BEFORE reading dependencies. APPLICATION checks dependency summaries/owners and
+  evaluates. MosaicGraphTask has a separate reader path. JAR assembly depends on
+  extract, not verify. Every one of these paths needs the common handshake.
+* Existing compiler PUBLIC_API_MATRIX.md and Gradle INVALIDATION_MATRIX.md are
+  durable semantic/invalidation specifications; extend these, not parallel suites
+  that repeat the same evaluator behavior at a more expensive layer.
+
+The committed research-evidence/repository/baseline.json records source identities;
+retrieve any source with git show <baseline-commit>:<path>. The official GitHub
+release inventory and source URLs/checksums are committed under research-evidence/
+official. Full HTML and line-numbered source snapshots remain in the original
+local workspace. SHA256SUMS covers the committed report package; the separately
+named local-workspace.SHA256SUMS records the original complete local evidence.
+
+3. RUNTIME → ANALYSIS NEGOTIATION
+
+3.1 Candidate comparison
+
+A. Runtime minimumAnalysisVersion
+  Simple to display, but release ordering is a poor semantic predicate: capability
+  backports, compiler support retirement, and independent trains make >= neither
+  necessary nor sufficient. Old dependency summaries also need interpretation
+  rules. A minimum version may be a diagnostic hint, never the admission test.
+
+B. Runtime required capability set
+  The old parser can reject a token it has never seen. A set inclusion check does
+  not require Runtime/Analysis equality or knowledge of future runtime numbers.
+  The cost is disciplined authoring and coverage of the declared requirements.
+  A per-symbol capability inventory would be premature complexity.
+
+C. Independently versioned semantic epoch
+  One opaque contract identifier is simple and reliable; use exact membership in
+  the reader's supported set, never numeric >=. A single epoch conflating runtime
+  semantics, wire shape, compiler ABI and tool release causes needless rejection.
+
+D. RECOMMENDED: stable required-capability envelope + existing summary epoch
+  One coarse versioned runtime capability initially; a format/meaning epoch for
+  summary payloads; no release minimum. This retains a small protocol while giving
+  unknown future obligations an explicit fail-closed representation. Do not add
+  a separate runtime epoch field that repeats the sole capability's version.
+
+3.2 Descriptor v1 (proposed public inter-tool protocol)
+
+Every Runtime JAR includes exactly one resource at the fixed path
+META-INF/mosaic/runtime-compatibility.json. The BOM is a platform POM and has no
+JAR; its identity is established by the release manifest, not a fake resource.
+Example, NOT an existing artifact:
+
+  {
+    "descriptorVersion": 1,
+    "module": "org.buildmosaic:mosaic-core",
+    "runtimeVersion": "1.1.0",
+    "requires": ["mosaic.canvas-analysis/1"]
+  }
+
+For test and tracing the module field changes; their requirements declare only
+analysis-relevant obligations. Do not require modeling tracing privacy or resource
+closure merely because those are Runtime behavior guarantees: they remain outside
+Canvas-availability analysis. Changes to callbacks that affect availability must
+be reviewed against the existing unknown boundary and can require a new token.
+
+Define the protocol grammar before shipping the reader:
+* Exact UTF-8 JSON object, required fields with exact types, no duplicate object
+  keys, no duplicate/blank requirement strings, bounded size, no multiple JAR
+  entries for the path. Require a nonempty known baseline capability.
+* Unknown fields in v1 are errors. Reserve no arbitrary critical extension field.
+  New mandatory semantics MUST be an unknown token in requires, or a new
+  descriptorVersion at the SAME path. Both fail closed in every v1 reader.
+* Capability identifiers are opaque strings with immutable, documented internal
+  meaning. Reader.supportedCapabilities is an explicit finite set. Unknown token
+  => compatibility error even if the local program appears not to use the feature.
+* runtimeVersion is exact release identity, not a comparison operand. Match
+  descriptor module/version to resolved component identity where Maven identity
+  is available, and to the embedded identity for project/local JARs. Reject
+  duplicate/shadowed Runtime owners, missing core, or mixed selected Runtime module
+  versions. Do not silently force alignment; recommend the runtime-only BOM.
+* Scan selected artifacts, not ClassLoader.getResource(), which would return only
+  one of several duplicate resources. Treat unidentifiable/repackaged Runtime
+  ownership conservatively; no positive proof based on a package name alone.
+* The path and fail-closed meaning remain stable for all protocol-aware readers.
+  Do not move the path for v2: the old reader must see and reject v2, not mistake
+  its absence for a legacy Runtime.
+
+Runtime owns the required contract. Analysis owns supported contracts. A pure
+compatibility decoder/checker in analysis-core is shared by the Gradle plugin,
+extractors and metadata reader. Runtime depends on no Analysis code at runtime;
+its release resource is generated from its registry release record. The registry
+has named contract definitions with a specification hash and test references;
+changing a definition in place is prohibited.
+
+The initial capability freezes the meanings of lookups, Canvas registrations and
+construction/layer ordering, scoped Mosaic provenance, Tile creation/delegation,
+compose execution, stable key/export identity, default effects and conservative
+omission boundaries described by the current public API matrix. It promises a
+sound interpretation, not that every program becomes fully verified.
+
+3.3 Enforcement and ownership
+
+PROPOSED task/data flow:
+
+  selected compile Runtime JARs -> descriptor extraction -> compatibility preflight
+             |                                      | (before compileKotlin)
+             v                                      v
+       normal KGP main compilation + selected extractor -> source-relative shards
+                                                        -> extractMosaicMain
+  selected dependency summaries ------------------------> validated contract input
+  selected runtimeClasspath Runtime descriptors --------> verification/packaging
+                                                        -> verify / graph / jar
+
+Use a raw-resource transform for Runtime descriptors and summaries, with explicit
+absent markers and origin information. This extends/replaces MosaicSummaryTransform
+without teaching it semantic policy. Resolve an artifact view lazily; store
+serializable component coordinates, resource paths and digest associations for
+exact diagnostic attribution. Read compiler classpaths as declared inputs; never
+load dependency classes to inspect resources.
+
+Compatibility preflight is mandatory for APPLICATION and LIBRARY and for a JAR
+that will carry a summary. Runtime requirements gate intrinsic recognition before
+compilation. The extractor verifies the same contract at its compiler entry point
+(direct K2 fixtures/CLI paths cannot bypass it), and stamps the actual handshake
+into every shard. Gradle can pass a generated manifest, but the extractor must
+validate it against its actual selected compiler classpath, not trust an arbitrary
+"validated=true" option. Reuse the pure decoder, do not duplicate its rules.
+
+Keep dependencies' summary BODY changes off compileKotlin's extra input path.
+They remain verification inputs as today. Runtime descriptor semantics changes
+are a separate compile input and must invalidate extraction. RuntimeClassPath
+checks must not introduce a compile/project-jar cycle: precompile checks use the
+compile-selected Runtime; a packaging/verification gate compares runtime-selected
+Runtime modules afterward. Resolve only Runtime identities/descriptors for that
+comparison, not arbitrary execution effects. If compile and runtime select
+different Runtime versions, fail with alignment guidance for the initial policy.
+No certification is implied for running against a different deployment classpath.
+
+Assembly validates local provenance and required capabilities even for NO_SOURCE.
+Packaging and LIBRARY mode validate every present dependency envelope and their
+requirements, even though they select no application roots. APPLICATION and graph
+consume the same validated metadata result. Use one internal ValidatedContracts
+value/checker; do not maintain separate accept/reject logic in graph, verify and
+packaging. Its construction is the admission boundary; raw ModuleContracts are
+not admissible dependency inputs to these production entry points.
+
+STANDARD/STRICT and rule severities never downgrade compatibility errors. On an
+error, replace/delete the prior report and do not emit a usable complete summary
+or a success report. Old physical files must be rejected by provenance checks on
+subsequent assembly. Task failure is authoritative; the report explicitly says
+"Compatibility failure; no verification result produced."
+
+3.4 Missing metadata, incompatible metadata, and capabilities are different
+
+Ordinary library with no summary:
+  Preserve UNVERIFIED at a reached unknown boundary; do not fabricate an empty
+  effect-free contract. Unrelated missing summaries need not make every root
+  unverified. STANDARD may pass with a warning; that is not FULLY VERIFIED.
+
+Present incompatible/malformed summary:
+  Always a compatibility failure, not an unknown or ignored file. Include selected
+  component identity, producer Analysis/compiler, installed Analysis, actual and
+  accepted formats/epochs/capabilities. Do not let stripping a bad header inside
+  the reader turn it into the missing case.
+
+Runtime with unknown required capability, unsupported descriptor, or missing
+required descriptor:
+  Compatibility failure before trusted extraction/verification. Runtime intrinsics
+  are not ordinary opaque binary calls; absence cannot be treated as permission to
+  assume their semantics. An unrecognized legacy Runtime can only be accepted by
+  an explicit tested legacy adapter/identity record; recommend none for 1.0.
+  This missing-runtime-descriptor case is distinct from absent library summaries.
+
+3.5 Summary envelope evolution and older dependency producers
+
+Introduce summary format 6 at the handshake boundary. Keep the existing resource
+path so old format-5 readers see a present incompatible summary. Retain
+analysis-contract-3 only if payload/identity/locator meanings remain unchanged;
+format 6 adds mandatory producer/requirements provenance, so it is more than the
+prior experiment's compiler-header correction. The new fields are:
+
+  producer: { analysisVersion, extractorId, compilerVersion }
+  runtimeContracts: [ { module, runtimeVersion, requires } ]
+  requires: [ ...summary interpretation capability identifiers... ]
+
+Retain the current module/source-set/complete/hash/payload checks. Validate all
+metadata, including the header; payload hash alone does not bind producer fields.
+Use a deterministic envelope digest for cache/evidence identities, with the digest
+field excluded from its own hash. Hashes detect changes, not malicious producers.
+The supply-chain trust model remains the same as trusting dependency bytecode.
+
+A consumer evaluates the union of (a) current selected Runtime requirements,
+(b) producer-recorded runtime semantic requirements, and (c) summary requirements.
+Do not reinterpret an old summary using the latest Runtime's requirements alone:
+compiled/inlined older code retains its body. Requirements of present transitive
+summaries are all validated; absent summaries still yield unknowns. Producer
+summaries are local contracts, not copied closures of all dependency payloads.
+
+Compatibility cases, with hypothetical releases:
+* L:1.0 was compiled with Analysis 1.0 / Runtime 1.0, both requiring canvas-analysis/1.
+  App uses Runtime 1.1 (same requirement), Analysis 1.0, and a certified compiler.
+  Accept L's format-6/contract-3 summary without regeneration. Certify the new
+  complete Runtime 1.1 / compiler / Analysis 1.0 row with the old actual plugin.
+* Runtime 1.2 adds an availability-relevant overload requiring canvas-analysis/2.
+  Analysis 1.0 rejects Runtime 1.2 even if L was built with 1.0 and its own summary
+  only requires /1. Old producer metadata cannot hide the selected new Runtime.
+* L:2.0 compiled with new Analysis against /2 cannot be consumed by Analysis 1.0:
+  the summary carries /2, and cannot have been emitted by an old producer that
+  failed preflight. Selecting an older Runtime cannot erase that requirement.
+* A newer Analysis emitting the same format/epoch/requirements can produce a
+  summary readable by older Analysis. Producer release ordering is irrelevant.
+  If a new effect is not representable in the old wire contract, the writer must
+  declare a new requirement and/or format/epoch; never silently drop the effect.
+* A legacy format-5 dependency has no Runtime handshake provenance. For the initial
+  1.0 protocol, fail with regeneration guidance. Do not infer trusted provenance
+  from the hardcoded prototype-11/2.4.20 header. A later explicit legacy reader is
+  possible only with a scoped proof; it is not needed for the first implementation.
+
+Compiler provenance versus summary compatibility:
+  The old production reader requires exactly 2.4.20; prior research used a four-
+  compiler allowlist as a safe experimental widening. For format 6, recommend
+  semantic protocol admission rather than a permanent future-producer compiler
+  allowlist. An old consumer need not load the producer's compiler: it reads a
+  stable semantic wire contract. Future writers may emit that contract ONLY after
+  extraction-equivalence and old-reader binary-consumer certification. Thus the
+  old reader accepts a truthful, well-formed format-6 producer it has not seen,
+  while the local extractor selection still requires exact compiler certification.
+  Kotlin's own binary metadata readability is a separate real compile test.
+  This extension is PROPOSED, not established by the four-version experiment.
+  First prove the forward-producer/old-reader case with frozen analyzer JARs before
+  admitting it; if the proof fails, retain exact producer profiles temporarily and
+  report the restriction explicitly rather than claim forward compatibility.
+
+A producer bug can violate a contract without changing a token. The handshake
+cannot detect lying artifacts any more than the current payload hash does.
+Release conformance tests, artifact identity and a registry incompatibility/
+revocation record address discovered defects. Do not promise an offline old
+analyzer instantaneous knowledge of later revocations. It need not contact a
+registry service during every build; CI can optionally pin a refreshed registry
+snapshot for certification checks without modifying semantic acceptance.
+
+3.6 Why this prevents the requested failure modes
+
+New functionality accidentally recognized as an old intrinsic:
+  Runtime API/semantic changes undergo capability review, with a negative old-
+  analyzer fixture for every analysis-relevant addition. Any unsound old lowering
+  requires a new token. Preflight blocks the old extractor before the overloaded
+  name can be matched. In addition, harden intrinsic dispatch to recognized
+  callable shapes; unsupported overload shapes become Unknown rather than the
+  catch-all Canvas-layer path. Neither defense substitutes for the other.
+
+Unknown semantics silently dropped:
+  Required token inclusion is checked before decoding/evaluation; unknown wire
+  discriminators/required fields are errors. Missing external contracts remain
+  Unknown. No fallback parser strips unknown effects or requirement tokens.
+
+Accidental version lockstep:
+  No minimum or equality check between Runtime and Analysis. The only strict
+  release equality is WITHIN each train and between plugin and its extractors.
+  A Runtime version unknown to an old plugin is not itself a rejection reason.
+
+Compatible older plugins rejected:
+  The old plugin's understood capabilities suffice even when its embedded registry
+  snapshot predates the Runtime. Certification can be added later for that exact
+  immutable old plugin, without republishing it. Distinguish semantic acceptance
+  from "certification known in this snapshot" in tooling output. Never present an
+  unlisted tuple as supported, or require an upgrade solely to refresh a website
+  support row. Version ordering never selects the set of compatible Analysis.
+
+Bootstrap limit:
+  Arbitrary pre-protocol binaries cannot be retrofitted through metadata alone.
+  Embedding a format-6 sentinel summary in Runtime might make old APPLICATION
+  verification fail, but it does not fix LIBRARY mode or old standalone extraction.
+  Do not use that partial trick as a soundness guarantee. Certify only protocol-
+  aware Analysis for 1.0. Preserve old artifacts and give explicit migration advice.
+
+4. ONE AUTHORITATIVE COMPATIBILITY REGISTRY
+
+4.1 Proposed location and schema
+
+compatibility/registry.json is the sole authored compatibility catalog. A small
+compatibility/schema.json plus one validator/generator enforce its rules. Avoid a
+service, relational database, YAML inheritance language or hand-maintained second
+selector table. Bulky immutable test evidence lives outside the JSON and is
+referenced by digest. Registry revisions are ordinary reviewed Git commits.
+
+Top-level schema (required unless marked optional):
+
+schemaVersion: 1
+kotlinFamilies: map family -> {
+  firstStable: exact version, releasedOn: ISO date,
+  source: official release URL, releaseId: GitHub numeric ID
+}
+kotlinReleases: map exact version -> {
+  family, releasedOn, releaseId, source, tagCommit,
+  artifacts: [coordinate/checksum for compiler and KGP]
+}
+contracts: map opaque capability -> { specificationPath, specificationSha256 }
+releases: {
+  runtime: map version -> { commit, tag, artifactManifest, requires },
+  analysis: map version -> {
+    commit, tag, artifactManifest, capabilities,
+    summaryReads: [{format, semantics}], summaryWrites: {format, semantics},
+    extractors: [{id, artifact, builtAgainst, compilers:[exact versions]}],
+    toolchains: [{compiler, kgp, extractor, environment}]
+  }
+}
+environments: map ID -> {
+  gradle: exact version or null for direct compiler consumers,
+  java: exact tested major, target: 17, os, bta: boolean or null,
+  dependencies: lock/manifest digest
+}
+evidence: map ID -> {
+  kind, sourceCommit, suiteDigest, artifactManifests:[references],
+  environment, command, result, runUrl, retainedBundle, sha256,
+  completedAt
+}
+combinations: array of {
+  runtime, compiler, kgp: version or null, analysis: version or null,
+  environment, verdict: "certified" | "not-certified" | "incompatible",
+  evidence:[IDs], certifiedAt: timestamp or null,
+  reason: string or null, supersedes: previous record ID or null,
+  id: stable unique ID
+}
+
+artifactManifest is a content-addressed document containing EVERY actual
+publication coordinate, extension/classifier and SHA-256: Runtime JAR/POM/module
+metadata/sources/Javadoc/BOM, or plugin marker/implementation and all extractor
+publications. It includes the source commit, build toolchain, normalized dependency
+lock and relevant semantic fingerprint. Nothing is inferred from a tag alone.
+For a proposed release the final manifest reference remains pending and the entry
+is not consumer-certified. Do not invent checksums for unavailable artifacts.
+
+There is no manually editable "active" boolean. Support status is a projection:
+  incompatible verdict                         -> explicitly incompatible
+  no row / not-certified verdict               -> not certified
+  certified AND asOf < addMonths(.0 date, 18)   -> certified and actively supported
+  certified AND asOf >= that date              -> previously certified, expired
+
+Treat end-of-support as an exclusive ISO date at 00:00 UTC; store this convention
+once in schema policy, compute with calendar months (clamp day for month ends),
+not 18*30 days. Emit expiresOn in generated views and evidence manifests, and
+validate any materialized value. The expiry clock depends on compiler family,
+not the Analysis publication date. Mixed compiler/KGP tuples also cannot promise
+ongoing KGP support after the KGP family expires: use the earlier family deadline
+for that Gradle tuple. The compiler-only runtime row can remain active separately.
+
+The contract does not specify an independent Runtime/Analysis release EOL policy.
+Do not add one that silently expires otherwise supported complete combinations.
+Preserve old artifacts/rows; expire support for new releases by the Kotlin policy.
+A discovered incompatibility may supersede a certified verdict with evidence;
+retain its previous certificate for history and show both facts in historical view.
+Not-certified is NOT a synonym for failed, and infrastructure failure is not proof
+of incompatibility. A failed extractor candidate is evidence about that candidate,
+not automatically a verdict that the Kotlin version can never be supported.
+
+kgp=null has exact meaning: compiler-level/runtime-only certification; it is not a
+wildcard for any KGP. A Gradle runtime-only row has kgp set and analysis=null.
+An Analysis row has both kgp and analysis set. A consumer never has to choose an
+Analysis version to query Runtime support. Multiple tested environments can be
+represented as separate rows referencing one semantic certificate. UI may group
+identical answers, but must preserve distinctions when environment changes results.
+Do not advertise all Gradle versions merely because Kotlin lists them as compatible.
+Java 17 remains the runtime minimum; newer JVM smoke/regression lanes supplement
+that minimum without multiplying every compiler case by every JDK.
+
+4.2 Required validator invariants
+
+* Exact stable versions only in support rows; no 2.3.x, >= or wildcard expansion.
+* Every reference resolves. Complete tuple keys are unique in the current view.
+* Certified rows require passing evidence for the SAME artifact identities,
+  compiler/KGP/selected extractor/environment and a complete-tuple E2E certificate.
+* Analyzer's own toolchain tuple must exist; runtime requirements must be a subset
+  of analyzer capabilities; summary negotiation must pass. These are necessary,
+  not sufficient: the validator does not manufacture complete rows from them.
+* Each compiler maps to one extractor within an Analysis release; extractors and
+  plugin have one Analysis version. No Runtime dependency in the Analysis BOM
+  because no Analysis BOM is needed. Runtime BOM contains only Runtime modules.
+* Release manifests cover all artifacts; local checkout/TestKit injection is not
+  accepted as external-install evidence. Hash mismatch invalidates evidence reuse.
+* No replacement extractor loses any previously supported mapped compiler's full
+  certification. No new release silently omits supported combinations.
+* A schema/spec/fixture digest change invalidates affected reusable certificates;
+  cosmetic website edits do not trigger compiler tests.
+* Frozen release records never change artifact bytes/identities. Additional
+  certificates or explicit superseding incompatibility records are append-only.
+* Illustrative fixtures have an explicit example flag and cannot be admitted into
+  a production registry, regardless of their verdict strings.
+
+4.3 Illustrative example
+
+See registry.example.json beside this report. ALL Mosaic versions, artifact
+identities and test results there are invented to demonstrate representation.
+Official Kotlin dates in the illustration are factual; no combination in that
+file is a real certification. It demonstrates Runtime without Analysis, an older
+Analysis with a newer Runtime, expiration, an untested patch, and incompatibility.
+Placeholder digests intentionally cannot pass a production validator.
+
+5. CERTIFICATION EVIDENCE AND MATRIX COST
+
+5.1 Five evidence layers, one complete consumer answer
+
+R — Runtime/compiler consumption:
+  Compile public Kotlin source fixtures against the ACTUAL candidate Runtime
+  artifacts using every supported exact compiler. Run relevant existing Runtime,
+  test and observation/tracing behavioral tests against those artifacts. The code
+  under test must not silently be a separately rebuilt Runtime per compiler.
+  Include named/default arguments, constructors, generated CanvasKey methods,
+  delegation, inline/reified, suspend signatures, overloads/JVM names, and
+  conforming third-party interface implementations. Include dependency resolution
+  with/without BOM and direct compiler consumption where kgp=null is claimed.
+
+A — Analysis/compiler/KGP:
+  For each exact matching tuple, run the existing complete compiler fixtures with
+  its selected extractor and the complete TestKit integration suite. Use actual
+  matching compiler/stdlib distributions, not a parent-first test classloader that
+  accidentally loads root project extraction classes. Track compiler ABI and
+  semantic outcomes separately. Retain direct K2 fixtures as test infrastructure.
+
+S — Semantic/metadata conformance:
+  Capture normalized contracts and outcome diagnostics for the same fixture source
+  under every compiler. Normalize ONLY documented volatile/provenance fields
+  (actual compiler/extractor/Analysis version), never effects, unknowns, identities,
+  source locations, evaluation ordering, suppressions or JVM locators. Check wire
+  roundtrips, future unknown capability rejection, and forward/backward producer
+  acceptance using frozen released reader/writer artifacts.
+
+E — Complete tuple installation and execution:
+  Resolve real plugin marker/POM and chosen extractor from an isolated Maven repo
+  of candidate bytes; use the same bytes later published. No withPluginClasspath,
+  includeBuild substitution or mavenLocal fallback. Compile a library and app,
+  consume an older-producer library, verify known-safe, missing-key and unknown
+  roots in STANDARD/STRICT, package/read summaries, run at JVM 17, and inspect
+  selected versions. One invocation can contain multiple outcomes. This is a
+  targeted sentinel suite, not another copy of all evaluator tests.
+
+G — Existing-release regression:
+  Retain frozen public source and already-compiled clients from 1.0 and later
+  additive public APIs, old Analysis JARs, summaries and binary producer fixtures.
+  Run them against candidate releases as required below. The 0.x surface is not
+  a 1.x ABI baseline; do not preserve the deliberately removed constructors/APIs.
+
+5.2 Exactly what can be reused
+
+Reuse an R certificate across Analysis versions if Runtime bytes, dependency
+closure, compiler and runtime environment are identical; Analysis is absent from
+that proof. Reuse A across Runtime releases only for fixture-independent compiler
+integration behavior whose fixture Runtime/semantic environment is unchanged; new
+Runtime semantic behavior still needs its own S/E proof. Reuse evaluator/codec
+unit results for identical implementation/test/dependency digests regardless of
+compiler variant. A rebuild that changes artifact bytes needs identity verification
+and an E test even if semantic fingerprints are identical.
+
+Wire conformance is an explicit factorization, not assumed pairwise compatibility:
+(1) each producer output matches the immutable contract corpus and JVM locator
+oracle; (2) each reader passes that exact corpus; (3) actual cross-compiler binary
+libraries link and produce the same outcomes. Byte-equivalent payloads justify
+reusing the decode/evaluate part, not the Kotlin binary metadata/inline/default
+handling part. Compiler major/minor/patch labels are not equivalence classes.
+
+Start with all 11x11 producer-compiler/consumer-compiler small binary cases for
+one summary contract (121 cases, not 121 complete TestKit suites). This cost is
+modest relative to the existing full Gradle suite and avoids inventing Kotlin
+metadata equivalence for untested 2.2/2.4 interactions. Thereafter a new compiler
+adds a row and column (2K+1 cases); cache each producer JAR by source/compiler/
+Runtime/extractor hash. If actual dependencies differ, that is a new producer
+identity. Unsupported binary combinations get explicit failures, not normalizing
+away compiler diagnostics.
+
+For multiple Analysis releases, partition only by PROVEN equal wire payload and
+binary producer identities for the covered corpus. Run each distinct writer and
+each frozen reader at least once; run E for every advertised R/C/KGP/A tuple.
+When writer meaning, captured inline bodies, locators or runtime requirements
+change, invalidate the partition and add direct cross-reader/writer cases. A
+coarse semantic epoch is a declared contract, not automatic evidence of equality.
+
+A fresh E test is mandatory for any new complete tuple, changed Runtime bytes,
+changed Analysis/plugin/selected extractor bytes, changed KGP/effective compiler,
+changed publication shape, changed declared dependency resolution, or changed
+certified environment. A selector-only Analysis release can reuse semantic tests
+for unchanged extractor bytecode but still needs E for the new packaged artifacts.
+Do not reuse a result from prototype-11 as a result for released Analysis 1.0.
+
+5.3 Cost estimate (planning assumptions, not measured CI promises)
+
+Let K=11 exact matching toolchains, R=retained Runtime releases, A=retained Analysis
+releases, P=distinct metadata-producing implementations. Matching first means 11
+KGP/compiler tuples, not 121. Full mixed support would multiply the expensive
+integration lanes and is deliberately deferred.
+
+For the first candidate Runtime/Analysis pair:
+* 11 R lanes, reusing existing behavior fixtures rather than rebuilding equivalent
+  test logic for each consumer scenario.
+* 11 A lanes: 979 existing compiler-test assertions, about 495 real compiler
+  invocations; 132 existing TestKit tests, about 671 nested Gradle builds, using
+  prior suite counts as a sizing reference, plus new handshake/provenance checks.
+* 121 compact cross-compiler binary metadata consumers, 11 cached producers.
+* 11 runtime-only compiler rows, 11 matching Gradle runtime-only rows and 11
+  complete Analysis rows if all are advertised; direct consumption and external
+  runtime installation checks cover their respective rows explicitly.
+* A few Java 17/21/current-JVM execution and Gradle boundary checks, not K times
+  every JVM times every Gradle release. Broader environment claims need their own
+  rows/evidence; begin with one pinned common Gradle distribution.
+
+Illustrative hosted-runner budget: R lane 3–6 minutes, A lane 6–12 minutes,
+compact E lane 1–3 minutes, binary cross corpus 10–30 aggregate minutes with warm
+caches: approximately 120–300 runner-minutes for initial full certification plus
+artifact staging, roughly 25–60 elapsed minutes with six concurrent lanes.
+Measure the first real run and revise. Prior local warm runs are far faster and
+are not a defensible GitHub cost estimate. Monetary cost is runner-minutes times
+the repository's actual billing rate; no pricing assumption is needed here.
+
+For R=4, A=3, K=11: only compatible rows are advertised, at most 132 Analysis E
+rows, rather than 132 full behavioral+compiler+TestKit repetitions. Existing R/A
+certificates are reused by identity; a new Runtime needs ~11 R lanes and up to
+33 small Analysis E lanes; a new Analysis needs 11 A lanes and up to 44 E lanes.
+Grouping exact byte-identical certificates prevents repeats but cannot erase the
+requirement to certify each complete tuple. The contract gives no general release
+EOL escape hatch; growing supported release history is a real ongoing cost.
+
+6. KOTLIN WINDOW AND EXACT 1.0 BACKLOG
+
+6.1 Official inventory
+
+Inventory was retrieved from all paginated JetBrains/kotlin GitHub releases,
+filtering final numeric versions and both draft=false and prerelease=false, and
+cross-checked against Kotlin's official release history. The saved JSONL includes
+release IDs and publication timestamps. Dates below are release-history dates;
+they agree with the API UTC dates. Never use a tag commit's authored date or
+GitHub created_at to start a support window.
+
+Family  First stable   First date   Expiry (exclusive)  Status at 2026-10-07
+2.1     2.1.0          2024-11-27   2026-05-27          expired
+2.2     2.2.0          2025-06-23   2026-12-23          active
+2.3     2.3.0          2025-12-16   2027-06-16          active
+2.4     2.4.0          2026-06-03   2027-12-03          active
+
+Exact stable releases in active families:
+Version   Released      Prior compiler/KGP research      Still required for 1.0
+2.2.0     2025-06-23    none                              all R/A/S/E/G applicable
+2.2.10    2025-08-14    none                              all R/A/S/E/G applicable
+2.2.20    2025-09-10    none                              all R/A/S/E/G applicable
+2.2.21    2025-10-23    none                              all R/A/S/E/G applicable
+2.3.0     2025-12-16    successful experimental lane      final R/A/S/E + new gates
+2.3.10    2026-02-05    none                              all R/A/S/E/G applicable
+2.3.20    2026-03-16    none                              all R/A/S/E/G applicable
+2.3.21    2026-04-23    successful experimental lane      final R/A/S/E + new gates
+2.4.0     2026-06-03    successful experimental lane      final R/A/S/E + new gates
+2.4.10    2026-07-14    none                              all R/A/S/E/G applicable
+2.4.20    2026-09-07    baseline + experimental control   final R/A/S/E + new gates
+
+Thus seven compiler/KGP matching pairs lack even the previous broad research:
+2.2.0, 2.2.10, 2.2.20, 2.2.21, 2.3.10, 2.3.20, 2.4.10.
+ALL eleven lack a final 1.0 artifact certificate and the proposed handshake,
+external variant-install, truthful-provenance, and version-switch gates. Runtime
+source/ABI certification must cover the definitive public surfaces, not just the
+Canvas extraction subset. G's persistent 1.0 baseline is captured at the first
+release; before it, certify the candidate clients and freeze them for later use.
+
+No 2.5 stable release appears in the official inventory at this date. A schedule
+or RC is not certification. If 1.0 ships on/after 2026-12-23, 2.2 may be omitted
+from NEW release guarantees; retain its historical certificates/artifacts. If a
+new patch/family appears first, add its exact version to the backlog. This report
+must not be read as predicting the final 1.0 date or future stable version list.
+
+Sources: https://kotlinlang.org/docs/releases.html and each corresponding
+https://github.com/JetBrains/kotlin/releases/tag/vVERSION; raw API evidence is
+research-evidence/official/kotlin-github-releases.jsonl.
+
+6.2 Obtaining and computing dates
+
+The daily discovery job uses the official GitHub Releases API with pagination and
+ETag/conditional requests. Require stable numeric tags, non-draft/non-prerelease,
+and official compiler/KGP artifacts actually resolvable. Cross-check family .0
+publication against the official release-history date. If they disagree, record
+both and stop automatic date acceptance for human review. Use the official release
+history as the policy date; never silently move an existing family's clock after
+an upstream edit. Record a reviewed correction and preserve earlier snapshots.
+
+All stable numeric patches, including .10 and .20 tooling releases, inherit the
+family .0 date. A patch has its own identity and tests but never resets expiry.
+Store original source URL/release ID and resolved immutable tag commit alongside
+the date. Daily discovery also computes expired status without needing to edit
+hundreds of rows. Generated static pages are rebuilt when the date crosses an
+expiry, even when no registry artifact changed.
+
+6.3 Runtime build floor and JVM minimum
+
+Choose a Runtime production compiler/dependency floor that produces public
+Kotlin metadata and inline bodies consumable by the oldest active family. Starting
+with a 2.2 compiler/build profile is the simplest candidate; do not assume that
+changing languageVersion/API version on 2.4 or -Xskip-metadata-version-check solves
+published consumption. Inspect coroutines 1.11.0 and the stdlib actually selected
+by POM/GMM on 2.2; test the dependency closure. No bypass of Kotlin metadata
+validation is permitted. If source syntax or dependencies require newer Kotlin,
+adapt within the contract before claiming 2.2 support; analysis binaries can use
+a separate build profile without raising the Runtime consumption floor.
+
+Later 1.x releases may raise this build/consumer floor after expiry, but must retain
+JVM linkage of already-compiled supported clients and public behavior. Keep the
+public Kotlin module name, JVM names/default bridges, suspend/inline targets and
+third-party implementation assumptions stable. Old inlined bodies remain old;
+new runtime internals still have to link their supported targets. Java 17 stays
+fixed even when compiler support rotates. Run actual candidate artifacts on Java
+17 and prevent references to newer JDK APIs; JVM target alone is not that proof.
+
+7. INDEPENDENT RELEASE ARCHITECTURE
+
+7.1 Version and publication ownership
+
+Replace the single mosaic.version with mosaic.runtime.version and
+mosaic.analysis.version in gradle.properties. Do not introduce a second root
+version.properties just because the generated plugin resource has that name.
+Explicit Runtime/Analysis conventions assign project.version before publication
+configuration. Root/benchmark/example versioning must be deliberate rather than
+inheriting whichever train released last. Examples declare the intended Runtime
+version and, where used, Analysis version independently.
+
+Runtime train owns:
+  org.buildmosaic:mosaic-core:R
+  org.buildmosaic:mosaic-test:R
+  org.buildmosaic:mosaic-opentelemetry:R
+  org.buildmosaic:mosaic-bom:R
+
+Analysis train owns:
+  org.buildmosaic.analysis plugin marker:A
+  org.buildmosaic:mosaic-gradle-plugin:A
+  org.buildmosaic:mosaic-compiler-plugin:A (retained default profile coordinate)
+  org.buildmosaic:mosaic-compiler-plugin-kotlin-<ABI-profile>:A (additional profiles)
+  internal analysis-core implementation and its bundled dependencies at A
+
+Preserve the existing base compiler artifact identity as one real selected profile,
+initially the 2.4.20-built profile demonstrated on 2.4.0/2.4.20. Additional artifacts
+have explicit profile suffixes, initially 2.3.0 and 2.3.21 if final certification
+confirms the research. Do not publish a misleading universal wrapper JAR or an
+empty relocated artifact under the old name. The base artifact is not promised to
+run on every compiler; each release's manifest/registry lists exact membership.
+The seven unresearched versions may require additional profiles. Do not assume
+that three binaries suffice for all eleven versions.
+
+All profiles in release A are published at version A, even if their extraction
+sources did not change. This is one Analysis release, not independently scheduled
+adapters. Each JAR carries Analysis version, extractor profile, compiler API build
+identity and exact supported compilers. Plugin and extractor release identity
+must match; Runtime identity is checked through semantic negotiation instead.
+
+Add releaseRuntime/releaseRuntimeToMavenCentral and
+releaseAnalysis/releaseAnalysisToMavenCentral. Remove the ambiguous all-trains
+release command or make it require an explicit train rather than accidentally
+republishing an unchanged train. Runtime never invokes Plugin Portal tasks.
+Analysis release stages all extractor artifacts plus the plugin implementation,
+verifies their availability/hashes, then publishes the Portal marker/plugin.
+The existing publishPlugins ordering dependency moves to the Analysis-specific
+Central task. The BOM remains Runtime-only and does not pin Analysis.
+
+Use immutable tags runtime/1.0.0 and analysis/1.0.0 (illustrative versions).
+Update release dispatch to select a train and existing immutable tag, validate
+that train's version and manifest, run the applicable gates, then wait on the
+protected human-approved publication environment. Retain the old numeric tags
+for historical releases. A Runtime release must not rewrite a previous Analysis
+record; an Analysis release must not regenerate Runtime artifacts at the old R.
+
+Central and Portal are not an atomic transaction. Stage exact bytes and persist
+checksums; retry only missing identical publications after approval. Never overwrite
+a released coordinate or regenerate a different JAR at the same version. If a
+partial release cannot be completed consistently, record it as not fully available,
+mark affected combinations not supported, and issue a new Analysis release after
+repair. Consumer-visible certified rows require that all necessary artifacts are
+available, not merely that local staging passed.
+
+Avoid the provenance checksum cycle: generate the descriptor/selector from the
+pre-publication semantic record and pinned source commit; build once; hash outputs;
+certify those bytes; finalize a registry certificate in a subsequent commit.
+Artifacts do not embed the hash of the final registry that contains their own
+hashes. An external installed-artifact check confirms publication delivered those
+bytes. Rebuilding after certification invalidates the artifact certificate unless
+byte reproducibility is checked.
+
+7.2 Practical build arrangement comparison
+
+Option 1 — one build, explicit extractor subprojects, one shared source tree
+  RECOMMENDED FIRST. Keep mosaic-compiler-plugin/src/main as the authoritative
+  extraction tree. Add small profile projects under analysis-extractors/<profile>
+  (or equivalent root project names) whose source sets point to that tree. An
+  extractor convention sets compileOnly compiler-embeddable:<builtAgainst>,
+  generated profile constants/resources, bundled analysis-core, test inputs and
+  publications. One host KGP configures the build; differing compileOnly API JARs
+  are ordinary isolated project compilation classpaths. The host compiler used to
+  build a plugin is distinct from the compiler ABI it links against.
+  Benefit: existing conventions, tasks and publication ownership remain simple.
+  Limitation: actual host-produced bytecode/stdlib usage must run in every target
+  compiler's classloader, and older/newer compiler APIs must be readable by the
+  chosen host. A host producing valid JARs is not target compatibility proof.
+
+Option 2 — included builds per required compilation toolchain
+  Use only if a tested profile cannot be built with one host KGP/compiler or the
+  Runtime's older metadata floor conflicts with the Analysis build toolchain.
+  Independent included builds isolate settings/plugins; they can still point at
+  one extraction source tree and one shared convention source. Root release tasks
+  coordinate their explicit publication tasks. This is a same-repository build
+  boundary, not a new release train. Disable automatic dependency substitution in
+  external certification; otherwise the test can accidentally certify source
+  projects instead of published binaries.
+
+Option 3 — multiple KGP versions applied to ordinary subprojects
+  Reject. The surrounding Gradle plugin classloader can unify already-loaded KGP
+  classes; merely changing a version string in a subproject is not reliable
+  classloader isolation. Use a single KGP or a real separate build boundary.
+
+Option 4 — custom forked compiler builder for every profile
+  Technically possible and similar to research harnesses, but adds hand-written
+  incremental/cache/publication logic. No need as the first production build
+  arrangement. A separate compiler process may be used in repository TESTS/building
+  the tool itself; production analysis must still run inside normal main Kotlin
+  compilation and never fork a second Mosaic compiler.
+
+Keep the compiler API out of the Gradle plugin's implementation/runtime classpath,
+POM and bundled classes. Keep KGP compileOnly and integrate through its supported
+plugin APIs. Never shade compiler classes into an extractor or load extractor
+classes in the Gradle daemon just to select one. Selection returns coordinates;
+KGP loads the chosen JAR in its compiler environment. analysis-core must have no
+IR/KGP dependencies. Match its bytecode/stdlib/serialization usage to every host
+in which it is bundled; matching-stdlib tests are necessary, especially for 2.2.
+If dependency isolation needs change, make it an evidence-driven focused change,
+not an assumed generic shading framework.
+
+8. EXTRACTOR SELECTION, INVALIDATION AND EVOLUTION
+
+8.1 Selection protocol
+
+1. Read installed Analysis identity and its generated finite toolchain/profile
+   table; do not use the consuming application's project.version.
+2. Obtain actual KGP identity independently from the effective compiler provider.
+   Account for BTA being enabled or disabled; compilerVersion can be configured
+   but ineffective on older configurations without BTA. A mismatched requested and
+   actual compiler is an error, not an excuse to select by KGP.
+3. Validate exact (KGP, effective compiler, supported integration environment).
+   Start with matching tuples only. Preserve all current project-boundary guards:
+   pure JVM main, normal sources, no extra plugins/KSP/options/friends/etc.
+4. Select the mapped profile for the effective compiler and Analysis release.
+   Resolve via the project's normal dependency repositories, with an exact
+   coordinate/version. No latest.release, remote selector lookup, fallback to the
+   nearest patch, or automatic installation of a newer Analysis plugin.
+5. Validate the resolved profile/version manifest and expected publication
+   identity. Resolve duplicate/conflicting artifacts as errors. Inside the actual
+   compiler, compare KotlinCompilerVersion.VERSION to the selected exact set.
+   Canonicalize only an officially identified stable -release-N suffix; reject
+   arbitrary suffixes, RC/EAP/dev builds and unlisted patches.
+6. Pass actual compiler, KGP, extractor, Analysis, runtime descriptor digest and
+   semantic contract identity into task/shard/summary provenance as appropriate.
+
+Lazy configuration and configuration-cache implementation constraints:
+* Use pluginManager.withPlugin, TaskProvider.configure, typed task properties,
+  artifact views and Provider mapping. Do not resolve compiler/runtime dependencies
+  or finalize compilerVersion in Plugin.apply. Do not fetch the registry online.
+* Kotlin's compilerVersion API warns that reading it finalizes it. The current
+  getPluginArtifact API returns a concrete SubpluginArtifact, not a Provider.
+  Materialize selection at that KGP callback only after consumer configuration;
+  test that a compilerVersion set late in the user's kotlin block still wins.
+  Prior automatic-selector research is evidence for ordinary configuration on four
+  versions, not proof of all lifecycle orderings or 2.2. See Kotlin issue KT-79853
+  for the provider limitation. Do not claim fully lazy selection merely because
+  a Provider.get() is hidden in a helper.
+* If a target KGP invokes that callback too early, use a narrowly scoped lazy
+  dependency substitution/coordinate-resolution hook on the compiler-plugin
+  configuration, generated from the same table, or isolate that integration until
+  proven. No broad afterEvaluate mutation or task-action classpath replacement.
+  This timing probe is an acceptance gate before certifying such a KGP.
+* Task actions retain primitive/value inputs and FileCollections, not Project,
+  Configuration or ResolvedArtifactResult objects. Copy origin identities into
+  serializable input records. Run two builds with configuration cache, relocated
+  cache restore, project dependencies and parallel tasks as existing tests do.
+
+The official BTA documentation allows different KGP/compiler versions but warns
+that compiler plugins can fail. Previous research showed Kotlin scripting plugins
+needed alignment in both upgrade and downgrade directions. Mixed tuples remain
+explicitly not certified initially. A later focused PR may align only recognized
+Kotlin-default artifacts with the effective compiler; it must not relax the ban on
+arbitrary other compiler plugins or add a universal resolutionStrategy force.
+Certify each mixed tuple separately, including actual BTA/default-plugin versions.
+
+8.2 Incremental and build-cache identities
+
+Bump internal shardVersion from 2 to 3 (or next unused internal version) and add
+Analysis/extractor/actual compiler/runtime-contract provenance. The compilation
+output directory includes a deterministic extraction identity, or is cleared
+through a correctly modeled version-change compilation step; never assemble old
+shards into a new identity. A full re-extraction is required when that identity
+changes, including sources Kotlin might otherwise consider unchanged. Prefer an
+identity-specific output namespace plus declared compile inputs with a test proving
+all current shards are regenerated; reject incomplete results rather than reuse.
+
+The assembler verifies every current shard has the expected identity; source
+inventory still decides membership. Emit explicit empty complete format-6 metadata
+when Kotlin reports NO_SOURCE using the validated configuration identity. Check
+both version switches and switching back, cache relocation, failed-build recovery,
+last-source deletion, and stale files left by a previous failed compiler.
+
+Keep dependency summary content separate from source compilation. A dependency
+body-only semantic change reruns validation/evaluation/packaging as necessary,
+without forcing unchanged consumer compilation. Runtime descriptor content changes
+are compilation identity changes; ordinary dependency summary changes are not.
+Use content-sensitive resource inputs, not only ABI-normalized @CompileClasspath,
+since a descriptor/resource change can leave class signatures unchanged. Include
+selected identities, strictness/roots, local/dependency summaries and handshake
+inputs in task fingerprints; a successful cache hit must have validated the same
+requirements. Regenerating a certificate/website date must not invalidate compiler
+outputs.
+
+8.3 Adapter evolution algorithm (strict replacement rule)
+
+For a newly released stable compiler:
+1. Run each plausible existing extractor candidate on linkage smoke, then run the
+   complete requirements on any passing candidate. Guards may be widened only in
+   an isolated candidate build; widening a guard is never evidence of compatibility.
+2. If existing binaries fail, recompile UNCHANGED shared sources against the new
+   compiler API. Run the full extraction/semantic/KGP/metadata/installation suite.
+3. If sources no longer compile or semantics differ, attempt a small clean shared
+   change or one tiny profile-specific compatibility file at the demonstrated API
+   seam (for example registrar ABI or origin accessor). Re-run every affected
+   profile. Keep extraction logic single-owned; do not fork SourceContractExtractor.
+4. If necessary retain a distinct profile binary. No broad Kotlin-version if/when
+   checks throughout extraction, reflection dispatch platform, or generic adapter
+   framework without demonstrated variability requiring it.
+
+An updated binary may replace/consolidate an existing profile ONLY if EVERY
+previously supported compiler mapped to that profile passes its COMPLETE
+certification requirements on the replacement, including expired historical
+members if the action is called replacement of that profile. Same compiler family
+or unchanged source is insufficient. The proven 2.3.0/2.3.21 getter break is the
+counterexample. Save the before/after mapping and referenced certificates; make
+this a registry validator/release gate, not a reviewer convention alone.
+
+Retirement is different from replacement. Once an entire mapped family's support
+expires, a NEW Analysis release may omit that old profile. Preserve all older
+published binaries and their mappings/registry history. If retiring expired
+members from a combined profile, record a new profile/mapping as retirement plus
+new certification rather than claiming the replacement passed the old membership.
+Consolidation can reduce future build count only with the universal revalidation
+above. Never delete or overwrite an old artifact, and never make users select
+profile artifacts manually.
+
+9. MINIMAL RELEASE DISCOVERY AND REMEDIATION AUTOMATION
+
+PROPOSED infrastructure: one new kotlin-certification.yml workflow (schedule,
+workflow_dispatch and reusable workflow_call), one small deterministic discovery/
+registry-validation script, and train parameters added to the existing release
+workflow. Keep actual test plans in versioned repository tasks/scripts, not a
+large collection of nearly identical workflow files.
+
+Daily run, e.g. 07:23 UTC (avoid the top of the hour):
+1. Read the official paginated stable-release inventory and registry; retain the
+   API response identity and source date. Also notice RC/EAP entries for a weekly
+   cheap warning lane, never a stable support row. Scheduled workflows run from
+   the default branch; explicitly checkout the intended reviewed develop SHA for
+   candidate tests. Record both workflow SHA and tested SHA. Do not assume schedule
+   on a non-default branch runs automatically.
+2. Compute work keys from Kotlin version + candidate source SHA + artifact/test
+   plan hashes. Detect all unprocessed stable patches in active families, including
+   backfill patches on older active families. Do not only inspect /releases/latest.
+3. Reuse successful exact-identity certificates; skip identical open PR/work keys.
+   Run a small linkage smoke before costly suites. Distinguish upstream artifact
+   propagation/network failure from reproducible compatibility failure; bounded
+   retry/backoff for the former, investigation for the latter.
+4. Run R and A/S/E candidate plans with pinned inputs. If an existing released
+   plugin rejects the version via its exact selector, it is not suddenly compatible
+   because a modified candidate passes. Prepare a new Analysis release containing
+   the selection/guard update, even when the binary implementation is otherwise
+   unchanged. Runtime-only certification can often be added to existing Runtime
+   artifacts without releasing Runtime again.
+5. Persist evidence: source/test/workflow SHAs, dependency/artifact hashes,
+   toolchains, commands, JUnit, normalized and original summaries, expected unknown
+   diagnostics, classpaths and a minimal reproduction. Hash the evidence bundle.
+   Upload run artifacts for quick inspection; retain authoritative successful and
+   incompatibility evidence in durable release assets/content-addressed storage
+   associated with the reviewed certificate. Do not rely on an expiring Actions
+   artifact URL as the only provenance for permanent historical support.
+6. On success, prepare one focused registry/release-candidate PR. Only rows proved
+   against existing released bytes become proposed certified rows immediately;
+   new-release rows remain pending/not-certified until approved publication and
+   installed-byte checks. Human merge and publication approval remain mandatory.
+7. On reproducible failure, create/update one version-keyed investigation issue/PR
+   and invoke the approved agent runner with the reproduction and an allowlisted
+   source/test scope. Its task is diagnose ABI/semantic/build integration failure,
+   attempt the ordered adapter evolution, and propose a focused remediation PR
+   with regression evidence. It cannot merge or publish. No agent delegation or
+   remediation run was performed in THIS investigation.
+
+Idempotence/concurrency:
+  One discovery concurrency group, cancel-in-progress=false; candidate jobs keyed
+  by compiler plus source/test identity. Use one branch such as
+  automation/kotlin-2.4.21 and update it using expected-head checks; do not overwrite
+  a human's edits. Re-read the registry/base before opening/updating a PR. Different
+  candidates may test concurrently, but final registry merges revalidate against
+  current state. Manual retry reuses the work key unless inputs actually changed.
+
+Costs and notifications:
+  No new release => one small API/validation job, no Gradle matrix. Cap simultaneous
+  costly lanes, reuse dependency downloads and producer artifacts by verified
+  digest, set timeouts and a retry limit. Failed compatibility, missing evidence,
+  stalled publication and missed schedules appear in the job summary and a single
+  existing version-keyed issue. GitHub maintainers own notifications; no external
+  Slack/email integration is required. Use manual dispatch as schedule recovery.
+
+Security/permissions:
+  Discovery and tests get contents:read only and no publication/signing secrets.
+  A separate trusted PR-writer job gets narrowly scoped contents/pull-requests
+  writes and consumes validated structured results, never executes uploaded code.
+  Pin Actions to commit SHAs, restrict fetched coordinates/repos, verify wrappers/
+  dependencies, use disposable runners with resource limits. Release notes, logs
+  and dependency source text are untrusted data for agents. Do not run fork PR code
+  under pull_request_target with secrets. The agent gets no release credentials,
+  workflow/protection edits or authority to edit registry verdicts without evidence.
+  Current GitHub documentation says GITHUB_TOKEN-created/updated PRs can trigger
+  approval-required workflow runs, while ordinary token-generated pushes do not
+  trigger new runs. Explicit workflow_dispatch is another supported route. Use
+  approved PR runs or explicit dispatch and verify required checks ran on the final
+  PR SHA; a bot-created PR alone is not evidence that validation executed.
+
+Soundness protection:
+  Fixes may not remove unknowns, weaken STRICT, suppress diagnostics, broaden
+  compiler guards without tests, delete failing fixtures, or stamp an old semantic
+  contract onto new meanings. Deterministic schema/negative-corpus gates and human
+  semantic review are required. A contract change must declare its new capability
+  or epoch and retain tests of old-reader rejection. If automation cannot find a
+  sound fix, leave the version not certified, attach evidence and request review;
+  it must not edit the authoritative compatibility guarantees to declare success.
+
+10. ONE CONSUMER COMPATIBILITY VIEW
+
+Registry projections provide one query:
+  lookup(runtime=R, compiler=C, kgp=optional, asOf=date)
+returns Runtime support plus compatible optional Analysis choices, environment
+qualification, expiry and a link to the certificate/history. Internally multiple
+evidence layers exist; the website must never present three separate matrices.
+
+Runtime-only is the default answer and uses analysis=null. For a Gradle consumer,
+show the exact KGP choices where evidence exists. If KGP is omitted, return grouped
+answers and ask for it only when necessary to disambiguate, rather than claiming
+all KGP values. Optional Analysis choices come from complete certified rows,
+including older compatible plugins. Version sort is display only, not admission.
+Show four distinct labels: certified/active, previously certified/expired, not
+certified, explicitly incompatible. Show the reason and exact supported alternative
+when there is one. Expired means no current guarantee, not known failure.
+
+Generate a static accessible table grouped by Runtime and compiler with Analysis
+versions in the same row/cell, proper headings/captions and full keyboard-readable
+links. A progressively enhanced lookup filters that SAME data, with shareable URL
+parameters; no JavaScript is needed to browse current or historical releases.
+Display assessment date and upcoming expiry. Provide archived registry revisions
+and immutable release-specific views plus current superseding advisories.
+
+Generate a small marked README compatibility block listing the current Runtime,
+Java 17 minimum, exact certified compiler versions (or compact family grouping
+with an explicit exact-patch list), and a link to the unified view. Avoid a README
+claim like "Kotlin 2.2+". Both projections run from registry.json; fail CI if generated
+content is stale or disagrees. The website build can consume a compact generated
+JSON asset, never hand-edit a separate support table. A scheduled expiry-only build
+keeps static support status current. No UI, README or website change is part of
+this investigation.
+
+11. DIAGNOSTICS AND SAFETY CASES
+
+These are proposed messages and IDs, not an assertion that those versions or APIs
+exist. Real diagnostics must use actual resolved values and only recommend exact
+alternatives present in a trusted registry snapshot. If no known alternative
+exists, say so; do not invent a minimum working release.
+
+MOSAIC-COMPAT-001 — unknown Runtime obligation
+  Cannot analyze org.buildmosaic:mosaic-core:1.2.0 with Mosaic Analysis 1.0.0.
+  Runtime requires 'mosaic.canvas-analysis/2'; installed Analysis understands
+  ['mosaic.canvas-analysis/1']. Kotlin compiler 2.4.20, KGP 2.4.20.
+  Compatibility failure; no verification result produced.
+  Use an Analysis release certified for Runtime 1.2.0 and this Kotlin/KGP pair,
+  or select a certified Runtime with supported requirements. See the compatibility
+  view for exact choices.
+
+MOSAIC-COMPAT-002 — present incompatible dependency summary
+  com.example:order-tiles:4.2.0 contains incompatible Mosaic metadata.
+  Producer: Analysis 1.3.0, extractor kotlin-2.4.20, Kotlin compiler 2.4.20.
+  Installed: Analysis 1.0.0. Found format 7 / analysis-contract-4;
+  this reader accepts format 6 / analysis-contract-3.
+  Regenerate order-tiles with compatible Analysis tooling, use a compatible
+  published order-tiles version, or upgrade to a certified Analysis combination.
+  Metadata was not ignored. No verification result produced.
+
+MOSAIC-COMPAT-003 — legacy summary lacks provenance
+  com.example:catalog-tiles:1.8.0 contains Mosaic metadata format 5
+  (producer prototype-11, recorded compiler 2.4.20) without required Runtime
+  compatibility provenance. Analysis 1.0.0 requires format 6 for dependency input.
+  Rebuild and republish catalog-tiles with protocol-aware Analysis tooling.
+  Removing the summary would leave its effects unverified, not prove them safe.
+
+MOSAIC-UNKNOWN-DEPENDENCY — ordinary absent summary
+  UNVERIFIED: com.example:legacy-tiles:2.0.0 has no Mosaic summary for
+  com.example.LegacyTiles.OrderTile used by app.checkout() at Checkout.kt:24.
+  Canvas effects cannot be established across this dependency boundary.
+  Build the library with compatible Mosaic Analysis and publish its summary.
+  STANDARD: warning; STRICT: verification fails. This lookup is not VERIFIED.
+  (Do not report this for an unrelated unused library solely because it lacks metadata.)
+
+MOSAIC-COMPAT-004 — missing Runtime descriptor
+  Cannot establish Runtime semantics for org.buildmosaic:mosaic-core:1.1.0.
+  Required resource META-INF/mosaic/runtime-compatibility.json is absent.
+  Installed Analysis: 1.0.0. Use an intact certified Runtime artifact; check for
+  repackaging or repository substitution. No verification result produced.
+
+MOSAIC-COMPAT-005 — mixed Runtime modules
+  Selected Runtime modules are not aligned: mosaic-core:1.1.0,
+  mosaic-opentelemetry:1.0.0. Analysis 1.0.0 requires one Runtime release across
+  Runtime modules. Align explicit versions or use org.buildmosaic:mosaic-bom:1.1.0
+  if that release is certified for your Kotlin configuration.
+  (Report dependency paths that selected the conflicting versions.)
+
+MOSAIC-COMPAT-006 — unsupported exact toolchain
+  Mosaic Analysis 1.0.0 has no certified extractor configuration for
+  Kotlin compiler 2.3.20 / KGP 2.4.20 (BTA enabled).
+  This mixed tuple has not been certified; matching-version certification does
+  not cover it. Select a listed matching pair or a certified Analysis release
+  supporting this exact tuple. The compiler plugin was not run.
+
+MOSAIC-COMPAT-007 — inconsistent compiler identity
+  Selected extractor kotlin-2.3.21 from Analysis 1.0.0 expected compiler 2.3.21,
+  but the executing compiler reports 2.4.20 (KGP 2.4.20).
+  Check kotlin.compilerVersion, BTA settings and dependency substitution.
+  Clean/rebuild after correcting the configuration; stale shards are rejected.
+
+MOSAIC-COMPAT-008 — analyzer/profile release mismatch
+  Installed Gradle plugin is Mosaic Analysis 1.1.0; resolved extractor is
+  org.buildmosaic:mosaic-compiler-plugin-kotlin-2.3.21:1.0.0.
+  Remove the forced/substituted extractor version. The plugin selects a matching
+  extractor automatically. Runtime version alignment does not fix this error.
+
+MOSAIC-COMPAT-009 — unexpected descriptor/schema data
+  org.buildmosaic:mosaic-core:1.3.0 has runtime descriptor version 2;
+  Analysis 1.0.0 understands descriptor version 1.
+  Use compatible Analysis tooling or a certified earlier Runtime.
+  No verification result produced.
+
+MOSAIC-COMPAT-010 — stale/mixed local extraction
+  Current source src/main/kotlin/Orders.kt has a shard produced by Analysis 1.0.0 /
+  compiler 2.3.21, but this build expects Analysis 1.1.0 / compiler 2.4.20.
+  Mosaic refused to assemble mixed extraction state. Rebuild after correcting
+  the selected toolchain. If a clean build fails, report the recorded identities.
+
+IDs are provisional under the authoritative contract. Diagnostic contents must
+preserve installed/producer/selected artifact context even when reading a malformed
+header; if a field cannot be decoded, say "unreadable", not a guessed version.
+A malformed JSON/hash/duplicate-owner error uses the same dependency attribution
+and regeneration/removal-of-substitution guidance. Suppression cannot hide any of
+these compatibility errors.
+
+12. VALIDATION AND RELEASE GATES
+
+12.1 Smallest reliable ownership
+
+analysis-core owns pure descriptor negotiation, metadata grammar/epochs/capabilities,
+required-field/unknown-token behavior, evaluator unknown outcomes and format corpus.
+compiler-plugin owns symbol-shape recognition, IR-to-contract fidelity, compiler
+version assertion and shard provenance. Gradle plugin tests own resolved identities,
+selection, task ordering, application/library/graph/package gates, cache behavior,
+publication and external installation. Runtime modules retain their existing
+behavior tests; a dedicated compatibility fixture project compiles frozen public
+clients and checks ABI/source behavior against actual artifacts. Build/release
+logic owns coordinated versions, manifests and registry validity. Avoid testing
+private helper names or making multiple suites assert the same parser behavior.
+
+Public compatibility gate:
+  Freeze 1.0 public Kotlin and JVM API signatures plus source/compiled fixtures.
+  Compare every later release to the baseline AND the accumulated additive 1.x
+  surface, not just the immediately previous patch. A signature diff tool alone
+  cannot prove named arguments, overload resolution, generated methods, default
+  arguments, third-party implementations or documented behavior. Compile source
+  fixtures on certified compilers; run frozen already-compiled binaries against
+  new JARs on Java 17 with compatible dependencies. Preserve observation SPI and
+  both tracing installation overloads, not just mosaic-core Canvas operations.
+  Reuse existing lifecycle/cancellation/cache/Canvas/resource/observation/tracing
+  tests for observable behavior; add only missing contract witnesses.
+
+Required new regression witnesses:
+* An actual frozen older analyzer accepts a synthetic newer Runtime descriptor
+  with the same requirement, and rejects an unknown token, unknown descriptor
+  version, duplicate fields and absent descriptor. Test both same compiler and
+  already-certified cross-version dependency producers.
+* Old reader/new writer and new reader/old writer preserve VERIFIED/MISSING/
+  UNVERIFIED outcomes, strict enforcement, payload identities and locators.
+* A new same-name runtime overload cannot fall through an old intrinsic path and
+  claim known effects. Capability omission makes the release conformance test fail.
+* Missing ordinary summary remains Unknown; present incompatible summary fails
+  for application, library, graph and packaging. A no-root/NO_SOURCE build does
+  not bypass the compatibility gate. Failure never leaves a usable success report.
+* Resolved runtimeVersion differs from requested version; transitive upgrade,
+  compile/runtime divergence, forced module mixture, project dependency JAR,
+  local JAR, duplicate resource and shadowed runtime owner all behave explicitly.
+* Runtime requirement-only resource change invalidates extraction; ordinary
+  dependency-summary-only change preserves compile incrementality and reruns
+  verification. Check clean/incremental/cache-restored equality in both cases.
+* Compiler/extractor/Analysis switch and switch-back cannot assemble old shards;
+  relocation/configuration-cache/recovery/last-source removal preserve truth.
+* External plugins DSL and runtime-only install select exactly staged manifests,
+  without injected plugin classes, includeBuild or mavenLocal. Check marker/POM/
+  GMM, BOM constraints, sources/Javadoc, manifests and compiler/KGP leakage.
+
+12.2 Check cadence
+
+Every commit/PR:
+  Existing root and examples required checks at baseline toolchain; registry/schema
+  and generated-data consistency; descriptor/codec/unknown negative unit corpus;
+  changed extraction profiles' direct compiler suites; baseline TestKit; public
+  API comparison on Runtime changes. Trigger relevant certification lanes when
+  source/build/semantic inputs change. Documentation-only registry display edits
+  need projection validation, not all Kotlin tests. Baseline check is not evidence
+  to promote untouched versions automatically.
+
+Kotlin stable release certification:
+  Full R/A at the exact new matching compiler/KGP, complete E, S corpus plus new
+  producer/consumer row/column, configuration/build cache/version-switch, publication
+  shape checks. If replacing a mapped binary, every previously mapped compiler's
+  complete requirements rerun. RC lanes provide early warning only.
+
+Runtime release:
+  All active exact compiler R lanes against the new actual bytes; complete public
+  source/ABI/behavior gates; descriptor audit; small E for every still-compatible
+  supported Analysis/compiler tuple including actual OLD plugin JARs; updated S
+  whenever analysis-relevant semantics change. No automatic Analysis upgrade to
+  make testing easier. Stage and install all four Runtime modules and BOM.
+
+Analysis release:
+  Full A/S for all active mapped compiler/KGP tuples; retain supported combinations
+  with Runtime releases; small E against the retained compatible Runtime set;
+  cross-version producer/reader checks and all profile/selection/provenance gates;
+  external coordinated-variant install. An incompatible metadata change requires
+  explicit migration/regeneration diagnostics and historic reader tests.
+
+Periodic extended regression (weekly or monthly depending on observed cost):
+  Replay supported release certificates/frozen artifacts against current dependency
+  repositories; rotate newer JVM and Gradle environments; test historical expired
+  artifacts for information without reclassifying them supported; run mixed-version
+  candidates/RC warnings separately. Promote environments/tuples only after complete
+  certificates, not from opportunistic green smoke runs.
+
+12.3 Commands and this investigation's validation
+
+Existing mandatory implementation checks remain:
+  ./gradlew clean build
+  ./gradlew clean build -p examples
+  git diff --check
+  git diff --cached --check
+
+PublishedInstallationTest currently invokes local publication tasks. This task
+explicitly forbids publishing artifacts and asks to avoid repeating expensive
+research; therefore this investigation did NOT execute clean build/test tasks or
+publication/install tests. No production/test/build files changed, and no fresh
+compiler-compatibility result is claimed. The prior build/test evidence remains
+labeled as prior, including its repository-isolation caveat. Read-only source
+inspection, official inventory retrieval, report/example checks and diff checks
+are appropriate validation for this design deliverable.
+
+Proposed future focused commands (tasks/properties below do NOT exist yet):
+  ./gradlew :mosaic-analysis-core:test
+  ./gradlew :mosaic-compiler-plugin:test
+  ./gradlew :mosaic-gradle-plugin:test --tests '*Compatibility*'
+  ./gradlew validateCompatibilityRegistry
+  ./gradlew certifyRuntime -Pmosaic.certification.kotlin=2.2.0
+  ./gradlew certifyAnalysis -Pmosaic.certification.kotlin=2.3.21 -Pmosaic.certification.kgp=2.3.21
+  ./gradlew certifyMetadata -Pmosaic.certification.compilers=<exact-comma-list>
+  ./gradlew certifyCombination -Pmosaic.certification.runtime=R -Pmosaic.certification.analysis=A -Pmosaic.certification.kotlin=C -Pmosaic.certification.kgp=G
+
+Certification tasks use isolated local staging repositories and fresh consumer
+workspaces; publication to external services is a separate approved release step.
+Profiles can be tested through aggregate tasks without exposing their project
+names as consumer API. A release plan must enumerate actual row IDs and test
+commands so missing matrix entries cannot be hidden in a filtered invocation.
+
+13. STAGED IMPLEMENTATION PR PLAN
+
+No PR is opened here. Each stage below is a future focused PR. Ownership labels
+refer to subsystem responsibility, not an invented team roster. Each must preserve
+unrelated compiler/project-boundary restrictions. Common verification is the four
+existing commands above, plus stage-specific checks, when implementation is
+actually authorized. Local staging publication will be necessary in those future
+checks; this report has performed none.
+
+PR 1 — Runtime semantic handshake, still only current 2.4.20 support
+  Depends: architecture approval of descriptor grammar and initial capability.
+  Owners: Runtime requirement authoring; analysis-core compatibility admission;
+  Gradle/compiler integration of that admission.
+  Files: Runtime resource-generation convention, analysis-core RuntimeCompatibility
+  model/codec/checker, MosaicAnalysisPlugin/ExtractMosaicTask/VerifyMosaicTask/
+  MosaicGraphTask/MosaicSummaryTransform, compiler registrar, intrinsic callable-
+  shape checks in SourceContractExtractor and fixture inputs.
+  Acceptance: same requirements accepted across unequal synthetic Runtime/Analysis
+  versions; unknown token/version/missing runtime resource fails before trusted
+  output; library/graph/JAR paths cannot bypass; no compiler allowlist widening.
+  Verification: analysis-core negative corpus; current-compiler fixture; targeted
+  TestKit application/library/graph/package plus runtime resolution cases.
+  Migration/publication: introduce protocol-aware baseline before claiming 1.0;
+  existing uncertified 0.x plugins are not silently blessed. Existing artifact
+  coordinates remain; descriptors do not create runtime dependencies.
+  Rollback: before publication, revert the PR. After publication, preserve protocol
+  readers and stop affected release promotion; never remove fail-closed checks to
+  restore a green build. Subsequent patch or corrected artifact version repairs it.
+
+PR 2 — Truthful summary/shard provenance and older dependency compatibility
+  Depends: PR 1.
+  Owners: analysis-core wire protocol; compiler output; Gradle assembly/packaging.
+  Files: SummaryMetadata.kt, metadata/Wire.kt, SourceShards.kt, SourceShardStorage,
+  MosaicIrExtractor, ExtractMosaicTask, dependency reader and common validated input.
+  Acceptance: format 6 and shard 3 carry actual producer/runtime identities;
+  format 5 fails with regeneration advice; dependency body change remains separate
+  from compilation; NO_SOURCE has correct provenance; old/new protocol fixtures
+  prove compatibility and rejection without version equality.
+  Verification: codec corpus, direct K2 producer/reader fixtures, existing shard/
+  binary/cache integration tests plus version-switch and failure-report witnesses.
+  Migration: regenerate old published dependency summaries using protocol-aware
+  tooling. Retain analysis-contract-3 only if payload meaning tests justify it.
+  Rollback: before release revert; after release provide explicit dual reader only
+  if soundly tested, or issue a new format/tool release. Never relabel old bytes.
+
+PR 3 — Registry, identity manifests and reusable evidence validator
+  Depends: PRs 1–2 define protocol fields; can be developed in parallel afterward.
+  Owner: compatibility/build logic, no product UI.
+  Files: compatibility/registry.json, schema.json, internal contract specifications,
+  small validator/generator and its schema/date/reference tests, build tasks.
+  Acceptance: all four statuses, explicit null Analysis, no pairwise inference,
+  exact versions, provenance/hash checks, eleven-version backlog, expiry computation,
+  pending versus available release distinction, no fabricated certified rows.
+  Verification: validateCompatibilityRegistry; illustrative/negative fixtures;
+  generator idempotence; boundary dates and invalid/superseding evidence.
+  Migration: generated descriptors and future selectors now use this owner; delete
+  temporary duplicated tables from earlier stages. Preserve immutable histories.
+  Rollback: pin previous registry revision for consumers; retain raw evidence and
+  generation schema. Artifact semantic guards do not depend on a live registry.
+
+PR 4 — Split train versioning and release manifests
+  Depends: PR 3; no broader Kotlin claims yet.
+  Owners: Gradle conventions/publication/release automation.
+  Files: gradle.properties, base/publish conventions, runtime/analysis conventions,
+  module build files, root release tasks, generated plugin version.properties,
+  release.yml, installation fixtures and example version inputs.
+  Acceptance: R != A installs correctly; Runtime BOM aligns only Runtime; Analysis
+  tasks never republish Runtime; Runtime tasks never publish Portal; old coordinate
+  identities retained; staged bytes and published-manifest identities agree.
+  Verification: isolated external install with unequal versions; publication task
+  graph dry run; manifest/marker/POM/GMM tests; both repository builds.
+  Migration: train-prefixed tags and release dispatch; preserve numeric old tags.
+  Rollback: stop publication at protected environment; pre-release revert. If one
+  train published, do not roll its version backward or overwrite its coordinates.
+
+PR 5 — Runtime 1.0 source/JVM compatibility harness and 2.2 consumption floor
+  Depends: PR 4 for independent build/version inputs; uses PR 3 registry.
+  Owners: Runtime public API/test/SPI plus Runtime build conventions.
+  Files: small compatibility-fixtures build, Runtime API snapshots and source/
+  compiled-client corpus, Runtime dependency/build-toolchain convention, existing
+  behavioral test adapters as needed. Avoid duplicating Runtime behavior suites.
+  Acceptance: actual candidate JARs consumed by all eleven exact compilers on
+  JVM 17, complete public surface covered, no skipped metadata check, dependency
+  versions support the oldest family. Freeze final 1.0 baseline only from final
+  release artifacts. A necessary dependency/source change gets its own focused PR
+  if larger than the compatibility harness.
+  Verification: certifyRuntime for each exact version, ABI/source fixtures,
+  no-plugin external installations with/without BOM, tracing/test consumers.
+  Migration: may change Runtime build compiler/dependency floor before 1.0;
+  never pretend the existing 2.4 output is already 2.2-certified.
+  Rollback: retain current Runtime candidate and leave unsupported rows pending;
+  do not remove 2.2 from policy to make the release look complete.
+
+PR 6 — Shared-source extractor profiles and exact lazy selection
+  Depends: PRs 2–4; PR 5 supplies Runtime fixtures for 2.2 certification.
+  Owners: compiler build profile convention and Gradle selector.
+  Files: compiler module build, analysis-extractors profile projects, settings,
+  small shared convention, generated profile manifests/table, registrar and
+  MosaicAnalysisPlugin/ExtractMosaicTask integration.
+  Acceptance: current/2.3.0/2.3.21 profiles built from one source tree; one public
+  plugin automatically selects by effective compiler; no compiler API leakage;
+  late compilerVersion assignment works; unknown tuple rejected before linkage;
+  all mappings remain pending until PR 7 evidence. Normal main compilation only.
+  Verification: full prior four compiler suites plus KGP/config-cache lifecycle
+  and external profile install; POM/JAR dependency inspection. Add 2.2 profiles
+  only after the targeted ABI probe identifies the smallest necessary binaries.
+  Migration: preserve base compiler coordinate as one concrete profile; every
+  profile carries A, never a private release schedule.
+  Rollback: revert candidate selector/build changes before publication; after
+  publication keep existing profile artifacts and release a corrected mapping.
+
+PR 7 — Full eligible-patch certification and evidence backfill
+  Depends: PRs 5–6; registry admission gates already live.
+  Owners: certification harness across Runtime/compiler/Gradle modules.
+  Files: parameterized existing fixture harnesses, compact binary producer/consumer
+  corpus, staging-install harness, compatibility evidence records/manifests.
+  Acceptance: all eleven matching pairs have exact R/A/S/E coverage and 121 small
+  cross-compiler metadata cases; any failure gets a reproducible focused fix before
+  its row is certified. New tests preserve unknowns and metadata errors. All seven
+  previously missing research versions explicitly handled. No mixed tuples claimed.
+  Verification: proposed certifyRuntime/certifyAnalysis/certifyMetadata/
+  certifyCombination commands for generated plan; cold external installation;
+  cache/version-switch tests. Final 1.0 artifacts are still release-gated.
+  Migration: old dependency regeneration documented in release guidance when
+  authorized; compatibility view stays unchanged until true records exist.
+  Rollback: retain a failed/pending row with evidence; withdraw a bad certificate
+  through a superseding record rather than deleting the history.
+
+PR 8 — Daily Kotlin discovery and bounded remediation workflow
+  Depends: PR 7's deterministic certificate format and tasks.
+  Owners: release automation; human compatibility reviewer owns admission.
+  Files: kotlin-certification.yml, small release-discovery/planning script,
+  existing release workflow integration, agent task template and permission policy.
+  Acceptance: idempotent no-op, backfill detection, concurrent candidate handling,
+  artifact propagation retry, durable evidence, draft remediation PR, no automatic
+  merge/publication, no schema/guard weakening. Validate final bot PR checks run.
+  Verification: recorded API response fixtures; workflow_dispatch in read-only/dry-
+  run mode; sandbox failing fixture and successful existing-artifact certificate.
+  Migration: configure least-privilege agent credential/runner separately from
+  publication secrets; protected release environment retains human approval.
+  Rollback: disable schedule/agent invocation; manual certification tasks remain
+  usable. Do not delete accumulated certificates or change runtime behavior.
+
+PR 9 — Unified generated compatibility view and README summary
+  Depends: PR 3 schema and PR 7 real records; follows separate UI approval if needed.
+  Owner: website presentation consuming compatibility generator output.
+  Files: generated compact JSON/static compatibility view and a small README block;
+  no three matrices or new public compatibility guarantees.
+  Acceptance: query R/C with optional KGP/Analysis, all four states, exact old-plugin
+  choices and historical snapshots, accessible no-JS browsing, expiry updates.
+  Verification: projection fixtures, accessibility/keyboard/static checks and
+  website build using website/AGENTS.md and applicable UI/documentation skills.
+  Migration: replace manually maintained support statements only with authorized
+  generated content. This PR is a later implementation, not part of this report.
+  Rollback: serve previous generated snapshot with its date; retain registry data.
+
+PR 10 — Final 1.0 baseline freeze and protected release readiness
+  Depends: all soundness/certification stages; automation/UI are operational aids
+  but cannot substitute for the required artifact certificates.
+  Owners: release coordination and Runtime/Analysis approvers.
+  Files: final artifact manifests, baseline API/client fixtures, exact release
+  certificate rows and train release metadata. No opportunistic refactor.
+  Acceptance: refresh official window at actual release date; every advertised
+  tuple has complete evidence; all profiles coordinated; publication approval
+  separate; final installed bytes checked before marking available/certified.
+  Verification: complete generated release plans plus clean builds and diffs.
+  Migration: retain 0.x history, explicit protocol/summary regeneration guidance,
+  independent version examples. Rollback: stop before approval; for published
+  defects issue corrected releases/advisory records without replacing bytes.
+
+Future optional PR — mixed BTA tuples
+  Depends: all matching support stable and a user/maintainer demand for exact mixed
+  tuples. Own default scripting alignment and full new tuple certificates. It is
+  not necessary to delay matching-version 1.0 certification.
+
+14. REMAINING RISKS AND DECISIONS BEFORE IMPLEMENTATION
+
+Required decisions to begin PR 1 (recommendations in this report are concrete):
+* Approve the fixed descriptor path/v1 fail-closed grammar and initial coarse
+  capability meaning. This is a durable inter-tool commitment even though Analysis
+  DSL/wire/report surfaces are otherwise provisional.
+* Approve the protocol-aware Analysis baseline; pre-protocol 0.x cannot be promised
+  retrospective fail-closed negotiation. Approve format-5 regeneration at migration.
+* Confirm the Runtime requirement review owner and freeze the analysis scope of
+  canvas-analysis/1 against the existing public API matrix. No promise of complete
+  application correctness is added.
+
+Technical probes needed before broader support/publication, not reasons to delay
+implementing the current-toolchain handshake:
+* Kotlin 2.2 consumption of actual Runtime/dependency metadata and Java 17 execution.
+* KGP callback timing/classloader compatibility on 2.2 and the previously untested
+  patches; profile count cannot be known from version names alone.
+* Full format-6 future-producer/old-reader conformance. The proposed stable semantic
+  protocol intentionally goes beyond the research's exact producer allowlist.
+* Intrinsic overload-shape coverage and capability governance: no automatic scanner
+  can prove a hand-authored runtime requirement is truthful. Require API/behavior
+  review and negative old-analyzer witnesses for relevant additions.
+* Gradle distribution scope: start with an actually tested common 8.14.x wrapper
+  distribution (current wrapper is 8.14.4) and verify its pairing with 2.2; official
+  KGP ranges are external context, not Mosaic evidence. Broaden only with testing.
+* Runtime/Analysis release numbering first values are maintainer choices; do not
+  infer them from the current 0.7.0 placeholder. Examples use 1.0.0 only illustratively.
+* Durable evidence hosting/retention and approved agent runner/credential need an
+  operational owner before PR 8. No new service is necessary if release assets
+  meet retention/integrity needs; Actions retention alone is insufficient.
+* Offline revocation has a real limit. Unknown mandatory semantics are fail-closed;
+  a bug in an already-trusted producer is repaired through new artifacts/advisories,
+  not a fictional ability to update old offline analyzers remotely.
+* Actual Mosaic 1.0 release date is required to close the backlog. October 7 is this
+  investigation's explicit baseline; it does not restart any Kotlin support clock.
+
+No separate repository, generic adapter framework, public analyzer SPI, per-method
+capability matrix, network-dependent plugin selector or independently versioned
+extractor train is justified by present evidence.
+
+15. REFERENCES AND REPRODUCIBILITY
+
+Authoritative repository contract:
+https://github.com/BuildMosaic/Mosaic/blob/cf490954c8e669c48c4263b36214b641fb9ce9f4/website/src/content/docs/reference/compatibility.md
+Repository code references use that same immutable base. Source paths and hashes
+are in research-evidence/repository/baseline.json; use git show to retrieve them.
+The copied prior report identifies exact experiment commands/scripts/logs in the
+local archive described in README.txt; no expensive experiment was repeated.
+Prior results are not certificates for this proposal.
+
+Official Kotlin references (retrieved during this investigation):
+* Release inventory/dates: https://kotlinlang.org/docs/releases.html
+* Official release objects: https://api.github.com/repos/JetBrains/kotlin/releases
+* BTA behavior and mixed-version plugin limitation:
+  https://kotlinlang.org/docs/build-tools-api.html
+* compilerVersion property and early-finalization warning:
+  https://kotlinlang.org/api/kotlin-gradle-plugin/kotlin-gradle-plugin-api/org.jetbrains.kotlin.gradle.dsl/-kotlin-top-level-extension/compiler-version.html
+* KGP/Gradle supported ranges:
+  https://kotlinlang.org/docs/gradle-configure-project.html
+* Provider-based plugin artifact API request (supporting timing risk, not evidence
+  that a solution is available):
+  https://youtrack.jetbrains.com/issue/KT-79853
+
+Official Gradle/GitHub references:
+* https://docs.gradle.org/current/userguide/configuration_cache_requirements.html
+* https://docs.gradle.org/current/userguide/artifact_transforms.html
+* https://docs.gradle.org/current/userguide/composite_builds.html
+* https://docs.gradle.org/current/userguide/publishing_gradle_plugins.html
+* https://docs.github.com/en/rest/releases/releases
+* https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax
+* https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow
+
+The saved Gradle 'current' pages describe a newer Gradle than this repository's
+8.14.4 wrapper. They substantiate architecture concepts, not execution compatibility
+of proposed implementation APIs with 8.14.4. Check concrete APIs against the selected
+wrapper during implementation. Kotlin's live compilerVersion API page also has
+version-specific BTA qualifications; use actual target-version tests as authority.
+
+Original investigation outcome:
+Only REPORT.txt, registry.example.json, SHA256SUMS, research-tools and research-evidence
+were created in the isolated worktree. The original checkout's unrelated brand assets,
+local main branch (no local develop branch exists), other active worktrees, production/test/CI/release/
+website files remain unchanged. No commit, implementation PR, message to others,
+remote branch update, artifact publication or UI implementation was performed
+during the original investigation. The subsequent user request authorizes pushing
+this report package as a report-only PR; it does not authorize implementation,
+merging or artifact publication.

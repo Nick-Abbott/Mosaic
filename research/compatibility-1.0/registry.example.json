@@ -1,0 +1,49 @@
+{
+  "exampleOnly": true,
+  "notice": "ILLUSTRATIVE ONLY. All Mosaic release identities, checksums, certification dates and test results are fictional. This file MUST NOT be admitted as real certification. Kotlin release dates are factual.",
+  "schemaVersion": 1,
+  "kotlinFamilies": {
+    "2.1": {"firstStable": "2.1.0", "releasedOn": "2024-11-27", "source": "https://github.com/JetBrains/kotlin/releases/tag/v2.1.0", "releaseId": "EXAMPLE-ID-not-verified"},
+    "2.4": {"firstStable": "2.4.0", "releasedOn": "2026-06-03", "source": "https://github.com/JetBrains/kotlin/releases/tag/v2.4.0", "releaseId": 333592282}
+  },
+  "kotlinReleases": {
+    "2.1.21": {"family": "2.1", "releasedOn": "2025-05-13", "releaseId": "EXAMPLE-ID", "source": "https://github.com/JetBrains/kotlin/releases/tag/v2.1.21", "tagCommit": "EXAMPLE-NOT-A-REAL-COMMIT", "artifacts": [{"coordinate": "org.jetbrains.kotlin:kotlin-compiler-embeddable:2.1.21", "sha256": "EXAMPLE-NOT-A-REAL-DIGEST"}, {"coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.21", "sha256": "EXAMPLE-NOT-A-REAL-DIGEST"}]},
+    "2.4.10": {"family": "2.4", "releasedOn": "2026-07-14", "releaseId": "EXAMPLE-ID", "source": "https://github.com/JetBrains/kotlin/releases/tag/v2.4.10", "tagCommit": "EXAMPLE-NOT-A-REAL-COMMIT", "artifacts": [{"coordinate": "org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.10", "sha256": "EXAMPLE-NOT-A-REAL-DIGEST"}, {"coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.10", "sha256": "EXAMPLE-NOT-A-REAL-DIGEST"}]},
+    "2.4.20": {"family": "2.4", "releasedOn": "2026-09-07", "releaseId": "EXAMPLE-ID", "source": "https://github.com/JetBrains/kotlin/releases/tag/v2.4.20", "tagCommit": "EXAMPLE-NOT-A-REAL-COMMIT", "artifacts": [{"coordinate": "org.jetbrains.kotlin:kotlin-compiler-embeddable:2.4.20", "sha256": "EXAMPLE-NOT-A-REAL-DIGEST"}, {"coordinate": "org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.20", "sha256": "EXAMPLE-NOT-A-REAL-DIGEST"}]}
+  },
+  "contracts": {
+    "mosaic.canvas-analysis/1": {"specificationPath": "EXAMPLE/mosaic.canvas-analysis-1.txt", "specificationSha256": "EXAMPLE-NOT-A-REAL-DIGEST"},
+    "mosaic.canvas-analysis/2": {"specificationPath": "EXAMPLE/mosaic.canvas-analysis-2.txt", "specificationSha256": "EXAMPLE-NOT-A-REAL-DIGEST"}
+  },
+  "releases": {
+    "runtime": {
+      "1.0.0": {"commit": "EXAMPLE-NOT-A-REAL-COMMIT", "tag": "runtime/1.0.0", "artifactManifest": {"path": "EXAMPLE/runtime-1.0.0.artifacts.json", "sha256": "EXAMPLE-NOT-A-REAL-DIGEST"}, "requires": ["mosaic.canvas-analysis/1"]},
+      "1.1.0": {"commit": "EXAMPLE-NOT-A-REAL-COMMIT", "tag": "runtime/1.1.0", "artifactManifest": {"path": "EXAMPLE/runtime-1.1.0.artifacts.json", "sha256": "EXAMPLE-NOT-A-REAL-DIGEST"}, "requires": ["mosaic.canvas-analysis/1"]},
+      "1.2.0": {"commit": "EXAMPLE-NOT-A-REAL-COMMIT", "tag": "runtime/1.2.0", "artifactManifest": {"path": "EXAMPLE/runtime-1.2.0.artifacts.json", "sha256": "EXAMPLE-NOT-A-REAL-DIGEST"}, "requires": ["mosaic.canvas-analysis/2"]}
+    },
+    "analysis": {
+      "1.0.0": {"commit": "EXAMPLE-NOT-A-REAL-COMMIT", "tag": "analysis/1.0.0", "artifactManifest": {"path": "EXAMPLE/analysis-1.0.0.artifacts.json", "sha256": "EXAMPLE-NOT-A-REAL-DIGEST"}, "capabilities": ["mosaic.canvas-analysis/1"], "summaryReads": [{"format": 6, "semantics": "analysis-contract-3"}], "summaryWrites": {"format": 6, "semantics": "analysis-contract-3"}, "extractors": [{"id": "kotlin-2.4.20", "artifact": "org.buildmosaic:mosaic-compiler-plugin:1.0.0", "builtAgainst": "2.4.20", "compilers": ["2.4.20"]}], "toolchains": [{"compiler": "2.4.20", "kgp": "2.4.20", "extractor": "kotlin-2.4.20", "environment": "gradle-java17"}]}
+    }
+  },
+  "environments": {
+    "direct-java17": {"gradle": null, "java": 17, "target": 17, "os": "linux", "bta": null, "dependencies": "EXAMPLE-LOCK-DIGEST"},
+    "gradle-java17": {"gradle": "8.14.4", "java": 17, "target": 17, "os": "linux", "bta": true, "dependencies": "EXAMPLE-LOCK-DIGEST"}
+  },
+  "evidence": {
+    "runtime-core": {"kind": "runtime-compiler", "sourceCommit": "EXAMPLE-NOT-A-REAL-COMMIT", "suiteDigest": "EXAMPLE-NOT-A-REAL-DIGEST", "artifactManifests": [{"path": "EXAMPLE/runtime-core.artifacts.json", "sha256": "EXAMPLE-NOT-A-REAL-DIGEST"}], "environment": "direct-java17", "command": "EXAMPLE ONLY — no command executed", "result": "pass", "runUrl": "https://example.invalid/runs/runtime-core", "retainedBundle": "https://example.invalid/evidence/runtime-core.tar.gz", "sha256": "EXAMPLE-NOT-A-REAL-DIGEST", "completedAt": "2026-10-07T12:00:00Z"},
+    "runtime-older": {"kind": "runtime-compiler", "sourceCommit": "EXAMPLE-NOT-A-REAL-COMMIT", "suiteDigest": "EXAMPLE-NOT-A-REAL-DIGEST", "artifactManifests": [{"path": "EXAMPLE/runtime-older.artifacts.json", "sha256": "EXAMPLE-NOT-A-REAL-DIGEST"}], "environment": "direct-java17", "command": "EXAMPLE ONLY — no command executed", "result": "pass", "runUrl": "https://example.invalid/runs/runtime-older", "retainedBundle": "https://example.invalid/evidence/runtime-older.tar.gz", "sha256": "EXAMPLE-NOT-A-REAL-DIGEST", "completedAt": "2026-04-01T12:00:00Z"},
+    "runtime-newer": {"kind": "runtime-compiler", "sourceCommit": "EXAMPLE-NOT-A-REAL-COMMIT", "suiteDigest": "EXAMPLE-NOT-A-REAL-DIGEST", "artifactManifests": [{"path": "EXAMPLE/runtime-newer.artifacts.json", "sha256": "EXAMPLE-NOT-A-REAL-DIGEST"}], "environment": "direct-java17", "command": "EXAMPLE ONLY — no command executed", "result": "pass", "runUrl": "https://example.invalid/runs/runtime-newer", "retainedBundle": "https://example.invalid/evidence/runtime-newer.tar.gz", "sha256": "EXAMPLE-NOT-A-REAL-DIGEST", "completedAt": "2026-10-07T12:00:00Z"},
+    "analysis-core": {"kind": "analysis-toolchain", "sourceCommit": "EXAMPLE-NOT-A-REAL-COMMIT", "suiteDigest": "EXAMPLE-NOT-A-REAL-DIGEST", "artifactManifests": [{"path": "EXAMPLE/analysis-core.artifacts.json", "sha256": "EXAMPLE-NOT-A-REAL-DIGEST"}], "environment": "gradle-java17", "command": "EXAMPLE ONLY — no command executed", "result": "pass", "runUrl": "https://example.invalid/runs/analysis-core", "retainedBundle": "https://example.invalid/evidence/analysis-core.tar.gz", "sha256": "EXAMPLE-NOT-A-REAL-DIGEST", "completedAt": "2026-10-07T12:00:00Z"},
+    "semantic": {"kind": "semantic-metadata", "sourceCommit": "EXAMPLE-NOT-A-REAL-COMMIT", "suiteDigest": "EXAMPLE-NOT-A-REAL-DIGEST", "artifactManifests": [{"path": "EXAMPLE/semantic.artifacts.json", "sha256": "EXAMPLE-NOT-A-REAL-DIGEST"}], "environment": "gradle-java17", "command": "EXAMPLE ONLY — no command executed", "result": "pass", "runUrl": "https://example.invalid/runs/semantic", "retainedBundle": "https://example.invalid/evidence/semantic.tar.gz", "sha256": "EXAMPLE-NOT-A-REAL-DIGEST", "completedAt": "2026-10-07T12:00:00Z"},
+    "tuple-old-plugin": {"kind": "complete-tuple", "sourceCommit": "EXAMPLE-NOT-A-REAL-COMMIT", "suiteDigest": "EXAMPLE-NOT-A-REAL-DIGEST", "artifactManifests": [{"path": "EXAMPLE/tuple-old-plugin.artifacts.json", "sha256": "EXAMPLE-NOT-A-REAL-DIGEST"}], "environment": "gradle-java17", "command": "EXAMPLE ONLY — no command executed", "result": "pass", "runUrl": "https://example.invalid/runs/tuple-old-plugin", "retainedBundle": "https://example.invalid/evidence/tuple-old-plugin.tar.gz", "sha256": "EXAMPLE-NOT-A-REAL-DIGEST", "completedAt": "2026-10-07T12:00:00Z"},
+    "unknown-capability": {"kind": "runtime-negotiation", "sourceCommit": "EXAMPLE-NOT-A-REAL-COMMIT", "suiteDigest": "EXAMPLE-NOT-A-REAL-DIGEST", "artifactManifests": [{"path": "EXAMPLE/unknown-capability.artifacts.json", "sha256": "EXAMPLE-NOT-A-REAL-DIGEST"}], "environment": "gradle-java17", "command": "EXAMPLE ONLY — no command executed", "result": "expected-rejection", "runUrl": "https://example.invalid/runs/unknown-capability", "retainedBundle": "https://example.invalid/evidence/unknown-capability.tar.gz", "sha256": "EXAMPLE-NOT-A-REAL-DIGEST", "completedAt": "2026-10-07T12:00:00Z"}
+  },
+  "combinations": [
+    {"id": "runtime-only", "runtime": "1.0.0", "compiler": "2.4.20", "kgp": null, "analysis": null, "environment": "direct-java17", "verdict": "certified", "evidence": ["runtime-core"], "certifiedAt": "2026-10-07T12:00:00Z", "reason": null, "supersedes": null},
+    {"id": "new-runtime-only", "runtime": "1.1.0", "compiler": "2.4.20", "kgp": null, "analysis": null, "environment": "direct-java17", "verdict": "certified", "evidence": ["runtime-newer"], "certifiedAt": "2026-10-07T12:00:00Z", "reason": null, "supersedes": null},
+    {"id": "older-analysis-newer-runtime", "runtime": "1.1.0", "compiler": "2.4.20", "kgp": "2.4.20", "analysis": "1.0.0", "environment": "gradle-java17", "verdict": "certified", "evidence": ["runtime-newer", "analysis-core", "semantic", "tuple-old-plugin"], "certifiedAt": "2026-10-07T12:00:00Z", "reason": null, "supersedes": null},
+    {"id": "expired-history", "runtime": "1.0.0", "compiler": "2.1.21", "kgp": null, "analysis": null, "environment": "direct-java17", "verdict": "certified", "evidence": ["runtime-older"], "certifiedAt": "2026-04-01T12:00:00Z", "reason": null, "supersedes": null},
+    {"id": "untested-patch", "runtime": "1.1.0", "compiler": "2.4.10", "kgp": null, "analysis": null, "environment": "direct-java17", "verdict": "not-certified", "evidence": [], "certifiedAt": null, "reason": "No candidate tests completed.", "supersedes": null},
+    {"id": "unknown-runtime-semantics", "runtime": "1.2.0", "compiler": "2.4.20", "kgp": "2.4.20", "analysis": "1.0.0", "environment": "gradle-java17", "verdict": "incompatible", "evidence": ["unknown-capability"], "certifiedAt": null, "reason": "Runtime requires mosaic.canvas-analysis/2; Analysis supports only /1.", "supersedes": null}
+  ]
+}

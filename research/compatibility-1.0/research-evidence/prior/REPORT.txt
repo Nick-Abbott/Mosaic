@@ -1,0 +1,106 @@
+Mosaic Kotlin compatibility research
+Base: origin/develop 79d28c039a8261b266ea3be5fb9e9a0ec30714fc (2026-10-07)
+Environment: local configured Git/Gradle, Gradle wrapper 8.14.4, repository JDK 21 toolchain / JVM 17 bytecode.
+Isolation: /data/dev/Mosaic-kotlin-compat-research, detached worktree. No commits, PRs, artifact publication, or changes to develop or the original working tree. Tracked research changes were restored after saving disposable-experiment.patch.
+
+Recommendation
+Keep one public org.buildmosaic.analysis Gradle plugin and three independently compiled extractor binaries. Share the complete existing extraction source tree, with no new analyzer SPI or IR abstraction layer. Certify exact compiler versions, not minor families. The tested minimum binary mapping is:
+  compiler 2.3.0 -> extractor built against compiler 2.3.0
+  compiler 2.3.21 -> extractor built against compiler 2.3.21
+  compiler 2.4.0 and 2.4.20 -> extractor built against compiler 2.4.20
+Separate binaries are necessary for the current statically linked extraction implementation. A universal binary would require additional dynamic registration and origin-access compatibility work that has not been prototyped or certified. That adds complexity without reducing extraction-source maintenance here.
+
+Initial release scope should be the four matching KGP/compiler pairs. Select by the effective compiler, and reject unlisted KGP/compiler tuples. Mixed versions are viable in the experiments but require aligning Kotlin's own scripting compiler artifacts; treating that integration as a separate stage keeps the first implementation narrow.
+
+Actual primary matrix
+Version | Original artifact with guards | 2.4.20-built artifact, guard relaxed | Working extractor | Compiler tests | Matching-KGP TestKit tests | Semantic outputs | Incremental/cache
+2.3.0   | rejected                     | registration linkage failure       | 2.3.0-built       | 89/89          | 12/12                     | 43/43 identical  | pass
+2.3.21  | rejected                     | registration linkage failure       | 2.3.21-built      | 89/89          | 12/12                     | 43/43 identical  | pass
+2.4.0   | rejected                     | works                              | 2.4.20-built      | 89/89          | 12/12                     | 43/43 identical  | pass
+2.4.20  | works                        | works                              | 2.4.20-built      | 89/89          | 12/12                     | control          | pass
+Each compiler suite executes 45 real K2 compilations and captures 43 extraction summaries. Each complete TestKit suite executes 61 builds, including expected failures. PublishedInstallationTest was excluded throughout because it invokes publication tasks. The compiler suites were also repeated with stdlib matching each compiler version: all 89 tests and all 43 byte comparisons still pass.
+The single 2.4.20-built artifact fails 88 of 89 tests on each 2.3 compiler. A 2.3.0-built artifact passes on 2.3.0 but fails 85 tests on 2.3.21 and 88 on either 2.4 compiler. A separately rebuilt 2.3.21 artifact passes all 89 tests on 2.3.21. No extraction-source adaptation was needed for either rebuild.
+
+Exact ABI failures
+1. 2.4-built registrar on 2.3.0 / 2.3.21:
+   NoClassDefFoundError: org/jetbrains/kotlin/extensions/ExtensionPointDescriptor
+   at MosaicCompilerRegistrar.registerExtensions, invoking IrGenerationExtension registration.
+   javap confirms registerExtension(ProjectExtensionDescriptor, T) in 2.3 versus registerExtension(ExtensionPointDescriptor, T) in 2.4. The IrGenerationExtension companion changes superclass accordingly.
+2. 2.3.0-built extractor on 2.3.21:
+   NoSuchMethodError: IrDeclarationOrigin$Companion.getDEFAULT_PROPERTY_ACCESSOR(): IrDeclarationOriginImpl
+   The 2.3.21 API returns IrDeclarationOrigin instead; JVM method descriptors include return types. DELEGATED_PROPERTY_ACCESSOR has the same return-type change. A reverse 2.3.21-built-on-2.3.0 compiler execution also fails for the opposite getter descriptor.
+3. 2.3-built registrar on 2.4:
+   ClassCastException: IrGenerationExtension$Companion cannot be cast to ProjectExtensionDescriptor.
+There are no demonstrated semantic IR adaptations beyond these linkage differences in the tested fixtures. Successful source recompilation does not imply cross-version binary compatibility.
+
+Coupling inventory
+- MosaicCompilerRegistrar: deliberate exact-version check, plus genuine compiler registration ABI dependency. Read-only extension behavior can stay unchanged.
+- MosaicIrExtractor: compiler-owned IrModuleFragment/IrFile lifecycle; remain inside normal main compilation. Source-relative affected-file shard emission and obsolete-shard pruning need no version-specific source changes in these experiments.
+- SourceContractExtractor: compiler types, visitors, argument/parameter APIs, fake overrides, declaration and statement origins, default stubs and source offsets. Keep this source shared but compile/test it independently against each certified ABI. Its existing conservative unknown branches must remain authoritative.
+- IrContractIdentity: compiler symbol/type/parameter APIs feed stable contract IDs, runtime keys, JVM locators and positions. These outputs match across all tested versions; do not substitute raw compiler symbol identity into the wire contract.
+- ExtractMosaicTask: version-independent assembler, current-source manifest, NO_SOURCE handling and configuration validation. Its productionCompilerVersion currently stores KGP's manifest version, not the actual compiler. Default Kotlin compiler artifact names are also hardcoded to 2.4.20.
+- MosaicAnalysisPlugin: one Gradle adapter, normal main compilation support API and shard output wiring. One existing Gradle binary works across all four matching KGP versions after experimental validation changes. The selector prototype reads kotlin.compilerVersion and chooses an artifact ID directly.
+- SummaryCodec: version-independent schema/evaluator with a deliberate producer-version allow check and a writer that always stamps ANALYSIS_KOTLIN_VERSION. ANALYSIS_KOTLIN_VERSION currently conflates compiler support, KGP support, allowed default artifacts and summary provenance.
+- Publishing: compiler and Gradle JARs each bundle analysis-core and its runtime; compiler/KGP dependencies are compileOnly. No independently published analyzer or new public runtime module is needed. The public Gradle marker can remain unchanged while extractor coordinates vary. The installation test checks marker/POM wiring and compiler release-manifest matching; new variant installation remains a future validation item because publication was prohibited.
+
+Semantic evidence
+Existing fixtures cover Canvas registration and construction lookup; ordinary/delegated Tile and MultiTile declarations; scoped withMosaic execution and aliases; composition and argument order; interprocedural calls, override slots and inherited templates; conditional and unknown paths; binary keys/Tile exports/defaults; source provenance, suppression scopes and source locations.
+All 43 full captured JSON outputs match byte for byte, including payload hashes, effects, unknown reasons, identities, locators and locations. This comparison required no normalization. The original codec still hardcodes the compiler header to 2.4.20: identical headers are not evidence of truthful compiler provenance.
+The only observed diagnostic difference is Kotlin 2.3 omitting the 2.4 warning "expression is unused" for a trailing Unit in returnedLambda. Analyzer outcomes and source positions do not change.
+The existing tests assert VERIFIED, MISSING and named UNVERIFIED outcomes, not compilation alone. Strict-mode unknown assertions continue to pass. Complete TestKit suites cover current-source shards, unchanged files, signature dependents, deletion/rename/final-source removal, failed-build recovery, configuration-cache reuse, relocated build-cache restoration, constants/typealiases/inline controls and body-only dependency-summary invalidation without requiring unchanged consumer compilation.
+
+Cross-version metadata experiment
+A real producer was compiled with each of the four compilers, and a consumer was compiled against each producer JAR with each compiler: 16 combinations. Producer exports a delegated Tile and CanvasKey plus a Canvas factory. Consumer covers supplied, missing and opaque/unknown roots. All 16 have identical payloads, identities, locators, provenance and evaluator reports. Removing the producer summary preserves UNVERIFIED. javap confirms that actual exported producer JVM signatures are also identical across the four binaries and agree with the recorded locators.
+For this experiment ONLY, the harness stamps the actual compiler header after compilation because the current writer hardcodes 2.4.20. A trial reader checks an explicit four-version allowlist before delegating all schema, semantics, complete/main/module/hash/locator checks to the production decoder. Production reader rejection of non-2.4.20 headers and trial-reader rejection of unknown 2.5.0 were both checked. Only the actual compiler header is normalized in cross-version comparisons.
+These results support an exact certified-producer rule; they do not establish arbitrary Kotlin metadata or future-version compatibility.
+
+Precise recommended metadata rule
+Accept a dependency summary only when its format and analyzer semantic epoch are understood, its recorded actual compiler belongs to the exact certified compiler set for that epoch, and all existing completeness/source-set/module/payload-hash/model/duplicate-locator checks pass. Producer and consumer compiler versions need not be equal. Unlisted versions, EAPs and incompatible epochs fail closed; missing selected facts remain unknown.
+Keep format 5 and analysis-contract-3 if the implementation retains the tested payload and identity meaning; a compiler provenance correction alone does not require a new wire format. Change the semantics epoch whenever extraction meaning, stable identities or locator interpretation becomes incompatible. Widen the allowed producer set only with the differential and binary-consumer evidence used here.
+Pass the actual compiler version into the writer. Add actual compiler/extractor identity to internal shard headers, bump the internal shard version, reject mixed/stale shard sets and include those identities in task inputs. Empty NO_SOURCE summaries must obtain their actual compiler provenance from the validated task configuration. Compiler-version/extractor switches must invalidate retained shards; dependency metadata changes must retain their existing separate verification invalidation path.
+
+Mixed KGP/compiler results
+KGP 2.4.20 with compiler 2.3.0, 2.3.21 or 2.4.0:
+  Default setup fails with ClassNotFoundException for org.jetbrains.kotlin.scripting.compiler.plugin.ScriptingCompilerConfigurationComponentRegistrar. Reproduced in plain Kotlin projects without Mosaic, with BTA explicitly enabled.
+KGP 2.3.0 with compiler 2.4.20:
+  Without explicit BTA enablement, classpath snapshotting reports a Build Tools API version mismatch (expected 2.3.0, resolved 2.4.20). With BTA enabled, Kotlin's scripting FIR registrar fails with a ProjectExtensionDescriptor ClassCastException. Reproduced without Mosaic.
+Align only org.jetbrains.kotlin kotlin-scripting-* dependencies in kotlinCompilerPluginClasspathMain to the actual compiler, and enable BTA:
+  All four plain Kotlin projects compile.
+  All four Mosaic automatic-selector combinations pass SourceShardLifecycleIntegrationTest, BuildCacheIntegrationTest and BinaryDependencyIntegrationTest (3/3 each).
+This is a narrower proof than the full 12-test matching-version matrix. No custom plugin, compiler-option, KSP or generated-source restriction was relaxed. Kotlin's own documentation warns that compiler plugins with differing KGP/compiler versions can fail.
+
+Implementation shape and release costs
+- Keep the existing analyzer/model/codec shared and bundled as today.
+- Compile the same compiler source set into three internal published artifact IDs, for example mosaic-compiler-plugin-kotlin-2.3.0, -2.3.21 and -2.4.20, all using the same Mosaic release version.
+- Keep org.buildmosaic.analysis as one public plugin and DSL. Use a small exact compatibility table to validate KGP/effective-compiler tuples and select the extractor; no reflection framework, generic adapter registry SPI or runtime API changes.
+- Preserve compiler release-manifest validation and additionally validate extractor profile. Generate selector/registrar support data from one authoritative table.
+- Retain normal compileKotlin shard output ownership, cache restoration, current-source-only assembly and separate dependency-summary invalidation.
+Each experimental self-contained compiler JAR is about 3.3 MiB. Three binaries add two such artifacts versus today, but no divergent extraction source implementations. Release/CI cost is four compiler fixture lanes, four full TestKit lanes and cross-version binary/metadata lanes. Every additional patch needs evidence before it joins the table; neither 2.3.x nor 2.4.x should be claimed wholesale. There are new coordinates, POM/source/Javadoc/signing and release-matrix checks to maintain. Supporting mixed KGP/compiler pairs adds testing and ownership of default compiler-plugin alignment.
+
+Staged next step
+1. Review and approve the three-binary/shared-source design and initial exact matching-pair scope. This research does not request or open an implementation PR.
+2. Implement one compatibility table, extractor build variants and automatic actual-compiler selection. Keep unlisted tuples and all unrelated restrictions rejected.
+3. Plumb truthful compiler provenance through shards and complete/empty summaries; certify the exact cross-version metadata producer set under the unchanged semantic epoch if differential tests remain identical.
+4. Add durable per-version fixture comparisons, cross-producer consumer checks, compiler-switch stale-shard checks and TestKit matrix coverage. Verify named unknowns and strict failure behavior explicitly.
+5. Once authorized, validate external plugins-DSL installation and variant publication/manifest/version matching in isolated repository fixtures; release only after those checks pass.
+6. Consider the four experimentally working mixed tuples separately, with narrow Kotlin-default-plugin alignment and full TestKit coverage. Treat every other patch or tuple as unsupported until certified.
+
+Evidence
+- disposable-experiment.patch: all temporary tracked-source/harness modifications.
+- test-results.json and semantic-comparison.json: matrix counts.
+- tests-shared-*, tests-oldbinary-*, tests-exact-*, tests-matching-stdlib-*: JUnit evidence.
+- gradle-*: full matching-version TestKit suites.
+- automatic-* / automatic-aligned-*: selector and mixed-version lifecycle evidence.
+- cross/: 16 actual binary producer/consumer outputs, diagnostics and evaluator results.
+- original-guard/ and reverse-abi/: direct compiler rejection/linkage logs.
+- plain-mixed/: plain Kotlin BTA/default-scripting controls.
+- logs/: Gradle command logs.
+- ../research-tools/: disposable scripts, compiler/KGP resolved classpaths and publication-test exclusion.
+
+Final repository validation
+- Unchanged develop: ./gradlew clean build -I research-tools/no-publication-tests.gradle initially fails two TestKit cases. Their flatDir + Maven Central setup can select a cached, differing published 0.7.0 compiler artifact rather than the local checkout artifact. The published cached JAR differs in extractor, identity and analyzer classes.
+- Repeated the full clean build with only the two test fixtures' compiler repository made exclusive to their local JAR: PASS (29 seconds, 123 tasks). Production code and compatibility guards remain exactly develop. validation-isolation.patch records this disposable test-only change, which was restored afterward.
+- ./gradlew clean build -p examples: PASS (12 seconds, 77 tasks).
+- git diff --check: PASS after restoring every tracked file. No staged changes.
+- PublishedInstallationTest remained excluded because it invokes publication tasks. Publication/install testing was inspected but not executed.
+- Original /data/dev/Mosaic checkout and its pre-existing untracked brand assets remain untouched. The detached research worktree retains only untracked evidence/tools for review.

@@ -1,0 +1,33 @@
+{
+  "commit": "cf490954c8e669c48c4263b36214b641fb9ce9f4",
+  "prior_commit": "79d28c039a8261b266ea3be5fb9e9a0ec30714fc",
+  "policy_baseline_date": "2026-10-07",
+  "changed_since_prior": [
+    "README.md",
+    "website/src/content/docs/reference/compatibility.md"
+  ],
+  "source_sha256": {
+    "AGENTS.md": "fbae091005267f5049278e10f9d8bf3ec40b5d6d7d7929cc8f68631ce7f6eb01",
+    "website/src/content/docs/reference/compatibility.md": "f51a9bf2a8bff36ab89365982cce742894cfb3729c1721dfc8644adf44c3099e",
+    "gradle.properties": "b790cdb9ee65fc4713aa761683f8e7f44aeefe7231d4a5ed975e87c6967d80cf",
+    "build.gradle.kts": "e9531ac2a473c9f7309dc68caabe59eacfd5695e0184bdb3f3fd5daae700010c",
+    "settings.gradle.kts": "86c1930cc0601bfab94f88cf1b1a3b20efd9bd6ba7bc997028cf7dbb1004e9a0",
+    "gradle/libs.versions.toml": "4ab15d5735b21e460f000a1e9c0f14fc4402ded235c242171fc9f3995c8ebc13",
+    "buildSrc/src/main/kotlin/base.convention.gradle.kts": "01b1a25c657c0b4eed2bfed149687a654f786f7241b5c54d25453d2767adad02",
+    "buildSrc/src/main/kotlin/kotlin.convention.gradle.kts": "5287a29dd7221b122acdc61af40b0c1ff88e908af4f13c6cc0a1005a5c077c81",
+    "buildSrc/src/main/kotlin/publish.convention.gradle.kts": "4f4b47cdfdb6dae4cc45221c0d9d891af1234904e161dab1ed2046895711b333",
+    "mosaic-analysis-core/src/main/kotlin/org/buildmosaic/analysis/SummaryMetadata.kt": "ba94b3df90eb90a0a948f221c7a209c5bb3c5082da81078f3f0543255e4ccfc7",
+    "mosaic-analysis-core/src/main/kotlin/org/buildmosaic/analysis/SourceShards.kt": "a9c877570278455a661fb90db0c34c6eae9d3cf11aa0a61d817deca2aaae49a5",
+    "mosaic-gradle-plugin/src/main/kotlin/org/buildmosaic/gradle/MosaicAnalysisPlugin.kt": "3922ea1c38a4711a04d3b27bb74f72adb2305a27695e90ba43062cd69a1e5fd0",
+    "mosaic-gradle-plugin/src/main/kotlin/org/buildmosaic/gradle/VerifyMosaicTask.kt": "dc35715d0f7a3646a8ae46f6c9e0c047c215f566916bb9464a321d86ea0b8c11",
+    "mosaic-gradle-plugin/src/main/kotlin/org/buildmosaic/gradle/MosaicSummaryTransform.kt": "96b77e161bdc2938082b42cbfd3daa6d006670296d37f5e41bc245eaf400d65d",
+    "mosaic-gradle-plugin/src/main/kotlin/org/buildmosaic/gradle/MosaicDependencyReader.kt": "9a41dc03b67ea296c0daff03008f9b01916ca8ef2073b61335137f59efc5ca01",
+    "mosaic-gradle-plugin/src/main/kotlin/org/buildmosaic/gradle/ExtractMosaicTask.kt": "d8f908f176f6ebef55a901174a0ac0d8a53221e42faed6736020cb5b9803716d",
+    "mosaic-compiler-plugin/src/main/kotlin/org/buildmosaic/compiler/SourceContractExtractor.kt": "56adbdc8e97c28e6906380165c053374157f1ffa0c3736bbc4950b1f7c324160",
+    "mosaic-compiler-plugin/src/main/kotlin/org/buildmosaic/compiler/MosaicCompilerRegistrar.kt": "7dab3a71ed7b693768ebf925ff1f779eabc3d7481ba571a66c7e56899b62bce4",
+    "mosaic-compiler-plugin/src/test/PUBLIC_API_MATRIX.md": "959b9c0c5e0d7717cf6248fad9e1386b7c5e1c7e5a262e0a2d44dc618e18c88d",
+    "mosaic-gradle-plugin/src/test/INVALIDATION_MATRIX.md": "0412fa6bb1263a22069e84360f921f5f64bdde83742cdc9c16a1f01deeefc89a",
+    "mosaic-gradle-plugin/src/test/kotlin/org/buildmosaic/gradle/PublishedInstallationTest.kt": "9e1b4f7b634691440a04f5d0472d69bf71374ab7305c7d457ea65c8ea5a1958f",
+    ".github/workflows/release.yml": "92d2d64950a576a29fb3852a27c767e58125708d133a8cdeb465f73e4c18f148"
+  }
+}
