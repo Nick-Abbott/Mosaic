@@ -43,8 +43,8 @@ class SourceShardTest {
         ),
       )
     assertEquals(first, SourceShardCodec.decode(SourceShardCodec.encode(first)))
-    val forward = SourceShardCodec.assemble("fixture:app", listOf(first, second))
-    assertContentEquals(forward, SourceShardCodec.assemble("fixture:app", listOf(second, first)))
+    val forward = SourceShardCodec.assemble("fixture:app", listOf(first, second), testProducer)
+    assertContentEquals(forward, SourceShardCodec.assemble("fixture:app", listOf(second, first), testProducer))
     val assembled = SummaryCodec.decode(forward)
     assertEquals(
       listOf("first", "second"),
@@ -59,7 +59,7 @@ class SourceShardTest {
     val owner = TileContract("fixture.Tile", emptyList(), site)
     val shard = SourceShard("One.kt", ModuleContract("fixture:app", tiles = listOf(owner)))
     assertFailsWith<IllegalArgumentException> {
-      SourceShardCodec.assemble("fixture:app", listOf(shard, shard.copy(sourceId = "Two.kt")))
+      SourceShardCodec.assemble("fixture:app", listOf(shard, shard.copy(sourceId = "Two.kt")), testProducer)
     }
     assertFailsWith<Exception> { SourceShardCodec.decode("{malformed".toByteArray()) }
     assertFailsWith<IllegalArgumentException> {

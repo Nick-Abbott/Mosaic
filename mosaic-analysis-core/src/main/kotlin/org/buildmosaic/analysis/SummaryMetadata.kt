@@ -8,9 +8,11 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.buildmosaic.analysis.metadata.WireEnvelope
 import org.buildmosaic.analysis.metadata.WireLocator
 import org.buildmosaic.analysis.metadata.WirePayload
+import org.buildmosaic.analysis.metadata.WireProducer
 import org.buildmosaic.analysis.metadata.toModel
 import org.buildmosaic.analysis.metadata.toWire
 import java.security.MessageDigest
+import java.util.Properties
 
 /** Compiler and Gradle plugin version supported by this analysis contract reader and writer. */
 const val ANALYSIS_KOTLIN_VERSION = "2.4.20"
@@ -18,11 +20,11 @@ const val ANALYSIS_KOTLIN_VERSION = "2.4.20"
 /** Internal JAR resource. Compatibility is decided by the header, not this path. */
 const val SUMMARY_PATH = "META-INF/mosaic-analysis/v1/summary.json"
 
+data class SummaryProducer(val analysisVersion: String, val compilerVersion: String)
+
 data class SummaryMetadata(
-  val formatVersion: Int,
-  val semanticsVersion: String,
-  val toolVersion: String,
-  val kotlinCompilerVersion: String,
+  val contractVersion: Int,
+  val producer: SummaryProducer,
   val moduleId: String,
   val sourceSet: String,
   val complete: Boolean,
@@ -33,9 +35,18 @@ data class SummaryMetadata(
 )
 
 object SummaryCodec {
-  private const val FORMAT_VERSION = 5
-  private const val SEMANTICS_VERSION = "analysis-contract-3"
-  private const val TOOL_VERSION = "prototype-11"
+  private const val CONTRACT_VERSION = 6
+
+  val analysisVersion: String =
+    Properties().apply {
+      val stream =
+        requireNotNull(SummaryCodec::class.java.getResourceAsStream("version.properties")) {
+          "Mosaic Analysis artifact is missing its version metadata"
+        }
+      stream.use(::load)
+    }.getProperty("version").also {
+      require(!it.isNullOrBlank()) { "Mosaic Analysis artifact has invalid version metadata" }
+    }
   private val json =
     Json {
       classDiscriminator = "kind"
@@ -45,6 +56,7 @@ object SummaryCodec {
 
   fun encode(
     module: ModuleContract,
+    producer: SummaryProducer,
     moduleId: String = module.id,
     sourceSet: String = "main",
     limitations: List<String> = emptyList(),
@@ -60,7 +72,11 @@ object SummaryCodec {
       )
     val envelope =
       WireEnvelope(
-        FORMAT_VERSION, SEMANTICS_VERSION, TOOL_VERSION, ANALYSIS_KOTLIN_VERSION, moduleId, sourceSet, true,
+        CONTRACT_VERSION,
+        WireProducer(producer.analysisVersion, producer.compilerVersion),
+        moduleId,
+        sourceSet,
+        true,
         sha256(
           json.encodeToString(payload).toByteArray(Charsets.UTF_8),
         ),
@@ -76,17 +92,20 @@ object SummaryCodec {
       val element = json.parseToJsonElement(raw)
       require(element is JsonObject) { "Missing Mosaic summary object" }
       val regeneration = "Regenerate dependency summaries with the matching Mosaic analysis version."
-      require(element["formatVersion"]?.jsonPrimitive?.content == FORMAT_VERSION.toString()) {
-        "Unsupported Mosaic metadata format; expected $FORMAT_VERSION. $regeneration"
-      }
-      require(element["semanticsVersion"]?.jsonPrimitive?.content == SEMANTICS_VERSION) {
-        "Unsupported Mosaic analyzer semantics; expected $SEMANTICS_VERSION. $regeneration"
+      require(element["contractVersion"]?.jsonPrimitive?.content == CONTRACT_VERSION.toString()) {
+        val legacy = element["formatVersion"]?.jsonPrimitive?.content
+        "Unsupported Mosaic metadata contract version${legacy?.let { "; legacy format $it" } ?: ""}; " +
+          "expected $CONTRACT_VERSION. $regeneration"
       }
       val envelope = json.decodeFromJsonElement(WireEnvelope.serializer(), element)
-      require(envelope.kotlinCompilerVersion == ANALYSIS_KOTLIN_VERSION) {
-        "Unsupported Kotlin compiler ${envelope.kotlinCompilerVersion}. $regeneration"
+      require(
+        envelope.producer.compilerVersion.matches(
+          Regex("${Regex.escape(ANALYSIS_KOTLIN_VERSION)}(?:-release-[0-9]+)?"),
+        ),
+      ) {
+        "Unsupported Kotlin compiler ${envelope.producer.compilerVersion}. $regeneration"
       }
-      require(envelope.toolVersion.isNotBlank()) { "Missing Mosaic producer version" }
+      require(envelope.producer.analysisVersion.isNotBlank()) { "Missing Mosaic producer analysis version" }
       require(envelope.complete) { "Partial Mosaic summary cannot be used as complete" }
       require(envelope.moduleId.isNotBlank() && envelope.moduleId == envelope.payload.module.id) {
         "Module identity mismatch"
@@ -100,8 +119,8 @@ object SummaryCodec {
         locators[it.id] = it.locator
       }
       return SummaryMetadata(
-        envelope.formatVersion, envelope.semanticsVersion, envelope.toolVersion,
-        envelope.kotlinCompilerVersion, envelope.moduleId, envelope.sourceSet, envelope.complete,
+        envelope.contractVersion, SummaryProducer(envelope.producer.analysisVersion, envelope.producer.compilerVersion),
+        envelope.moduleId, envelope.sourceSet, envelope.complete,
         envelope.payloadHash, envelope.payload.module.toModel(), envelope.payload.limitations, locators,
       )
     } catch (error: SerializationException) {

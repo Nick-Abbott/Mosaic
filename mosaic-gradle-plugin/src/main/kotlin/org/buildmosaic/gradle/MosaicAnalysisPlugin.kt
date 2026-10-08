@@ -204,6 +204,16 @@ class MosaicAnalysisPlugin : KotlinCompilerPluginSupportPlugin {
           }
         },
       )
+      // Kotlin 2.4.20 selects this configuration for its default compiler classpath.
+      val runViaBuildToolsApi =
+        project.providers.gradleProperty("kotlin.compiler.runViaBuildToolsApi").map(String::toBoolean).getOrElse(true)
+      val compilerConfiguration =
+        if (runViaBuildToolsApi) {
+          "kotlinBuildToolsApiClasspath"
+        } else {
+          "kotlinCompilerClasspath"
+        }
+      task.compilerClasspath.from(project.configurations.named(compilerConfiguration))
       task.additionalCompilerPlugins.from(compile.map { it.pluginClasspath })
       task.friendPaths.from(compile.map { it.friendPaths })
       task.mosaicVersion.set(mosaicVersion)

@@ -34,12 +34,13 @@ class SummaryWireCorpusTest {
     val bytes =
       SummaryCodec.encode(
         module,
+        testProducer,
         limitations = listOf("external const origin", "capture uncertain"),
         binaryLocators = mapOf("export" to "example/Exports#tile"),
       )
     val restored = SummaryCodec.decode(bytes)
-    assertEquals(5, restored.formatVersion)
-    assertEquals("analysis-contract-3", restored.semanticsVersion)
+    assertEquals(6, restored.contractVersion)
+    assertEquals(testProducer, restored.producer)
     assertTrue(bytes.decodeToString().contains("\"lookupKind\":\"CONSTRUCTION\""))
     assertEquals(module, restored.module)
     assertEquals(mapOf("export" to "example/Exports#tile"), restored.binaryLocators)
@@ -48,6 +49,7 @@ class SummaryWireCorpusTest {
       bytes.contentEquals(
         SummaryCodec.encode(
           module,
+          testProducer,
           limitations = listOf("capture uncertain", "external const origin"),
           binaryLocators = restored.binaryLocators,
         ),

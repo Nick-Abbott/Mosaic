@@ -2,6 +2,7 @@
 
 package org.buildmosaic.compiler
 
+import org.buildmosaic.analysis.ANALYSIS_KOTLIN_VERSION
 import org.buildmosaic.analysis.AnalysisPolicy
 import org.buildmosaic.analysis.AnalysisRequest
 import org.buildmosaic.analysis.CanvasExpression
@@ -17,6 +18,7 @@ import org.buildmosaic.analysis.SummaryCodec
 import org.buildmosaic.analysis.TileReference
 import java.io.File
 import java.nio.file.Files
+import java.util.jar.JarFile
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -66,7 +68,15 @@ class IrShapeTest {
       }
     val probe = File(directory, "probe/facts.txt")
     compile(caller, File(directory, "caller-classes"), jar, probe, "regression")
-    val module = SummaryCodec.decode(File(probe.parentFile, "summary.json").readBytes()).module
+    val metadata = SummaryCodec.decode(File(probe.parentFile, "summary.json").readBytes())
+    assertEquals(6, metadata.contractVersion)
+    val artifactVersion =
+      JarFile(System.getProperty("mosaic.plugin.jar")).use {
+        it.manifest.mainAttributes.getValue("Implementation-Version")
+      }
+    assertEquals(artifactVersion, metadata.producer.analysisVersion)
+    assertEquals(ANALYSIS_KOTLIN_VERSION, metadata.producer.compilerVersion)
+    val module = metadata.module
     val report =
       MosaicAnalyzer().analyze(
         AnalysisRequest(module, roots = listOf(SelectedRoot("entry", "regression.entry()"))),

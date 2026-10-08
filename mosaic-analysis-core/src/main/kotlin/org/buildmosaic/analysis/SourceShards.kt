@@ -107,6 +107,7 @@ object SourceShardCodec {
   fun assemble(
     moduleId: String,
     shards: Collection<SourceShard>,
+    producer: SummaryProducer,
   ): ByteArray {
     val ids = mutableSetOf<String>()
     val canvases = mutableListOf<CanvasContract>()
@@ -154,6 +155,7 @@ object SourceShardCodec {
     }
     return SummaryCodec.encode(
       ModuleContract(moduleId, canvases, tiles, callables, overrides, keys),
+      producer = producer,
       limitations = limitations.distinct().sorted(),
       binaryLocators = locators,
     )

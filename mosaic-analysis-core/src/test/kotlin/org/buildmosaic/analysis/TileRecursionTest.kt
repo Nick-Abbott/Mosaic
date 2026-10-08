@@ -206,7 +206,10 @@ class TileRecursionTest {
         suppressions = listOf(MosaicSuppression(recursive.id, site)),
       )
     val program = module(listOf(a))
-    val dependency = SummaryCodec.decode(SummaryCodec.encode(ModuleContract("lib", tiles = listOf(b)))).module
+    val dependency =
+      SummaryCodec.decode(
+        SummaryCodec.encode(ModuleContract("lib", tiles = listOf(b)), testProducer),
+      ).module
     val sourceReport = analyze(module(listOf(a, b)))
     val binaryReport = analyze(program, dependencies = listOf(dependency))
     assertEquals(sourceReport.findings, binaryReport.findings)

@@ -283,8 +283,11 @@ def junit_results(directory):
 def semantic_summary(path):
     summary = json.loads(path.read_text())
     # Header compiler provenance may legitimately differ; payloadHash is derived, not a semantic fact.
-    # Preserve every payload field, location, binary identity, unknown, format/semantics and array order.
-    return {k: v for k, v in summary.items() if k not in ("kotlinCompilerVersion", "payloadHash")}
+    # Preserve every payload field, location, binary identity, unknown, contract version and array order.
+    summary.pop("payloadHash", None)
+    if "producer" in summary:
+        summary["producer"].pop("compilerVersion", None)
+    return summary
 
 
 def compare_summaries(control, selected):
@@ -295,7 +298,7 @@ def compare_summaries(control, selected):
     passed = bool(before) and not (missing or extra or changed)
     return {"result": "pass" if passed else "fail", "controlSummaries": len(before), "selectedSummaries": len(after),
             "missing": missing, "extra": extra, "changed": changed,
-            "normalization": ["kotlinCompilerVersion header", "derived payloadHash"],
+            "normalization": ["producer.compilerVersion header", "derived payloadHash"],
             "preserved": ["contracts", "locations", "binary identities", "unknown boundaries", "limitations", "effect order"]}
 
 

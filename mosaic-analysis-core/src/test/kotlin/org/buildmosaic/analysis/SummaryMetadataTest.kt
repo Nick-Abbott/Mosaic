@@ -4,23 +4,27 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
+internal val testProducer = SummaryProducer("test-analysis", ANALYSIS_KOTLIN_VERSION)
+
 @Suppress("FunctionMaxLength")
 class SummaryMetadataTest {
   @Test
   fun `H3 absent required metadata cannot acquire optimistic defaults`() {
-    val bytes = SummaryCodec.encode(ModuleContract("sample")).decodeToString()
+    val bytes = SummaryCodec.encode(ModuleContract("sample"), testProducer).decodeToString()
     for (field in listOf(
       "complete",
-      "toolVersion",
-      "formatVersion",
-      "semanticsVersion",
+      "analysisVersion",
+      "contractVersion",
       "moduleId",
       "payloadHash",
-      "kotlinCompilerVersion",
+      "compilerVersion",
       "sourceSet",
     )) {
       val partial = bytes.replace(Regex("\"$field\":(?:\"[^\"]*\"|true|[0-9]+),?"), "").replace(",}", "}")
       assertFailsWith<IllegalArgumentException>(field) { SummaryCodec.decode(partial.toByteArray()) }
+    }
+    assertFailsWith<IllegalArgumentException> {
+      SummaryCodec.decode(bytes.replace("\"producer\":", "\"missingProducer\":").toByteArray())
     }
     assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(bytes.replace("\"payload\":", "\"missingPayload\":").toByteArray())
@@ -59,7 +63,7 @@ class SummaryMetadataTest {
     val expression = CanvasExpression.WithEffects(listOf(initialize, Effect.Unknown("later", "unknown", site)), call)
     val contract = CanvasContract("entry", result = expression, site = site)
     val module = ModuleContract("ordered", canvases = listOf(contract))
-    val restored = SummaryCodec.decode(SummaryCodec.encode(module)).module
+    val restored = SummaryCodec.decode(SummaryCodec.encode(module, testProducer)).module
     assertEquals(module, restored)
     val plan = restored.canvases.single().result as CanvasExpression.WithEffects
     assertEquals(listOf("allocation", "later"), plan.effects.map { it.id })
@@ -68,19 +72,22 @@ class SummaryMetadataTest {
 
   @Test
   fun `invalid summaries are rejected`() {
-    val bytes = SummaryCodec.encode(ModuleContract("sample")).decodeToString()
+    val bytes = SummaryCodec.encode(ModuleContract("sample"), testProducer).decodeToString()
     assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(bytes.replace("\"complete\":true", "\"complete\":false").toByteArray())
     }
     assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(
-        bytes.replace("\"semanticsVersion\":\"analysis-contract-3\"", "\"semanticsVersion\":\"other\"").toByteArray(),
+        bytes.replace("\"contractVersion\":6", "\"contractVersion\":999").toByteArray(),
       )
     }
     assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(
-        bytes.replace("\"toolVersion\":\"prototype-11\"", "\"toolVersion\":\"\"").toByteArray(),
+        bytes.replace("\"analysisVersion\":\"test-analysis\"", "\"analysisVersion\":\"\"").toByteArray(),
       )
+    }
+    assertFailsWith<IllegalArgumentException> {
+      SummaryCodec.decode(bytes.replace("\"compilerVersion\":\"2.4.20\"", "\"compilerVersion\":\"\"").toByteArray())
     }
     assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(bytes.replace("\"moduleId\":\"sample\"", "\"moduleId\":\"changed\"").toByteArray())

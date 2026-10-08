@@ -103,16 +103,20 @@ locators. Unordered declarations, limitations, and locator entries are sorted;
 effect and argument order is retained. Arguments are ordered parameter/value
 entries, and duplicate parameters are rejected.
 
-Format 5 has separate `formatVersion`, `semanticsVersion`, `toolVersion`,
-`kotlinCompilerVersion`, `moduleId`, `sourceSet`, and `complete` header fields.
-The reader accepts format 5, `analysis-contract-3`, Kotlin 2.4.20, and complete
-`main` source-set summaries. The module identity must be nonblank and match the
-payload. A nonblank producer version is required but does not determine semantic
-compatibility. Regenerate incompatible summaries with the supported Mosaic
-analysis toolchain before consuming them. Construction-time required lookup uses
-`LookupKind.CONSTRUCTION` and the serialized `CONSTRUCTION` lookup tag. Required
-and optional lookups use `REQUIRED` and `OPTIONAL`. Older formats are rejected
-with regeneration guidance; analyzer semantics remain `analysis-contract-3`.
+`contractVersion = 6` identifies both the serialized structure and contract meaning.
+The envelope also contains `producer.analysisVersion`, `producer.compilerVersion`,
+`moduleId`, `sourceSet`, and `complete`. The Analysis version comes from build-version
+metadata bundled with the producing Analysis artifact. The compiler version comes
+from the executing compiler's version resource. Producer identities record provenance;
+the Analysis version does not determine semantic compatibility.
+
+The reader accepts contract version 6, Kotlin 2.4.20, and complete `main` source-set
+summaries. The module identity must be nonblank and match the payload. Both producer
+versions are required. Legacy format 5 and unsupported contract versions are rejected
+with regeneration guidance. Regenerate incompatible summaries with the supported
+Mosaic analysis toolchain before consuming them. Construction-time required lookup
+uses `LookupKind.CONSTRUCTION` and the serialized `CONSTRUCTION` lookup tag. Required
+and optional lookups use `REQUIRED` and `OPTIONAL`.
 
 `payloadHash` is lowercase SHA-256 of the canonical compact UTF-8 JSON
 serialization of the entire `payload` object (module, limitations, and binary
