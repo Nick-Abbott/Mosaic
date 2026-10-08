@@ -133,7 +133,13 @@ class PublishedInstallationTest {
     assertTrue(consumer.resolve("build/reports/mosaic-analysis/graph.md").readText().contains("## Root: app.entry()"))
     val summary = SummaryCodec.decode(consumer.resolve("build/mosaic-analysis/main/summary.json").readBytes())
     assertTrue(summary.module.callables.any { it.id == "app.entry()" && it.effects.isNotEmpty() })
-    JarFile(consumer.resolve("build/libs/app-99.0.0.jar")).use { assertTrue(it.getEntry(SUMMARY_PATH) != null) }
+    JarFile(consumer.resolve("build/libs/app-99.0.0.jar")).use { archive ->
+      val packaged = SummaryCodec.decode(archive.getInputStream(archive.getJarEntry(SUMMARY_PATH)).readBytes())
+      assertEquals(summary, packaged)
+      assertEquals(6, packaged.contractVersion)
+      assertEquals(version, packaged.producer.analysisVersion)
+      assertEquals("2.4.20", packaged.producer.compilerVersion)
+    }
 
     verifyRuntimeConsumer(workspace, maven, version, useBom = false, kotlinVersion = "2.3.0")
     verifyRuntimeConsumer(workspace, maven, version, useBom = true)

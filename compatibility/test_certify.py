@@ -70,7 +70,8 @@ class CertificationEvidenceTest(unittest.TestCase):
 
     def test_comparison_preserves_semantics_locations_binary_identity_and_unknowns(self):
         summary = {
-            "kotlinCompilerVersion": "2.4.20", "payloadHash": "old", "formatVersion": 5,
+            "producer": {"analysisVersion": "test-analysis", "compilerVersion": "2.4.20"},
+            "payloadHash": "old", "contractVersion": 6,
             "payload": {"effects": ["lookup", "unknown"], "site": {"path": "Source.kt", "line": 7, "column": 3},
                         "binaryLocators": [{"id": "method", "locator": "Class#method(I)V"}]},
         }
@@ -81,7 +82,8 @@ class CertificationEvidenceTest(unittest.TestCase):
             self.assertEqual("fail", compare_summaries(before, after)["result"])
             (before / "fixture.json").write_text(json.dumps(summary))
             candidate = copy.deepcopy(summary)
-            candidate.update(kotlinCompilerVersion="2.3.21", payloadHash="new")
+            candidate["producer"]["compilerVersion"] = "2.3.21"
+            candidate["payloadHash"] = "new"
             (after / "fixture.json").write_text(json.dumps(candidate))
             self.assertEqual("pass", compare_summaries(before, after)["result"])
             changes = [
@@ -89,7 +91,8 @@ class CertificationEvidenceTest(unittest.TestCase):
                 lambda s: s["payload"]["site"].update(line=8),
                 lambda s: s["payload"]["site"].update(column=4),
                 lambda s: s["payload"]["binaryLocators"][0].update(locator="Class#method(J)V"),
-                lambda s: s.update(formatVersion=6),
+                lambda s: s.update(contractVersion=7),
+                lambda s: s["producer"].update(analysisVersion="another-analysis"),
             ]
             for change in changes:
                 changed = copy.deepcopy(candidate)

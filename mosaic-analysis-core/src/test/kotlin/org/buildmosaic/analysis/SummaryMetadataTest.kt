@@ -11,22 +11,26 @@ class SummaryMetadataTest {
     val bytes = SummaryCodec.encode(ModuleContract("sample")).decodeToString()
     for (field in listOf(
       "complete",
-      "toolVersion",
-      "formatVersion",
-      "semanticsVersion",
+      "analysisVersion",
+      "contractVersion",
       "moduleId",
       "payloadHash",
-      "kotlinCompilerVersion",
+      "compilerVersion",
       "sourceSet",
     )) {
       val partial = bytes.replace(Regex("\"$field\":(?:\"[^\"]*\"|true|[0-9]+),?"), "").replace(",}", "}")
       assertFailsWith<IllegalArgumentException>(field) { SummaryCodec.decode(partial.toByteArray()) }
     }
     assertFailsWith<IllegalArgumentException> {
-      SummaryCodec.decode(bytes.replace("\"payload\":", "\"missingPayload\":").toByteArray())
+      SummaryCodec.decode(bytes.replace("\"producer\":", "\"missingProducer\":").toByteArray())
     }
     assertFailsWith<IllegalArgumentException> {
-      SummaryCodec.decode(bytes.replace("2.4.20", "2.2.10").toByteArray())
+      SummaryCodec.decode(bytes.replace("\"payload\":", "\"missingPayload\":").toByteArray())
+    }
+    for (compiler in listOf("2.2.10", "2.4.20-release-1")) {
+      assertFailsWith<IllegalArgumentException> {
+        SummaryCodec.decode(bytes.replace("2.4.20", compiler).toByteArray())
+      }
     }
   }
 
@@ -74,13 +78,16 @@ class SummaryMetadataTest {
     }
     assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(
-        bytes.replace("\"semanticsVersion\":\"analysis-contract-3\"", "\"semanticsVersion\":\"other\"").toByteArray(),
+        bytes.replace("\"contractVersion\":6", "\"contractVersion\":999").toByteArray(),
       )
     }
     assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(
-        bytes.replace("\"toolVersion\":\"prototype-11\"", "\"toolVersion\":\"\"").toByteArray(),
+        bytes.replace(Regex("\"analysisVersion\":\"[^\"]+\""), "\"analysisVersion\":\"\"").toByteArray(),
       )
+    }
+    assertFailsWith<IllegalArgumentException> {
+      SummaryCodec.decode(bytes.replace("\"compilerVersion\":\"2.4.20\"", "\"compilerVersion\":\"\"").toByteArray())
     }
     assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(bytes.replace("\"moduleId\":\"sample\"", "\"moduleId\":\"changed\"").toByteArray())

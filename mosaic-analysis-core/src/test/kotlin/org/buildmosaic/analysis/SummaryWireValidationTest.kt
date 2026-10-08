@@ -8,15 +8,17 @@ import kotlin.test.assertTrue
 @Suppress("FunctionMaxLength")
 class SummaryWireValidationTest {
   @Test
-  fun `unsupported metadata format is rejected with regeneration guidance`() {
+  fun `unsupported contract versions and legacy formats are rejected with regeneration guidance`() {
     val text = SummaryCodec.encode(ModuleContract("sample")).decodeToString()
-    for (format in listOf(4, 999)) {
-      val unsupported = text.replace(Regex("\"formatVersion\":[0-9]+"), "\"formatVersion\":$format")
+    for (header in listOf("\"contractVersion\":5", "\"contractVersion\":999", "\"formatVersion\":5")) {
+      val unsupported = text.replace("\"contractVersion\":6", header)
       val error = assertFailsWith<IllegalArgumentException> { SummaryCodec.decode(unsupported.toByteArray()) }
-      assertTrue(error.message.orEmpty().contains("Unsupported Mosaic metadata format; expected 5."))
+      assertTrue(error.message.orEmpty().contains("Unsupported Mosaic metadata contract version"))
+      assertTrue(error.message.orEmpty().contains("expected 6."))
       assertTrue(
         error.message.orEmpty().contains("Regenerate dependency summaries with the matching Mosaic analysis version"),
       )
+      if (header.startsWith("\"formatVersion\"")) assertTrue(error.message.orEmpty().contains("legacy format 5"))
     }
   }
 
