@@ -27,15 +27,10 @@ class SummaryMetadataTest {
     assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(bytes.replace("\"payload\":", "\"missingPayload\":").toByteArray())
     }
-    for (compiler in listOf("2.2.10", "2.4.20-release-1")) {
-      assertFailsWith<IllegalArgumentException> {
-        SummaryCodec.decode(bytes.replace("2.4.20", compiler).toByteArray())
-      }
-    }
   }
 
   @Test
-  fun `H4 ordered effects actuals and evaluated value references round trip`() {
+  fun `H4 ordered effects actuals and evaluated value references round trip across producer versions`() {
     val site = SourceLocation("entry", "Sample.kt", 1, 1)
     val second = ContractParameter("callee", "second", ParameterKind.CANVAS)
     val first = ContractParameter("callee", "first", ParameterKind.CANVAS)
@@ -63,7 +58,20 @@ class SummaryMetadataTest {
     val expression = CanvasExpression.WithEffects(listOf(initialize, Effect.Unknown("later", "unknown", site)), call)
     val contract = CanvasContract("entry", result = expression, site = site)
     val module = ModuleContract("ordered", canvases = listOf(contract))
-    val restored = SummaryCodec.decode(SummaryCodec.encode(module)).module
+    val bytes = SummaryCodec.encode(module).decodeToString()
+    val original = SummaryCodec.decode(bytes.toByteArray())
+    for (producer in listOf(
+      original.producer.copy(compilerVersion = "2.2.10"),
+      original.producer.copy(compilerVersion = "2.4.20-release-1"),
+      original.producer.copy(analysisVersion = "other-analysis-build"),
+      SummaryProducer(" other-analysis-build ", " other-compiler-build "),
+    )) {
+      val metadata =
+        bytes.replace(Regex("\"analysisVersion\":\"[^\"]+\""), "\"analysisVersion\":\"${producer.analysisVersion}\"")
+          .replace(Regex("\"compilerVersion\":\"[^\"]+\""), "\"compilerVersion\":\"${producer.compilerVersion}\"")
+      assertEquals(original.copy(producer = producer), SummaryCodec.decode(metadata.toByteArray()))
+    }
+    val restored = original.module
     assertEquals(module, restored)
     val plan = restored.canvases.single().result as CanvasExpression.WithEffects
     assertEquals(listOf("allocation", "later"), plan.effects.map { it.id })
@@ -81,13 +89,12 @@ class SummaryMetadataTest {
         bytes.replace("\"contractVersion\":6", "\"contractVersion\":999").toByteArray(),
       )
     }
-    assertFailsWith<IllegalArgumentException> {
-      SummaryCodec.decode(
-        bytes.replace(Regex("\"analysisVersion\":\"[^\"]+\""), "\"analysisVersion\":\"\"").toByteArray(),
-      )
-    }
-    assertFailsWith<IllegalArgumentException> {
-      SummaryCodec.decode(bytes.replace("\"compilerVersion\":\"2.4.20\"", "\"compilerVersion\":\"\"").toByteArray())
+    for (field in listOf("analysisVersion", "compilerVersion")) {
+      for (blank in listOf("", " ")) {
+        assertFailsWith<IllegalArgumentException>(field) {
+          SummaryCodec.decode(bytes.replace(Regex("\"$field\":\"[^\"]+\""), "\"$field\":\"$blank\"").toByteArray())
+        }
+      }
     }
     assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(bytes.replace("\"moduleId\":\"sample\"", "\"moduleId\":\"changed\"").toByteArray())
