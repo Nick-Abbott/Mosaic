@@ -9,12 +9,13 @@ import kotlinx.serialization.json.jsonObject
 import java.security.MessageDigest
 
 /** Mutations reach semantic decoding; checksum corruption is tested separately. */
-internal fun withPayloadHash(text: String): String {
-  val payload = Json.parseToJsonElement(text).jsonObject.getValue("payload")
+internal fun withIntegrityHash(text: String): String {
+  val envelope = Json.parseToJsonElement(text).jsonObject
+  val payload = JsonObject(envelope + ("integrityHash" to kotlinx.serialization.json.JsonPrimitive("")))
   val hash =
     MessageDigest.getInstance("SHA-256").digest(Json.encodeToString(payload).toByteArray())
       .joinToString("") { "%02x".format(it) }
-  return text.replace(Regex("\"payloadHash\":\"[0-9a-f]+\""), "\"payloadHash\":\"$hash\"")
+  return text.replace(Regex("\"integrityHash\":\"[0-9a-f]+\""), "\"integrityHash\":\"$hash\"")
 }
 
 internal fun withoutPayloadField(
@@ -29,5 +30,5 @@ internal fun withoutPayloadField(
     }
   val envelope = Json.parseToJsonElement(text).jsonObject
   val mutated = JsonObject(envelope + ("payload" to remove(envelope.getValue("payload"))))
-  return withPayloadHash(Json.encodeToString(mutated))
+  return withIntegrityHash(Json.encodeToString(mutated))
 }

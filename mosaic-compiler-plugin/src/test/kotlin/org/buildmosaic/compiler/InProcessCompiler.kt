@@ -12,3 +12,9 @@ internal fun compileInProcess(args: List<String>) {
   val exit = K2JVMCompiler().exec(PrintStream(error), *args.toTypedArray())
   assertEquals(ExitCode.OK, exit, error.toString())
 }
+
+internal fun compilerResult(args: List<String>): Pair<Boolean, String> {
+  val error = ByteArrayOutputStream()
+  val exit = K2JVMCompiler().exec(PrintStream(error), *args.toTypedArray())
+  return (exit == ExitCode.OK) to error.toString()
+}

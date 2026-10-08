@@ -1,6 +1,8 @@
 package org.buildmosaic.gradle
 
 import org.buildmosaic.analysis.ANALYSIS_KOTLIN_VERSION
+import org.buildmosaic.analysis.CompatibilityProtocol
+import org.buildmosaic.analysis.ExtractionEnvironmentCodec
 import org.buildmosaic.analysis.SourceShardCodec
 import org.buildmosaic.analysis.SourceShardPaths
 import org.buildmosaic.analysis.SummaryCodec
@@ -14,6 +16,7 @@ import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.OutputFile
@@ -28,7 +31,9 @@ import java.util.jar.JarFile
 /** Assembles only current Kotlin sources. Kotlin's own compilation owns extraction and invalidation. */
 @CacheableTask
 abstract class ExtractMosaicTask : DefaultTask() {
-  @get:Internal abstract val sources: ConfigurableFileCollection
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  abstract val sources: ConfigurableFileCollection
 
   @get:InputFiles
   @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -39,6 +44,8 @@ abstract class ExtractMosaicTask : DefaultTask() {
   abstract val shardFiles: ConfigurableFileCollection
 
   @get:Internal abstract val shardDirectory: DirectoryProperty
+
+  @get:Internal abstract val invalidatedOutputs: ConfigurableFileCollection
 
   @get:Classpath abstract val additionalCompilerPlugins: ConfigurableFileCollection
 
@@ -60,6 +67,14 @@ abstract class ExtractMosaicTask : DefaultTask() {
 
   @get:Internal abstract val supportedSourceRoot: Property<String>
 
+  @get:InputFile
+  @get:PathSensitive(PathSensitivity.NONE)
+  abstract val contextFile: RegularFileProperty
+
+  @get:InputFile
+  @get:PathSensitive(PathSensitivity.NONE)
+  abstract val requirementsFile: RegularFileProperty
+
   @get:OutputFile abstract val summaryFile: RegularFileProperty
 
   @get:Input
@@ -79,6 +94,19 @@ abstract class ExtractMosaicTask : DefaultTask() {
   @TaskAction
   @Suppress("TooGenericExceptionCaught")
   fun extract() {
+    try {
+      assemble()
+    } catch (failure: RuntimeException) {
+      invalidatedOutputs.files.forEach { it.deleteRecursively() }
+      throw failure
+    } catch (failure: java.io.IOException) {
+      invalidatedOutputs.files.forEach { it.deleteRecursively() }
+      throw failure
+    }
+  }
+
+  @Suppress("TooGenericExceptionCaught")
+  private fun assemble() {
     val output = summaryFile.get().asFile
     output.delete()
     validateConfiguration()
@@ -93,12 +121,17 @@ abstract class ExtractMosaicTask : DefaultTask() {
         try {
           SourceShardCodec.decode(shard.readBytes()).also {
             require(it.sourceId == sourceId) { "Mosaic shard identity mismatch for $sourceId" }
+            require(it.sourceHash == SourceShardPaths.sourceHash(File(supportedSourceRoot.get(), sourceId))) {
+              "Stale Mosaic shard source content for $sourceId; recompile current sources"
+            }
           }
         } catch (error: Exception) {
           throw GradleException("Invalid Mosaic compiler shard for $sourceId", error)
         }
       }
-    val bytes = SourceShardCodec.assemble(moduleId.get(), shards)
+    val context = ExtractionEnvironmentCodec.decode(contextFile.get().asFile.readBytes())
+    val retained = CompatibilityProtocol.decodeContext(requirementsFile.get().asFile.readBytes()).runtimes
+    val bytes = SourceShardCodec.assemble(moduleId.get(), shards, context, retained)
     SummaryCodec.decode(bytes)
     output.parentFile.mkdirs()
     val pending = File(output.parentFile, "${output.name}.pending")

@@ -4,14 +4,13 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable internal data class WireEnvelope(
-  val formatVersion: Int,
-  val semanticsVersion: String,
-  val toolVersion: String,
-  val kotlinCompilerVersion: String,
+  val contractVersion: Int,
+  val producer: org.buildmosaic.analysis.ProducerIdentity,
+  val runtimes: List<org.buildmosaic.analysis.RuntimeRequirement>,
   val moduleId: String,
   val sourceSet: String,
   val complete: Boolean,
-  val payloadHash: String,
+  val integrityHash: String,
   val payload: WirePayload,
 )
 

@@ -76,6 +76,15 @@ fails with a configuration error.
 
 ## Build and task architecture
 
+`admitMosaicMain` validates selected compile/runtime Runtime artifacts and all
+present compile-dependency summaries before any trusted extraction or publication.
+It reads resolved JARs, checks descriptor ownership/publication identity, and
+requires compile/runtime Runtime selections to align. Align Mosaic dependencies
+on both classpaths when the selections differ. Runtime release numbers identify
+artifacts; capability requirements decide analyzer compatibility. Project Runtime
+JARs are resolved without requiring unrelated runtime-only project JARs, avoiding
+packaging cycles. File dependencies are inspected directly.
+
 `compileKotlin` runs Mosaic’s IR extractor inside the normal Kotlin/JVM `main`
 compilation. There is no second Kotlin compiler process in supported production
 builds. Kotlin decides which sources to recompile. The extractor writes one
@@ -93,8 +102,9 @@ from deleted or renamed files cannot enter the result or its Gradle input
 fingerprint. Only paths for current source shards are declared as task inputs.
 If all Kotlin sources are removed, it emits an explicit empty complete summary
 without invoking Mosaic’s compiler plugin, even if `compileKotlin` reports
-`NO_SOURCE` and leaves physical shards behind. A missing current shard or
-malformed shard fails assembly.
+`NO_SOURCE` and leaves physical shards behind. A missing current shard, malformed shard, source-content mismatch, or
+extraction-environment mismatch fails assembly. Empty summaries still require
+a compatible, truthfully identified production environment.
 `jar` embeds the complete summary at
 `META-INF/mosaic-analysis/v1/summary.json`. `verifyMosaicMain` reads that local
 summary and selected dependency summaries, writes
@@ -130,7 +140,15 @@ Dependency contract invalidation is separate from source compilation.
 Verification reads the raw summary resource copied by a cacheable per-JAR
 artifact transform. A dependency Mosaic contract change reruns verification
 without forcing unchanged application source extraction. A JAR without the
-resource produces no summary; a present malformed resource fails verification.
+resource produces no summary; a present malformed or incompatible resource fails
+admission in APPLICATION and LIBRARY modes, including graph and JAR tasks.
+Admission emits separate extraction-environment and retained-requirement inputs.
+Ordinary dependency contract bodies change verification inputs without changing
+these environment inputs or forcing Kotlin recompilation. Runtime descriptor or
+producer/artifact changes invalidate the extraction environment. Missing or stale
+current-source shards request a full normal Kotlin compilation; otherwise Kotlin
+retains its incremental affected-source behavior. Compilation failure, admission
+failure, or failed assembly removes trusted summaries, packaged JARs, and reports.
 Kotlin’s own incremental compilation handles public constants, typealiases,
 inline bodies, and other source-resolution changes. Mosaic does no additional
 source-resolution fingerprinting or separate K2 compilation.
@@ -184,7 +202,7 @@ regenerate incompatible summaries with the supported Mosaic analysis toolchain.
 
 The canonical [supported project boundary](https://BuildMosaic.org/reference/analysis-configuration/#supported-project-boundary)
 lists all Kotlin/JVM, source-layout, compiler-option, plugin, and platform
-restrictions. The DSL, format-5 metadata, and report format are provisional.
+restrictions. The DSL and report format remain provisional; packaged metadata uses contract 6.
 Analysis tooling is not included in the runtime BOM.
 
 ## Publication

@@ -13,7 +13,7 @@ class SourceShardTest {
   @Test
   fun `shards assemble in stable order`() {
     val first =
-      SourceShard(
+      fixtureShard(
         "north/Foo.kt",
         ModuleContract(
           "fixture:app",
@@ -32,7 +32,7 @@ class SourceShardTest {
         binaryLocators = mapOf("fixture.NorthTile" to "north/FooKt"),
       )
     val second =
-      SourceShard(
+      fixtureShard(
         "south/Foo.kt",
         ModuleContract(
           "fixture:app",
@@ -43,8 +43,8 @@ class SourceShardTest {
         ),
       )
     assertEquals(first, SourceShardCodec.decode(SourceShardCodec.encode(first)))
-    val forward = SourceShardCodec.assemble("fixture:app", listOf(first, second))
-    assertContentEquals(forward, SourceShardCodec.assemble("fixture:app", listOf(second, first)))
+    val forward = SourceShardCodec.assemble("fixture:app", listOf(first, second), fixtureEnvironment)
+    assertContentEquals(forward, SourceShardCodec.assemble("fixture:app", listOf(second, first), fixtureEnvironment))
     val assembled = SummaryCodec.decode(forward)
     assertEquals(
       listOf("first", "second"),
@@ -57,9 +57,9 @@ class SourceShardTest {
   @Test
   fun `duplicate owners and malformed shards fail`() {
     val owner = TileContract("fixture.Tile", emptyList(), site)
-    val shard = SourceShard("One.kt", ModuleContract("fixture:app", tiles = listOf(owner)))
+    val shard = fixtureShard("One.kt", ModuleContract("fixture:app", tiles = listOf(owner)))
     assertFailsWith<IllegalArgumentException> {
-      SourceShardCodec.assemble("fixture:app", listOf(shard, shard.copy(sourceId = "Two.kt")))
+      SourceShardCodec.assemble("fixture:app", listOf(shard, shard.copy(sourceId = "Two.kt")), fixtureEnvironment)
     }
     assertFailsWith<Exception> { SourceShardCodec.decode("{malformed".toByteArray()) }
     assertFailsWith<IllegalArgumentException> {

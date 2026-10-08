@@ -32,21 +32,20 @@ class SummaryWireCorpusTest {
     val effects = corpusEffects(context, canvases)
     val module = corpusModule(context, canvases, effects)
     val bytes =
-      SummaryCodec.encode(
+      encodeFixtureSummary(
         module,
         limitations = listOf("external const origin", "capture uncertain"),
         binaryLocators = mapOf("export" to "example/Exports#tile"),
       )
     val restored = SummaryCodec.decode(bytes)
-    assertEquals(5, restored.formatVersion)
-    assertEquals("analysis-contract-3", restored.semanticsVersion)
+    assertEquals(6, restored.contractVersion)
     assertTrue(bytes.decodeToString().contains("\"lookupKind\":\"CONSTRUCTION\""))
     assertEquals(module, restored.module)
     assertEquals(mapOf("export" to "example/Exports#tile"), restored.binaryLocators)
     assertEquals(listOf("capture uncertain", "external const origin"), restored.limitations)
     assertTrue(
       bytes.contentEquals(
-        SummaryCodec.encode(
+        encodeFixtureSummary(
           module,
           limitations = listOf("capture uncertain", "external const origin"),
           binaryLocators = restored.binaryLocators,

@@ -103,35 +103,79 @@ locators. Unordered declarations, limitations, and locator entries are sorted;
 effect and argument order is retained. Arguments are ordered parameter/value
 entries, and duplicate parameters are rejected.
 
-Format 5 has separate `formatVersion`, `semanticsVersion`, `toolVersion`,
-`kotlinCompilerVersion`, `moduleId`, `sourceSet`, and `complete` header fields.
-The reader accepts format 5, `analysis-contract-3`, Kotlin 2.4.20, and complete
-`main` source-set summaries. The module identity must be nonblank and match the
-payload. A nonblank producer version is required but does not determine semantic
-compatibility. Regenerate incompatible summaries with the supported Mosaic
-analysis toolchain before consuming them. Construction-time required lookup uses
-`LookupKind.CONSTRUCTION` and the serialized `CONSTRUCTION` lookup tag. Required
-and optional lookups use `REQUIRED` and `OPTIONAL`. Older formats are rejected
-with regeneration guidance; analyzer semantics remain `analysis-contract-3`.
+`contractVersion` covers both serialized representation and meaning. The inclusive
+readable range is `MINIMUM_READABLE_CONTRACT_VERSION = 6` through
+`CURRENT_CONTRACT_VERSION = 6`, with a decoder for every version in that range.
+An incompatible representation or meaning change increments this one version;
+an internal analyzer implementation change alone does not. The stable discovery
+resource remains `META-INF/mosaic-analysis/v1/summary.json`, independently of the
+contract version. Legacy format 5 fails explicitly with regeneration guidance.
 
-`payloadHash` is lowercase SHA-256 of the canonical compact UTF-8 JSON
-serialization of the entire `payload` object (module, limitations, and binary
-locators), without the envelope or hash field. It detects corruption; it does
-not authenticate a producer or serve as a build-cache fingerprint. Missing
-required fields, unknown kinds, partial output, and checksum mismatches fail
-decoding.
+The required envelope contains `contractVersion`, `producer`, `runtimes`,
+`moduleId`, `sourceSet`, `complete`, `integrityHash`, and `payload`.
+`producer.analysisVersion` identifies the actual Analysis tooling artifact;
+`producer.compilerVersion` identifies the executing compiler. Readers require
+valid provenance but do not use release-version equality or producer compiler
+versions as semantic admission criteria. Only complete `main` summaries with a
+nonblank module identity matching the payload are readable.
 
-The discovery resource is `META-INF/mosaic-analysis/v1/summary.json`;
-compatibility is determined by the header, not the resource path. Serialization
-is independent of Kotlin compiler and Gradle APIs.
+Runtime JARs carry `META-INF/mosaic/runtime-compatibility.json`:
+
+```json
+{"descriptorVersion":1,"module":"org.buildmosaic:mosaic-core","runtimeVersion":"0.7.0","requires":["mosaic.canvas-analysis/1"]}
+```
+
+Module and version come from publication configuration, including candidate
+artifact versions. Core requires the immutable coarse capability
+`mosaic.canvas-analysis/1`: the supported Canvas and Tile semantics, including
+all documented conservative boundaries. Its canonical build definition is
+[`compatibility/runtime-capabilities.properties`](../compatibility/runtime-capabilities.properties).
+Testing and tracing JARs declare empty requirements; their behavior introduces
+no additional analysis semantics. The BOM is a POM and has no descriptor.
+Runtime has no Analysis dependency.
+
+`CompatibilityProtocol` owns one semantic admission rule used for selected
+Runtime descriptors and retained library requirements. Unknown mandatory
+capabilities fail, regardless of Runtime release version. A newer Runtime with
+the same understood capabilities is compatible. `runtimes` retains each
+Runtime's module, actual version, and required capabilities, sorted by module
+and version. Publication preserves the union of selected Runtime and dependency
+requirements, including provenance from transitive producer environments.
+Requirements cannot disappear when a consumer selects an older Runtime or
+omits a producer's auxiliary Runtime artifact. Conflicting requirements for the
+same module/version identity fail; different diagnostic versions can coexist in
+retained provenance. Only one artifact per Runtime module may be selected.
+
+`integrityHash` is lowercase SHA-256 of the canonical compact UTF-8 serialization
+of the **entire envelope**, with `integrityHash` set to the empty string. It
+covers producer provenance, Runtime requirements, all correctness headers, and
+the payload. It checks consistency, not cryptographic authenticity, and is not
+a build-cache fingerprint. JSON is bounded to 16 MiB and 128 nesting levels;
+malformed UTF-8, duplicate or missing fields, incorrect types, unknown mandatory
+information, unsupported versions, partial output, duplicate owners/identities,
+and integrity failures are errors. Construction-time, required, and optional
+lookups retain the `CONSTRUCTION`, `REQUIRED`, and `OPTIONAL` tags.
+
+`SummaryCodec.encode` requires an explicit validated `ProductionContext`; it
+cannot fabricate tooling or compiler identities. The extractor derives its
+version from generated artifact metadata and its compiler identity from
+`KotlinCompilerVersion.VERSION`. Gradle's no-source path reads the selected
+compiler artifact's `META-INF/compiler.version` and the installed Analysis
+version. Compiler execution and KGP support remain exactly Kotlin 2.4.20.
+
+Internal source shards use version 3. Their `ExtractionEnvironment` records
+producer identity, selected Runtime requirements, and hashes of the actual
+Analysis and compiler artifacts. Each shard also records its relative source ID
+and source-content hash. These disposable fingerprints are never packaged in
+public contracts; assembly rejects stale or mixed environments and sources.
 
 The model intentionally supports only the expressions needed by the semantic
-fixtures. It does not parse Kotlin source, inspect JARs, discover roots, infer
+fixtures. The evaluator does not parse Kotlin source, inspect JARs, discover roots, infer
 framework lifecycles or arbitrary dispatch, check generic types/subtypes, model
 cache occupancy, Deferred awaits, or general deadlocks. Unsupported represented
 behavior stays explicitly `UNVERIFIED`. Direct override transfer uses resolved receiver
 relationships and positional Canvas slots; arbitrary virtual dispatch remains
-outside the model. The wire format and API are provisional.
+outside the model. The internal Kotlin model API remains provisional.
 
 The in-memory tests validate kernel semantics. Compiler and Gradle module tests
 cover source extraction, binary linking, and full-JAR build invalidation.

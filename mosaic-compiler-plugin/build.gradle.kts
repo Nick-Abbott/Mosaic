@@ -57,9 +57,27 @@ tasks.jar {
 
 tasks.test {
   useJUnitPlatform()
-  dependsOn(tasks.jar)
+  dependsOn(tasks.jar, ":mosaic-core:jar")
   val fixtureArguments = objects.newInstance<CompilerFixtureArguments>()
   fixtureArguments.pluginJar.set(tasks.jar.flatMap { it.archiveFile })
-  fixtureArguments.fixtureClasspath.from(classpath)
+  fixtureArguments.fixtureClasspath.from(
+    classpath.elements.map { entries ->
+      entries.map { it.asFile }.filterNot { it.path.contains("mosaic-core/build/") }
+    },
+  )
+  fixtureArguments.fixtureClasspath.from(
+    rootProject.layout.projectDirectory.file("mosaic-core/build/libs/mosaic-core-${project.version}.jar"),
+  )
   jvmArgumentProviders.add(fixtureArguments)
+}
+
+val compilerVersionMetadata =
+  tasks.register<WriteProperties>("generateCompilerAnalysisVersion") {
+    destinationFile =
+      layout.buildDirectory.file("generated/mosaic-compiler/org/buildmosaic/compiler/version.properties").get().asFile
+    property("version", project.version.toString())
+  }
+tasks.processResources {
+  dependsOn(compilerVersionMetadata)
+  from(layout.buildDirectory.dir("generated/mosaic-compiler"))
 }

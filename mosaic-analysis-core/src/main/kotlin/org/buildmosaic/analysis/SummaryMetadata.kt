@@ -1,50 +1,41 @@
 package org.buildmosaic.analysis
 
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.JsonPrimitive
 import org.buildmosaic.analysis.metadata.WireEnvelope
 import org.buildmosaic.analysis.metadata.WireLocator
 import org.buildmosaic.analysis.metadata.WirePayload
 import org.buildmosaic.analysis.metadata.toModel
 import org.buildmosaic.analysis.metadata.toWire
-import java.security.MessageDigest
 
-/** Compiler and Gradle plugin version supported by this analysis contract reader and writer. */
+/** Executing Kotlin compiler and KGP support is independent of packaged contract readability. */
 const val ANALYSIS_KOTLIN_VERSION = "2.4.20"
 
-/** Internal JAR resource. Compatibility is decided by the header, not this path. */
+/** Stable discovery location; the path does not select contract meaning. */
 const val SUMMARY_PATH = "META-INF/mosaic-analysis/v1/summary.json"
 
 data class SummaryMetadata(
-  val formatVersion: Int,
-  val semanticsVersion: String,
-  val toolVersion: String,
-  val kotlinCompilerVersion: String,
+  val contractVersion: Int,
+  val producer: ProducerIdentity,
+  val runtimes: List<RuntimeRequirement>,
   val moduleId: String,
   val sourceSet: String,
   val complete: Boolean,
-  val payloadHash: String,
+  val integrityHash: String,
   val module: ModuleContract,
   val limitations: List<String>,
   val binaryLocators: Map<String, String>,
 )
 
 object SummaryCodec {
-  private const val FORMAT_VERSION = 5
-  private const val SEMANTICS_VERSION = "analysis-contract-3"
-  private const val TOOL_VERSION = "prototype-11"
-  private val json =
-    Json {
-      classDiscriminator = "kind"
-      encodeDefaults = true
-      explicitNulls = true
-    }
+  const val MINIMUM_READABLE_CONTRACT_VERSION = 6
+  const val CURRENT_CONTRACT_VERSION = 6
+  private val json = ProtocolJson.json
 
   fun encode(
     module: ModuleContract,
+    context: ProductionContext,
     moduleId: String = module.id,
     sourceSet: String = "main",
     limitations: List<String> = emptyList(),
@@ -52,6 +43,7 @@ object SummaryCodec {
   ): ByteArray {
     require(module.id == moduleId) { "Module identity mismatch" }
     require(moduleId.isNotBlank() && sourceSet == "main") { "Unsupported Mosaic module or source-set identity" }
+    CompatibilityProtocol.admit(context.runtimes)
     val payload =
       WirePayload(
         module.toWire(),
@@ -60,55 +52,53 @@ object SummaryCodec {
       )
     val envelope =
       WireEnvelope(
-        FORMAT_VERSION, SEMANTICS_VERSION, TOOL_VERSION, ANALYSIS_KOTLIN_VERSION, moduleId, sourceSet, true,
-        sha256(
-          json.encodeToString(payload).toByteArray(Charsets.UTF_8),
-        ),
+        CURRENT_CONTRACT_VERSION,
+        context.producer,
+        context.runtimes,
+        moduleId,
+        sourceSet,
+        true,
+        "",
         payload,
       )
-    return (json.encodeToString(envelope) + "\n").toByteArray(Charsets.UTF_8)
+    val encoded = envelope.copy(integrityHash = integrityHash(envelope))
+    return (json.encodeToString(encoded) + "\n").toByteArray(Charsets.UTF_8).also { decode(it) }
   }
 
   fun decode(bytes: ByteArray): SummaryMetadata {
-    try {
-      val raw = bytes.toString(Charsets.UTF_8)
-      require(raw.toByteArray(Charsets.UTF_8).contentEquals(bytes)) { "Malformed Mosaic summary UTF-8" }
-      val element = json.parseToJsonElement(raw)
-      require(element is JsonObject) { "Missing Mosaic summary object" }
-      val regeneration = "Regenerate dependency summaries with the matching Mosaic analysis version."
-      require(element["formatVersion"]?.jsonPrimitive?.content == FORMAT_VERSION.toString()) {
-        "Unsupported Mosaic metadata format; expected $FORMAT_VERSION. $regeneration"
-      }
-      require(element["semanticsVersion"]?.jsonPrimitive?.content == SEMANTICS_VERSION) {
-        "Unsupported Mosaic analyzer semantics; expected $SEMANTICS_VERSION. $regeneration"
-      }
-      val envelope = json.decodeFromJsonElement(WireEnvelope.serializer(), element)
-      require(envelope.kotlinCompilerVersion == ANALYSIS_KOTLIN_VERSION) {
-        "Unsupported Kotlin compiler ${envelope.kotlinCompilerVersion}. $regeneration"
-      }
-      require(envelope.toolVersion.isNotBlank()) { "Missing Mosaic producer version" }
-      require(envelope.complete) { "Partial Mosaic summary cannot be used as complete" }
-      require(envelope.moduleId.isNotBlank() && envelope.moduleId == envelope.payload.module.id) {
-        "Module identity mismatch"
-      }
-      require(envelope.sourceSet == "main") { "Unsupported source set identity ${envelope.sourceSet}" }
-      val hash = sha256(json.encodeToString(envelope.payload).toByteArray(Charsets.UTF_8))
-      require(envelope.payloadHash == hash) { "Mosaic summary payload hash mismatch" }
-      val locators = linkedMapOf<String, String>()
-      envelope.payload.binaryLocators.forEach {
-        require(!locators.containsKey(it.id)) { "Duplicate binary locator ${it.id}" }
-        locators[it.id] = it.locator
-      }
-      return SummaryMetadata(
-        envelope.formatVersion, envelope.semanticsVersion, envelope.toolVersion,
-        envelope.kotlinCompilerVersion, envelope.moduleId, envelope.sourceSet, envelope.complete,
-        envelope.payloadHash, envelope.payload.module.toModel(), envelope.payload.limitations, locators,
-      )
-    } catch (error: SerializationException) {
-      throw IllegalArgumentException("Malformed Mosaic summary: ${error.message}", error)
+    val element = ProtocolJson.parse(bytes, "summary")
+    require(element is JsonObject) { "Missing Mosaic summary object" }
+    require("formatVersion" !in element) {
+      "Legacy Mosaic metadata format 5 is outside the stable protocol. " +
+        "Regenerate dependency summaries with Mosaic Analysis contract 6."
     }
+    val version = element["contractVersion"]
+    require(version == JsonPrimitive(CURRENT_CONTRACT_VERSION)) {
+      "Unsupported Mosaic contract version $version; " +
+        "readable range $MINIMUM_READABLE_CONTRACT_VERSION..$CURRENT_CONTRACT_VERSION. " +
+        "Regenerate dependency summaries with a compatible Mosaic Analysis version."
+    }
+    val envelope = ProtocolJson.decode<WireEnvelope>(element)
+    require(envelope.complete) { "Partial Mosaic summary cannot be used as complete" }
+    require(envelope.moduleId.isNotBlank() && envelope.moduleId == envelope.payload.module.id) {
+      "Module identity mismatch"
+    }
+    require(envelope.sourceSet == "main") { "Unsupported source set identity ${envelope.sourceSet}" }
+    ProductionContext(envelope.producer, envelope.runtimes)
+    require(envelope.integrityHash == integrityHash(envelope)) { "Mosaic summary integrity hash mismatch" }
+    val module = envelope.payload.module.toModel()
+    requireUniqueContractOwners(listOf(module))
+    val locators = linkedMapOf<String, String>()
+    envelope.payload.binaryLocators.forEach {
+      require(locators.putIfAbsent(it.id, it.locator) == null) { "Duplicate binary locator ${it.id}" }
+    }
+    return SummaryMetadata(
+      envelope.contractVersion, envelope.producer, envelope.runtimes, envelope.moduleId, envelope.sourceSet,
+      envelope.complete, envelope.integrityHash, module, envelope.payload.limitations, locators,
+    )
   }
 
-  private fun sha256(bytes: ByteArray): String =
-    MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+  /** Hash the canonical entire envelope with just the integrity value blanked. */
+  private fun integrityHash(envelope: WireEnvelope): String =
+    ProtocolJson.hash(json.encodeToString(envelope.copy(integrityHash = "")).toByteArray(Charsets.UTF_8))
 }

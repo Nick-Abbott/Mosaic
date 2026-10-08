@@ -140,17 +140,23 @@ internal fun summaryHash(jar: File): String =
 internal fun rewriteSummary(
   jar: File,
   replacement: ByteArray?,
+) = rewriteResource(jar, SUMMARY_PATH, replacement)
+
+internal fun rewriteResource(
+  jar: File,
+  resourcePath: String,
+  replacement: ByteArray?,
 ) {
   val copy = File(jar.parentFile, "rewritten-${jar.name}")
   JarFile(jar).use { input ->
     JarOutputStream(copy.outputStream()).use { output ->
       var found = false
       input.entries().asSequence().forEach { entry ->
-        if (entry.name == SUMMARY_PATH && replacement == null) return@forEach
-        if (entry.name == SUMMARY_PATH) found = true
+        if (entry.name == resourcePath && replacement == null) return@forEach
+        if (entry.name == resourcePath) found = true
         output.putNextEntry(JarEntry(entry.name))
         if (!entry.isDirectory) {
-          if (entry.name == SUMMARY_PATH) {
+          if (entry.name == resourcePath) {
             output.write(
               replacement,
             )
@@ -161,7 +167,7 @@ internal fun rewriteSummary(
         output.closeEntry()
       }
       if (!found && replacement != null) {
-        output.putNextEntry(JarEntry(SUMMARY_PATH))
+        output.putNextEntry(JarEntry(resourcePath))
         output.write(replacement)
         output.closeEntry()
       }

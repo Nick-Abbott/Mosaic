@@ -78,7 +78,8 @@ private fun compileIsolated(
   dependency: File?,
   summary: File?,
   moduleId: String,
-) {
+  expectSuccess: Boolean = true,
+): Pair<Boolean, String> {
   val caller =
     Throwable().stackTrace.first {
       it.className.contains("Test") && it.className.startsWith("org.buildmosaic.compiler.")
@@ -108,8 +109,10 @@ private fun compileIsolated(
     process.destroyForcibly()
     error("Compiler timed out: ${log.absolutePath}")
   }
-  assertEquals(0, process.exitValue(), log.readText())
-  summary?.let { it.copyTo(File(evidence, "$name.json")) }
+  val success = process.exitValue() == 0
+  if (expectSuccess) assertEquals(0, process.exitValue(), log.readText())
+  if (success) summary?.let { it.copyTo(File(evidence, "$name.json")) }
+  return success to log.readText()
 }
 
 internal fun compileAndExtract(
@@ -141,4 +144,13 @@ internal fun jarClasses(
       jar.closeEntry()
     }
   }
+}
+
+/** Compatibility failures are checked using the same compiler transport as semantic fixtures. */
+internal fun compileProtocolFixture(args: List<String>): Pair<Boolean, String> {
+  System.err.println("MOSAIC_COMPILER_INVOCATION")
+  if (System.getProperty("mosaic.compat.compiler.classpath") == null) return compilerResult(args)
+  val output = args.single { it.startsWith("plugin:org.buildmosaic.analysis:output=") }.substringAfter('=')
+  val module = args.single { it.startsWith("plugin:org.buildmosaic.analysis:module=") }.substringAfter('=')
+  return compileIsolated(args, listOf(File(args.last())), null, File(output), module, expectSuccess = false)
 }

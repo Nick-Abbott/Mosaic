@@ -70,7 +70,10 @@ class CertificationEvidenceTest(unittest.TestCase):
 
     def test_comparison_preserves_semantics_locations_binary_identity_and_unknowns(self):
         summary = {
-            "kotlinCompilerVersion": "2.4.20", "payloadHash": "old", "formatVersion": 5,
+            "producer": {"analysisVersion": "candidate", "compilerVersion": "2.4.20"},
+            "integrityHash": "old", "contractVersion": 6,
+            "runtimes": [{"module": "org.buildmosaic:mosaic-core", "runtimeVersion": "candidate",
+                          "requires": ["mosaic.canvas-analysis/1"]}],
             "payload": {"effects": ["lookup", "unknown"], "site": {"path": "Source.kt", "line": 7, "column": 3},
                         "binaryLocators": [{"id": "method", "locator": "Class#method(I)V"}]},
         }
@@ -81,15 +84,21 @@ class CertificationEvidenceTest(unittest.TestCase):
             self.assertEqual("fail", compare_summaries(before, after)["result"])
             (before / "fixture.json").write_text(json.dumps(summary))
             candidate = copy.deepcopy(summary)
-            candidate.update(kotlinCompilerVersion="2.3.21", payloadHash="new")
+            candidate["producer"]["compilerVersion"] = "2.3.21"
+            candidate["integrityHash"] = "new"
             (after / "fixture.json").write_text(json.dumps(candidate))
-            self.assertEqual("pass", compare_summaries(before, after)["result"])
+            comparison = compare_summaries(before, after)
+            self.assertEqual("pass", comparison["result"])
+            self.assertEqual([summary["producer"]], comparison["producerIdentities"]["control"])
+            self.assertEqual([candidate["producer"]], comparison["producerIdentities"]["selected"])
             changes = [
                 lambda s: s["payload"]["effects"].reverse(),
                 lambda s: s["payload"]["site"].update(line=8),
                 lambda s: s["payload"]["site"].update(column=4),
                 lambda s: s["payload"]["binaryLocators"][0].update(locator="Class#method(J)V"),
-                lambda s: s.update(formatVersion=6),
+                lambda s: s.update(contractVersion=7),
+                lambda s: s["producer"].update(analysisVersion="other"),
+                lambda s: s["runtimes"][0]["requires"].append("mosaic.future/1"),
             ]
             for change in changes:
                 changed = copy.deepcopy(candidate)

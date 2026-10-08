@@ -5,6 +5,7 @@ plugins {
   id("quality.convention")
   id("testing.convention")
   id("library.convention")
+  id("runtime-compatibility.convention")
 }
 
 dependencies {

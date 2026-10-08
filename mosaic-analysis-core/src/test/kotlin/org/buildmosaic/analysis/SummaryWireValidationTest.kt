@@ -9,13 +9,13 @@ import kotlin.test.assertTrue
 class SummaryWireValidationTest {
   @Test
   fun `unsupported metadata format is rejected with regeneration guidance`() {
-    val text = SummaryCodec.encode(ModuleContract("sample")).decodeToString()
+    val text = encodeFixtureSummary(ModuleContract("sample")).decodeToString()
     for (format in listOf(4, 999)) {
-      val unsupported = text.replace(Regex("\"formatVersion\":[0-9]+"), "\"formatVersion\":$format")
+      val unsupported = text.replace(Regex("\"contractVersion\":[0-9]+"), "\"contractVersion\":$format")
       val error = assertFailsWith<IllegalArgumentException> { SummaryCodec.decode(unsupported.toByteArray()) }
-      assertTrue(error.message.orEmpty().contains("Unsupported Mosaic metadata format; expected 5."))
+      assertTrue(error.message.orEmpty().contains("Unsupported Mosaic contract version"))
       assertTrue(
-        error.message.orEmpty().contains("Regenerate dependency summaries with the matching Mosaic analysis version"),
+        error.message.orEmpty().contains("Regenerate dependency summaries with a compatible Mosaic Analysis version"),
       )
     }
   }
@@ -26,10 +26,10 @@ class SummaryWireValidationTest {
     val first =
       TileContract("a", listOf(Effect.Unknown("first", "reason", site), Effect.Unknown("second", "reason", site)), site)
     val second = TileContract("b", emptyList(), site)
-    val ordered = SummaryCodec.encode(ModuleContract("sample", tiles = listOf(first, second)))
-    val reverseDeclarations = SummaryCodec.encode(ModuleContract("sample", tiles = listOf(second, first)))
+    val ordered = encodeFixtureSummary(ModuleContract("sample", tiles = listOf(first, second)))
+    val reverseDeclarations = encodeFixtureSummary(ModuleContract("sample", tiles = listOf(second, first)))
     val reverseEffects =
-      SummaryCodec.encode(
+      encodeFixtureSummary(
         ModuleContract("sample", tiles = listOf(first.copy(effects = first.effects.reversed()), second)),
       )
     assertTrue(ordered.contentEquals(reverseDeclarations))
@@ -57,7 +57,7 @@ class SummaryWireValidationTest {
     val before = MosaicAnalyzer().analyze(AnalysisRequest(module, roots = listOf(root)))
     val after =
       MosaicAnalyzer().analyze(
-        AnalysisRequest(SummaryCodec.decode(SummaryCodec.encode(module)).module, roots = listOf(root)),
+        AnalysisRequest(SummaryCodec.decode(encodeFixtureSummary(module)).module, roots = listOf(root)),
       )
     assertEquals(before, after)
     assertTrue(before.findings.isNotEmpty())
@@ -71,18 +71,18 @@ class SummaryWireValidationTest {
         "sample",
         tiles = listOf(TileContract("tile", listOf(Effect.Unknown("unknown", "reason", site)), site)),
       )
-    val text = SummaryCodec.encode(module).decodeToString()
-    val mutated = withPayloadHash(text.replace("\"kind\":\"unknown\"", "\"kind\":\"futureEffect\""))
+    val text = encodeFixtureSummary(module).decodeToString()
+    val mutated = withIntegrityHash(text.replace("\"kind\":\"unknown\"", "\"kind\":\"futureEffect\""))
     val error = assertFailsWith<IllegalArgumentException> { SummaryCodec.decode(mutated.toByteArray()) }
     assertTrue(error.message.orEmpty().contains("futureEffect"), error.message)
   }
 
   @Test
   fun `checksum corruption and truncated JSON are rejected`() {
-    val text = SummaryCodec.encode(ModuleContract("sample")).decodeToString()
-    val corrupt = text.replace(Regex("\"payloadHash\":\"[0-9a-f]+\""), "\"payloadHash\":\"invalid\"")
+    val text = encodeFixtureSummary(ModuleContract("sample")).decodeToString()
+    val corrupt = text.replace(Regex("\"integrityHash\":\"[0-9a-f]+\""), "\"integrityHash\":\"invalid\"")
     val error = assertFailsWith<IllegalArgumentException> { SummaryCodec.decode(corrupt.toByteArray()) }
-    assertTrue(error.message.orEmpty().contains("payload hash mismatch"))
+    assertTrue(error.message.orEmpty().contains("integrity hash mismatch"))
     assertFailsWith<IllegalArgumentException> { SummaryCodec.decode(text.dropLast(4).toByteArray()) }
   }
 }

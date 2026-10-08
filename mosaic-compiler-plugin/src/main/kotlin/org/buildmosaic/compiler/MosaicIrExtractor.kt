@@ -11,6 +11,8 @@ import java.io.File
 internal class MosaicIrExtractor(
   private val output: String,
   private val moduleId: String,
+  private val context: org.buildmosaic.analysis.ExtractionEnvironment,
+  private val requirements: List<org.buildmosaic.analysis.RuntimeRequirement>,
   private val sourceRoot: String? = null,
   private val shardMode: Boolean = false,
 ) : IrGenerationExtension {
@@ -20,7 +22,7 @@ internal class MosaicIrExtractor(
   ) {
     val shards =
       moduleFragment.files.sortedBy { it.fileEntry.name }.map { file ->
-        SourceContractExtractor(moduleId, sourceRoot).extract(file).also { shard ->
+        SourceContractExtractor(moduleId, sourceRoot, context).extract(file).also { shard ->
           if (shardMode) {
             SourceShardPaths.shardFile(File(output), shard.sourceId).apply {
               parentFile.mkdirs()
@@ -34,7 +36,7 @@ internal class MosaicIrExtractor(
     } else {
       File(output).apply {
         parentFile.mkdirs()
-        writeBytes(SourceShardCodec.assemble(moduleId, shards))
+        writeBytes(SourceShardCodec.assemble(moduleId, shards, context, requirements))
       }
     }
   }

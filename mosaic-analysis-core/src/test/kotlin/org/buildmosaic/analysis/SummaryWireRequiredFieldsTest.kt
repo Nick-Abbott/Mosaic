@@ -20,7 +20,7 @@ class SummaryWireRequiredFieldsTest {
           },
         )
       val call = Effect.Call("invoke", "target", arguments, site)
-      return SummaryCodec.encode(
+      return encodeFixtureSummary(
         ModuleContract("sample", callables = listOf(CallableContract("call", effects = listOf(call), site = site))),
       )
     }
@@ -41,7 +41,7 @@ class SummaryWireRequiredFieldsTest {
             CallableContract("call", effects = listOf(Effect.Call("invoke", "target", site = site)), site = site),
           ),
       )
-    val text = SummaryCodec.encode(module).decodeToString()
+    val text = encodeFixtureSummary(module).decodeToString()
     for (field in listOf("bindings", "effects", "target")) {
       val missing = withoutPayloadField(text, field)
       val error = assertFailsWith<IllegalArgumentException>(field) { SummaryCodec.decode(missing.toByteArray()) }
@@ -73,14 +73,14 @@ class SummaryWireRequiredFieldsTest {
             ),
           ),
       )
-    val text = SummaryCodec.encode(module).decodeToString()
+    val text = encodeFixtureSummary(module).decodeToString()
     val argumentEntry =
       """{"parameter":{"owner":"call","name":"canvas","kind":"CANVAS"},"value":""" +
         """{"kind":"canvas","expression":{"kind":"empty"}}}"""
     assertTrue(text.contains(argumentEntry))
     val duplicate = text.replace(argumentEntry, "$argumentEntry,$argumentEntry")
     val error =
-      assertFailsWith<IllegalArgumentException> { SummaryCodec.decode(withPayloadHash(duplicate).toByteArray()) }
+      assertFailsWith<IllegalArgumentException> { SummaryCodec.decode(withIntegrityHash(duplicate).toByteArray()) }
     assertTrue(error.message.orEmpty().contains("Duplicate argument"))
   }
 }

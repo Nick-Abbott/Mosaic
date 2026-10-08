@@ -131,6 +131,13 @@ class BuildCacheIntegrationTest {
     assertFreshEquivalent(workspaceA, File(workspaceA, "build/reports/mosaic-analysis/main.txt").readText())
 
     val beforeFailure = SummaryCodec.decode(File(workspaceA, "build/mosaic-analysis/main/summary.json").readBytes())
+    File(workspaceA, "build/mosaic-compatibility/compilation.pending").writeText("interrupted compilation")
+    val interrupted = run(workspaceA, "build")
+    assertEquals(TaskOutcome.SUCCESS, interrupted.task(":compileKotlin")?.outcome)
+    assertEquals(
+      beforeFailure,
+      SummaryCodec.decode(File(workspaceA, "build/mosaic-analysis/main/summary.json").readBytes()),
+    )
     val consumerSource = File(workspaceA, "src/main/kotlin/Consumer.kt")
     val validSource = consumerSource.readText()
     consumerSource.writeText(

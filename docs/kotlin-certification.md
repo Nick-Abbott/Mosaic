@@ -59,14 +59,15 @@ the same candidate artifacts and fixture sources.
 | --- | --- |
 | Runtime | `compatibility/fixtures/RuntimeConsumer.kt` executes Canvas construction/lookups/layers, Tile and MultiTile composition, inline/reified calls, delegated properties, suspend/default interface methods, overloads, third-party Mosaic implementation, testing, and tracing on JVM 17. Existing public API and execution catalog fixtures compile unchanged; the observer composition consumer executes unchanged. No extractor is installed. |
 | Direct compiler | The existing `mosaic-compiler-plugin` test corpus runs twice, against control and selected compilers. The shared compile helper switches only execution transport. Assertions own source-to-contract fidelity, VERIFIED/MISSING/UNVERIFIED outcomes, source locations, binary exports, and unknown boundaries. Plugin load or ABI failures fail this area. |
-| Pure metadata | Existing analysis-core `Summary*Test` suites own decoding, codec validation, required fields, metadata compatibility, and the closed wire corpus. They run without invoking or depending on the selected compiler. |
-| Compiler-produced metadata | Every extracted summary is retained and compared against the control. Only the compiler-version header and derived payload hash are omitted from comparison. Payloads, format/semantics, source locations, effect order, binary identities, limitations, and unknown boundaries must agree. Missing, extra, changed, or absent summaries fail comparison. |
+| Pure metadata | Analysis-core `Summary*Test` and `Compatibility*Test` suites own decoding, codec validation, required fields, metadata compatibility, and the closed wire corpus. They run without invoking or depending on the selected compiler. |
+| Compiler-produced metadata | Every extracted summary is retained and compared against the control. Only `producer.compilerVersion` and the derived `integrityHash` are omitted from comparison. Analysis producer identity, `contractVersion`, Runtime requirements, payloads, source locations, effect order, binary identities, limitations, and unknown boundaries must agree. Missing, extra, changed, or absent summaries fail comparison. |
 
-The metadata producer currently declares the fixed analysis Kotlin version in its
-header. That declaration is preserved in raw evidence; the report's **actual
-compiler version** comes from the selected compiler's `-version` output. A passing
-wire corpus alone does not prove compiler integration. Metadata format compatibility
-has no Gradle-version dimension.
+Compiler-produced metadata records the executing compiler's own version and the
+actual source-fingerprinted Analysis candidate version. Raw summaries retain both
+identities, and the report records the observed producers for each corpus. The
+report's actual compiler version also comes from the selected compiler's `-version`
+output. A passing wire corpus alone does not prove compiler integration. Packaged
+contract compatibility has no Gradle-version dimension.
 
 ## Reports and failures
 

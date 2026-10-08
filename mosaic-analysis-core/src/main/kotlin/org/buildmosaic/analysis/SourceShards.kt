@@ -50,6 +50,8 @@ object SourceShardPaths {
     return relative.removeSuffix(SUFFIX).also(::checkSourceId)
   }
 
+  fun sourceHash(source: File): String = ProtocolJson.hash(source.readBytes())
+
   internal fun checkSourceId(id: String) {
     require(id.isNotBlank() && !id.startsWith('/') && '\\' !in id && id.split('/').none { it == ".." || it == "." }) {
       "Invalid Mosaic shard source identity $id"
@@ -63,16 +65,22 @@ data class SourceShard(
   val module: ModuleContract,
   val limitations: List<String> = emptyList(),
   val binaryLocators: Map<String, String> = emptyMap(),
+  val context: ExtractionEnvironment,
+  val sourceHash: String,
 )
 
 @Serializable
 private data class ShardEnvelope(
   val shardVersion: Int,
   val sourceId: String,
+  val context: ExtractionEnvironment,
+  val sourceHash: String,
   val payload: WirePayload,
+  val integrityHash: String,
 )
 
 object SourceShardCodec {
+  private const val SHARD_VERSION = 3
   private val json =
     Json {
       classDiscriminator = "kind"
@@ -82,31 +90,46 @@ object SourceShardCodec {
 
   fun encode(shard: SourceShard): ByteArray {
     SourceShardPaths.checkSourceId(shard.sourceId)
+    require(Regex("[0-9a-f]{64}").matches(shard.sourceHash)) { "Invalid Mosaic shard source hash" }
     val payload =
       WirePayload(
         shard.module.toWire(),
         shard.limitations.distinct().sorted(),
         shard.binaryLocators.toSortedMap().map { (id, locator) -> WireLocator(id, locator) },
       )
-    return (json.encodeToString(ShardEnvelope(2, shard.sourceId, payload)) + "\n").toByteArray(Charsets.UTF_8)
+    val envelope = ShardEnvelope(SHARD_VERSION, shard.sourceId, shard.context, shard.sourceHash, payload, "")
+    return (json.encodeToString(envelope.copy(integrityHash = integrityHash(envelope))) + "\n")
+      .toByteArray(Charsets.UTF_8)
   }
 
   fun decode(bytes: ByteArray): SourceShard {
-    val raw = bytes.toString(Charsets.UTF_8)
-    require(raw.toByteArray(Charsets.UTF_8).contentEquals(bytes)) { "Malformed Mosaic shard UTF-8" }
-    val envelope = json.decodeFromString<ShardEnvelope>(raw)
-    require(envelope.shardVersion == 2) { "Unsupported Mosaic shard version ${envelope.shardVersion}" }
+    val envelope = ProtocolJson.decode<ShardEnvelope>(ProtocolJson.parse(bytes, "shard"))
+    require(envelope.shardVersion == SHARD_VERSION) { "Unsupported Mosaic shard version ${envelope.shardVersion}" }
+    require(envelope.integrityHash == integrityHash(envelope)) { "Mosaic shard integrity hash mismatch" }
     SourceShardPaths.checkSourceId(envelope.sourceId)
+    require(Regex("[0-9a-f]{64}").matches(envelope.sourceHash)) { "Invalid Mosaic shard source hash" }
     val locators = linkedMapOf<String, String>()
     envelope.payload.binaryLocators.forEach {
       require(locators.putIfAbsent(it.id, it.locator) == null) { "Duplicate Mosaic shard locator ${it.id}" }
     }
-    return SourceShard(envelope.sourceId, envelope.payload.module.toModel(), envelope.payload.limitations, locators)
+    return SourceShard(
+      envelope.sourceId,
+      envelope.payload.module.toModel(),
+      envelope.payload.limitations,
+      locators,
+      envelope.context,
+      envelope.sourceHash,
+    )
   }
+
+  private fun integrityHash(envelope: ShardEnvelope): String =
+    ProtocolJson.hash(json.encodeToString(envelope.copy(integrityHash = "")).toByteArray(Charsets.UTF_8))
 
   fun assemble(
     moduleId: String,
     shards: Collection<SourceShard>,
+    context: ExtractionEnvironment,
+    retainedRequirements: List<RuntimeRequirement> = context.production.runtimes,
   ): ByteArray {
     val ids = mutableSetOf<String>()
     val canvases = mutableListOf<CanvasContract>()
@@ -126,6 +149,9 @@ object SourceShardCodec {
     }
     shards.sortedBy { it.sourceId }.forEach { shard ->
       require(sources.add(shard.sourceId)) { "Duplicate Mosaic source shard ${shard.sourceId}" }
+      require(
+        shard.context == context,
+      ) { "Stale Mosaic shard environment in ${shard.sourceId}; recompile current sources" }
       require(shard.module.id == moduleId) { "Mosaic shard module mismatch in ${shard.sourceId}" }
       shard.module.canvases.forEach {
         owner("canvas", it.id)
@@ -154,6 +180,10 @@ object SourceShardCodec {
     }
     return SummaryCodec.encode(
       ModuleContract(moduleId, canvases, tiles, callables, overrides, keys),
+      context =
+        context.production.copy(
+          runtimes = CompatibilityProtocol.merge(context.production.runtimes, retainedRequirements),
+        ),
       limitations = limitations.distinct().sorted(),
       binaryLocators = locators,
     )

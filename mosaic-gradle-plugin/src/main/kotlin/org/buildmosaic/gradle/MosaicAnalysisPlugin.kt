@@ -2,18 +2,22 @@
 
 package org.buildmosaic.gradle
 
+import org.buildmosaic.analysis.CompatibilityProtocol
 import org.buildmosaic.analysis.MosaicRule
 import org.buildmosaic.analysis.MosaicRuleSeverity
 import org.buildmosaic.analysis.SourceShardPaths
 import org.gradle.api.Action
 import org.gradle.api.GradleException
 import org.gradle.api.Project
+import org.gradle.api.artifacts.component.ProjectComponentIdentifier
 import org.gradle.api.artifacts.type.ArtifactTypeDefinition
+import org.gradle.api.attributes.LibraryElements
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskProvider
 import org.gradle.api.tasks.bundling.Jar
 import org.gradle.jvm.toolchain.JavaToolchainService
@@ -90,6 +94,10 @@ class MosaicAnalysisPlugin : KotlinCompilerPluginSupportPlugin {
         FilesSubpluginOption("output", listOf(output)),
         FilesSubpluginOption("sourceRoot", listOf(root)),
         SubpluginOption("mode", "shards"),
+        FilesSubpluginOption(
+          "context",
+          listOf(project.layout.buildDirectory.file("mosaic-compatibility/context.json").get().asFile),
+        ),
         SubpluginOption("module", project.group.toString() + ":" + project.name),
       )
     }
@@ -124,10 +132,12 @@ class MosaicAnalysisPlugin : KotlinCompilerPluginSupportPlugin {
     extension: MosaicAnalysisExtension,
   ) {
     val compile = project.tasks.named("compileKotlin", KotlinJvmCompile::class.java)
+    val admission = registerAdmission(project, compile)
+    val cleanup = registerCompilationCleanup(project, compile, admission)
     val shardDirectory = project.layout.buildDirectory.dir("mosaic-analysis/main/shards")
     compile.configure { it.outputs.dir(shardDirectory).withPropertyName("mosaicSourceShards") }
     val extract =
-      registerExtraction(project, compile)
+      registerExtraction(project, compile, admission, cleanup)
     project.tasks.named("jar", Jar::class.java) { jar ->
       jar.dependsOn(extract)
       jar.from(extract.flatMap { it.summaryFile }) {
@@ -177,9 +187,99 @@ class MosaicAnalysisPlugin : KotlinCompilerPluginSupportPlugin {
     project.tasks.named("check") { it.dependsOn(aggregate) }
   }
 
+  private fun registerAdmission(
+    project: Project,
+    compile: TaskProvider<KotlinJvmCompile>,
+  ): TaskProvider<AdmitMosaicTask> {
+    // Use the selected JAR variant so resources and bytecode describe the same artifact.
+    // Project dependencies are built upstream; local packaging never enters this classpath.
+    listOf("compileClasspath", "runtimeClasspath").forEach { name ->
+      project.configurations.named(name) {
+        it.attributes.attribute(
+          LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE,
+          project.objects.named(LibraryElements::class.java, LibraryElements.JAR),
+        )
+      }
+    }
+    return project.tasks.register("admitMosaicMain", AdmitMosaicTask::class.java) { task ->
+      task.compileArtifacts.from(project.configurations.getByName("compileClasspath"))
+      task.runtimeArtifacts.from(
+        project.configurations.getByName("runtimeClasspath").incoming.artifactView { view ->
+          view.componentFilter { component ->
+            when (component) {
+              is ProjectComponentIdentifier ->
+                "org.buildmosaic:${component.projectName}" in CompatibilityProtocol.runtimeModules
+              // Inspect all binary selections: substitutions may use different Maven coordinates.
+              else -> true
+            }
+          }
+        }.files,
+      )
+      task.compilerArtifacts.from(project.configurations.getByName("kotlinCompilerClasspath"))
+      task.analysisArtifacts.from(project.provider { compile.get().pluginClasspath })
+      task.analysisVersion.set(mosaicVersion)
+      task.contextFile.set(project.layout.buildDirectory.file("mosaic-compatibility/context.json"))
+      task.requirementsFile.set(project.layout.buildDirectory.file("mosaic-compatibility/requirements.json"))
+      task.analysisDirectory.set(project.layout.buildDirectory.dir("mosaic-analysis"))
+      task.reportsDirectory.set(project.layout.buildDirectory.dir("reports/mosaic-analysis"))
+      task.packagedJar.set(project.tasks.named("jar", Jar::class.java).flatMap { it.archiveFile })
+    }
+  }
+
+  private fun registerCompilationCleanup(
+    project: Project,
+    compile: TaskProvider<KotlinJvmCompile>,
+    admission: TaskProvider<AdmitMosaicTask>,
+  ): TaskProvider<MosaicCompilationCleanupTask> {
+    val contextOutput = admission.flatMap { it.contextFile }
+    val currentSources =
+      project.files(
+        project.extensions.getByType(KotlinJvmProjectExtension::class.java).sourceSets.getByName("main").kotlin,
+      )
+    val shardOutput = project.layout.buildDirectory.dir("mosaic-analysis/main/shards")
+    val sourceRoot = project.file("src/main/kotlin")
+    val pendingOutput = project.layout.buildDirectory.file("mosaic-compatibility/compilation.pending")
+    val cleanup =
+      project.tasks.register("cleanupMosaicCompilation", MosaicCompilationCleanupTask::class.java) { task ->
+        task.pendingFile.set(pendingOutput)
+        task.trustedOutputs.from(project.layout.buildDirectory.dir("mosaic-analysis"))
+        task.trustedOutputs.from(project.layout.buildDirectory.dir("reports/mosaic-analysis"))
+        task.trustedOutputs.from(project.tasks.named("jar", Jar::class.java).flatMap { it.archiveFile })
+      }
+    compile.configure {
+      it.doFirst { task ->
+        if (pendingOutput.get().asFile.exists() ||
+          requiresFreshMosaicExtraction(
+            contextOutput.get().asFile,
+            shardOutput.get().asFile,
+            sourceRoot,
+            currentSources.files,
+          )
+        ) {
+          (task as org.jetbrains.kotlin.gradle.tasks.KotlinCompile).incremental = false
+        }
+        pendingOutput.get().asFile.apply {
+          parentFile.mkdirs()
+          writeText("pending")
+        }
+      }
+      it.doLast { pendingOutput.get().asFile.delete() }
+      it.finalizedBy(cleanup)
+      it.dependsOn(admission)
+      it.inputs.files(
+        pendingOutput,
+      ).withPropertyName("mosaicPendingCompilation").withPathSensitivity(PathSensitivity.NONE)
+      it.inputs.file(admission.flatMap { task -> task.contextFile }).withPropertyName("mosaicProductionContext")
+        .withPathSensitivity(PathSensitivity.NONE)
+    }
+    return cleanup
+  }
+
   private fun registerExtraction(
     project: Project,
     compile: TaskProvider<KotlinJvmCompile>,
+    admission: TaskProvider<AdmitMosaicTask>,
+    cleanup: TaskProvider<MosaicCompilationCleanupTask>,
   ): TaskProvider<ExtractMosaicTask> {
     val kotlinPluginVersion =
       project.plugins.findPlugin("org.jetbrains.kotlin.jvm")?.javaClass?.`package`?.implementationVersion ?: "unknown"
@@ -192,6 +292,8 @@ class MosaicAnalysisPlugin : KotlinCompilerPluginSupportPlugin {
     val sourceRoot = project.file("src/main/kotlin")
     val shardDirectory = project.layout.buildDirectory.dir("mosaic-analysis/main/shards")
     return project.tasks.register("extractMosaicMain", ExtractMosaicTask::class.java) { task ->
+      task.contextFile.set(admission.flatMap { it.contextFile })
+      task.requirementsFile.set(admission.flatMap { it.requirementsFile })
       task.group = "verification"
       task.description = "Assemble compiler-produced Mosaic source shards into a complete main summary"
       task.sources.from(mainSources)
@@ -219,23 +321,26 @@ class MosaicAnalysisPlugin : KotlinCompilerPluginSupportPlugin {
       )
       task.summaryFile.set(project.layout.buildDirectory.file("mosaic-analysis/main/summary.json"))
       task.shardDirectory.set(shardDirectory)
-      task.dependsOn(compile)
+      task.invalidatedOutputs.from(project.layout.buildDirectory.dir("mosaic-analysis"))
+      task.invalidatedOutputs.from(project.layout.buildDirectory.dir("reports/mosaic-analysis"))
+      task.invalidatedOutputs.from(project.tasks.named("jar", Jar::class.java).flatMap { it.archiveFile })
+      task.dependsOn(compile, admission, cleanup)
     }
   }
-
-  private fun unsupportedCompilerOptions(taskCompile: KotlinJvmCompile): List<String> =
-    buildList {
-      taskCompile.pluginOptions.orNull.orEmpty().flatMap { it.allOptions().entries }.forEach { (id, options) ->
-        if (options.isNotEmpty() && id != "org.buildmosaic.analysis") add("plugin:$id:${options.size}")
-      }
-      taskCompile.compilerOptions.freeCompilerArgs.orNull.orEmpty().forEach { add("free:$it") }
-      taskCompile.compilerOptions.optIn.orNull.orEmpty().forEach { add("optIn:$it") }
-      if (taskCompile.compilerOptions.progressiveMode.orNull == true) add("progressiveMode")
-      if (taskCompile.compilerOptions.noJdk.orNull == true) add("noJdk")
-      taskCompile.compilerOptions.jvmDefault.orNull?.let { add("jvmDefault:$it") }
-      if (taskCompile.multiPlatformEnabled.orNull == true) add("multiPlatformEnabled")
-    }
 }
+
+private fun unsupportedCompilerOptions(taskCompile: KotlinJvmCompile): List<String> =
+  buildList {
+    taskCompile.pluginOptions.orNull.orEmpty().flatMap { it.allOptions().entries }.forEach { (id, options) ->
+      if (options.isNotEmpty() && id != "org.buildmosaic.analysis") add("plugin:$id:${options.size}")
+    }
+    taskCompile.compilerOptions.freeCompilerArgs.orNull.orEmpty().forEach { add("free:$it") }
+    taskCompile.compilerOptions.optIn.orNull.orEmpty().forEach { add("optIn:$it") }
+    if (taskCompile.compilerOptions.progressiveMode.orNull == true) add("progressiveMode")
+    if (taskCompile.compilerOptions.noJdk.orNull == true) add("noJdk")
+    taskCompile.compilerOptions.jvmDefault.orNull?.let { add("jvmDefault:$it") }
+    if (taskCompile.multiPlatformEnabled.orNull == true) add("multiPlatformEnabled")
+  }
 
 private fun unsupportedProjectPlugins(project: Project): List<String> =
   listOf(

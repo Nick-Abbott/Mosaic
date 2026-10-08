@@ -216,13 +216,14 @@ class Harness:
                 "mosaic.fixture.classpath": self.classpath(self.consumer),
                 "mosaic.compat.compiler.classpath": self.classpath(self.artifacts(config)),
                 "mosaic.compat.java": self.java,
+                "mosaic.compat.compiler.version": version,
                 "mosaic.compat.evidence": str(self.directory / label / "summaries"),
             }, r".*Test", r".*ObserverCompositionConsumerTest")
         area["suites"] = self.report["junit"]["selected"]["suites"]
 
     def metadata(self):
-        self.report["areas"]["metadata"]["suites"] = ["analysis-core Summary*Test (codec and wire corpus)"]
-        self.junit("metadata", "mosaic-analysis-core", {}, r".*Summary.*Test")
+        self.report["areas"]["metadata"]["suites"] = ["analysis-core Summary*Test and Compatibility*Test (contract and Runtime protocol)"]
+        self.junit("metadata", "mosaic-analysis-core", {}, r".*(Summary|Compatibility).*Test")
         self.report["areas"]["metadata"]["suites"] = self.report["junit"]["metadata"]["suites"]
 
     def compare(self):
@@ -282,9 +283,12 @@ def junit_results(directory):
 
 def semantic_summary(path):
     summary = json.loads(path.read_text())
-    # Header compiler provenance may legitimately differ; payloadHash is derived, not a semantic fact.
-    # Preserve every payload field, location, binary identity, unknown, format/semantics and array order.
-    return {k: v for k, v in summary.items() if k not in ("kotlinCompilerVersion", "payloadHash")}
+    # Only executing compiler provenance and its derived full-contract checksum may differ.
+    # Preserve Analysis identity, contract version, Runtime requirements and every payload fact.
+    summary.pop("integrityHash", None)
+    producer = summary.get("producer", {}).copy()
+    producer.pop("compilerVersion", None)
+    return dict(summary, producer=producer)
 
 
 def compare_summaries(control, selected):
@@ -293,10 +297,18 @@ def compare_summaries(control, selected):
     missing, extra = sorted(before.keys() - after.keys()), sorted(after.keys() - before.keys())
     changed = sorted(name for name in before.keys() & after.keys() if before[name] != after[name])
     passed = bool(before) and not (missing or extra or changed)
+
+    def producers(directory):
+        identities = {json.dumps(json.loads(p.read_text()).get("producer", {}), sort_keys=True)
+                      for p in directory.glob("*.json")}
+        return [json.loads(identity) for identity in sorted(identities)]
+
     return {"result": "pass" if passed else "fail", "controlSummaries": len(before), "selectedSummaries": len(after),
             "missing": missing, "extra": extra, "changed": changed,
-            "normalization": ["kotlinCompilerVersion header", "derived payloadHash"],
-            "preserved": ["contracts", "locations", "binary identities", "unknown boundaries", "limitations", "effect order"]}
+            "producerIdentities": {"control": producers(control), "selected": producers(selected)},
+            "normalization": ["producer.compilerVersion", "derived integrityHash"],
+            "preserved": ["contractVersion", "Runtime requirements", "producer.analysisVersion", "contracts", "locations",
+                          "binary identities", "unknown boundaries", "limitations", "effect order"]}
 
 
 def main():

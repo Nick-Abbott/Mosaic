@@ -97,6 +97,7 @@ import org.jetbrains.kotlin.ir.visitors.acceptChildrenVoid
 internal class SourceContractExtractor(
   private val moduleId: String,
   private val sourceRoot: String?,
+  private val extractionEnvironment: org.buildmosaic.analysis.ExtractionEnvironment,
 ) {
   private val limitations = mutableListOf<String>()
   private val freshTemplates = linkedMapOf<String, TileContract>()
@@ -272,6 +273,8 @@ internal class SourceContractExtractor(
         ModuleContract(moduleId, canvases, tiles, callables, overrides, keys),
         limitations.toList(),
         locators,
+        extractionEnvironment,
+        org.buildmosaic.analysis.SourceShardPaths.sourceHash(java.io.File(file.fileEntry.name)),
       )
     return shard
   }

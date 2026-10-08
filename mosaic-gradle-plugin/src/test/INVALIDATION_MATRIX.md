@@ -17,7 +17,10 @@ fixtures still invoke K2 as test infrastructure.
 | Dependency Canvas contract only | Application compilation unchanged | `UP_TO_DATE` | Verification reruns from transformed dependency summary |
 | Missing or malformed dependency summary | Application compilation unchanged | `UP_TO_DATE` | Unknown boundary or artifact error as configured |
 | All main Kotlin sources removed | Kotlin may report no sources | Assembles explicit empty module | No stale declarations |
-| Compilation failure with Mosaic edit | Fails | Does not run | Recovery build equals clean result |
+| Runtime descriptor or extractor/compiler artifact changes | Full normal compilation when shard environment differs | Assembles admitted requirements | Truthful new environment; incompatible capabilities fail admission |
+| Missing/stale current-source shard environment | Full normal compilation | Assembles | All current shards regenerated |
+| Compilation failure with Mosaic edit | Fails | Does not run | Trusted outputs removed; recovery equals clean result |
+| Present incompatible metadata under either role/enforcement | Does not run | Does not run | Admission fails and removes trusted outputs |
 
 The shard directory is a declared `compileKotlin` output. Assembly selects only
 shards whose relative IDs occur in the current source inventory; stale physical

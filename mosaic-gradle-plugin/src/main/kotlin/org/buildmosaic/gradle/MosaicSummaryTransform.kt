@@ -1,5 +1,6 @@
 package org.buildmosaic.gradle
 
+import org.buildmosaic.analysis.CompatibilityArtifacts
 import org.buildmosaic.analysis.SUMMARY_PATH
 import org.gradle.api.GradleException
 import org.gradle.api.artifacts.transform.CacheableTransform
@@ -26,9 +27,12 @@ internal abstract class MosaicSummaryTransform : TransformAction<TransformParame
       throw GradleException("Mosaic verification requires dependency JARs, not ${artifact.absolutePath}")
     }
     JarFile(artifact).use { jar ->
+      require(
+        jar.entries().asSequence().count { it.name == SUMMARY_PATH } <= 1,
+      ) { "Duplicate Mosaic packaged summaries" }
       val resource = jar.getJarEntry(SUMMARY_PATH) ?: return
       val output = outputs.file("${artifact.name}.mosaic-summary.json")
-      jar.getInputStream(resource).use { input -> output.outputStream().use(input::copyTo) }
+      jar.getInputStream(resource).use { input -> output.writeBytes(CompatibilityArtifacts.readBounded(input)) }
     }
   }
 }

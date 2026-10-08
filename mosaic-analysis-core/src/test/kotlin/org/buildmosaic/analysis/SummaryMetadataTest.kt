@@ -8,15 +8,14 @@ import kotlin.test.assertFailsWith
 class SummaryMetadataTest {
   @Test
   fun `H3 absent required metadata cannot acquire optimistic defaults`() {
-    val bytes = SummaryCodec.encode(ModuleContract("sample")).decodeToString()
+    val bytes = encodeFixtureSummary(ModuleContract("sample")).decodeToString()
     for (field in listOf(
       "complete",
-      "toolVersion",
-      "formatVersion",
-      "semanticsVersion",
+      "analysisVersion",
+      "contractVersion",
+      "compilerVersion",
       "moduleId",
-      "payloadHash",
-      "kotlinCompilerVersion",
+      "integrityHash",
       "sourceSet",
     )) {
       val partial = bytes.replace(Regex("\"$field\":(?:\"[^\"]*\"|true|[0-9]+),?"), "").replace(",}", "}")
@@ -25,9 +24,8 @@ class SummaryMetadataTest {
     assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(bytes.replace("\"payload\":", "\"missingPayload\":").toByteArray())
     }
-    assertFailsWith<IllegalArgumentException> {
-      SummaryCodec.decode(bytes.replace("2.4.20", "2.2.10").toByteArray())
-    }
+    val otherCompiler = withIntegrityHash(bytes.replace("2.4.20", "2.2.10"))
+    assertEquals("2.2.10", SummaryCodec.decode(otherCompiler.toByteArray()).producer.compilerVersion)
   }
 
   @Test
@@ -59,7 +57,7 @@ class SummaryMetadataTest {
     val expression = CanvasExpression.WithEffects(listOf(initialize, Effect.Unknown("later", "unknown", site)), call)
     val contract = CanvasContract("entry", result = expression, site = site)
     val module = ModuleContract("ordered", canvases = listOf(contract))
-    val restored = SummaryCodec.decode(SummaryCodec.encode(module)).module
+    val restored = SummaryCodec.decode(encodeFixtureSummary(module)).module
     assertEquals(module, restored)
     val plan = restored.canvases.single().result as CanvasExpression.WithEffects
     assertEquals(listOf("allocation", "later"), plan.effects.map { it.id })
@@ -68,18 +66,18 @@ class SummaryMetadataTest {
 
   @Test
   fun `invalid summaries are rejected`() {
-    val bytes = SummaryCodec.encode(ModuleContract("sample")).decodeToString()
+    val bytes = encodeFixtureSummary(ModuleContract("sample")).decodeToString()
     assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(bytes.replace("\"complete\":true", "\"complete\":false").toByteArray())
     }
     assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(
-        bytes.replace("\"semanticsVersion\":\"analysis-contract-3\"", "\"semanticsVersion\":\"other\"").toByteArray(),
+        bytes.replace("\"contractVersion\":6", "\"contractVersion\":7").toByteArray(),
       )
     }
     assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(
-        bytes.replace("\"toolVersion\":\"prototype-11\"", "\"toolVersion\":\"\"").toByteArray(),
+        bytes.replace("\"analysisVersion\":\"fixture-analysis\"", "\"analysisVersion\":\"\"").toByteArray(),
       )
     }
     assertFailsWith<IllegalArgumentException> {

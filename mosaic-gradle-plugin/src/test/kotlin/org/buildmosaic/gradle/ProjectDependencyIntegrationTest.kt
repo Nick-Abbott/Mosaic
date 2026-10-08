@@ -44,7 +44,7 @@ class ProjectDependencyIntegrationTest {
         dependencies {
           implementation(files("${coreJar.invariantSeparatorsPath}"))
           implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
-          ${if (name == "consumer") "implementation(project(\":producer\"))" else ""}
+          ${if (name == "consumer") "implementation(project(\":producer\"))" else "runtimeOnly(project(\":consumer\"))"}
         }
         mosaicAnalysis {
           ${if (name == "producer") "role = org.buildmosaic.gradle.MosaicAnalysisRole.LIBRARY" else "roots.add(\"consumer.entry()\")"}

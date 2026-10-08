@@ -331,11 +331,12 @@ class BinaryDependencyIntegrationTest {
     appBuildFile.writeText(explicitBuildText)
     rewriteSummary(platformJar, "{malformed".toByteArray())
     val malformed = run(app, "verifyMosaicMain", expectFailure = true)
-    val malformedReport = File(app, "build/reports/mosaic-analysis/main.txt").readText()
-    assertEquals(TaskOutcome.FAILED, malformed.task(":verifyMosaicMain")?.outcome)
-    assertEquals(TaskOutcome.UP_TO_DATE, malformed.task(":extractMosaicMain")?.outcome)
-    assertTrue(malformedReport.contains("Artifact metadata error"), malformedReport)
-    assertTrue(malformedReport.contains("invalid Mosaic summary"), malformedReport)
+    assertEquals(TaskOutcome.FAILED, malformed.task(":admitMosaicMain")?.outcome)
+    assertEquals(null, malformed.task(":extractMosaicMain")?.outcome)
+    assertTrue(malformed.output.contains("Mosaic compatibility failure"), malformed.output)
+    assertFalse(File(app, "build/reports/mosaic-analysis/main.txt").exists())
+    assertFalse(File(app, "build/mosaic-analysis/main/summary.json").exists())
+    assertFalse(jar(app).exists())
     platformJar.writeBytes(completeBytes)
   }
 }

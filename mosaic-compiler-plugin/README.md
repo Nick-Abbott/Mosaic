@@ -75,7 +75,15 @@ internal incremental state, keyed by paths relative to `src/main/kotlin`; they
 are not a public metadata format. After an incremental IR invocation, the
 compiler plugin removes obsolete shard files. A current-source manifest selects
 only current shards for assembly, including when Kotlin has no sources and does
-not invoke the plugin. The summary header determines compatibility; see the
+not invoke the plugin. Shard version 3 records producer identity, actual extractor/compiler artifact
+fingerprints, selected Runtime requirements, and a source-content hash. Assembly
+cannot promote stale sources or mix environments. Direct K2 invocation reads
+Runtime descriptors and present dependency summaries from actual compiler
+classpath roots before registering extraction. A caller-supplied context must
+match the independently derived environment; it cannot bypass admission. Unknown
+Runtime semantics remove successful output and fail compilation. Complete mode
+records the actual executing compiler and generated Analysis artifact version.
+The summary header determines compatibility; see the
 [accepted metadata contract](../mosaic-analysis-core/README.md#binary-metadata).
 Regenerate incompatible dependency summaries with the supported Mosaic analysis
 toolchain before consuming them.
