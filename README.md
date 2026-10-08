@@ -158,6 +158,15 @@ leaving the block cancels unfinished work and waits for cleanup.
 The [complete quick start](https://BuildMosaic.org/start/quick-start/)
 covers application setup, resource ownership, and runtime requirements.
 
+## 🔗 **Compatibility**
+
+Starting with 1.0.0, Mosaic 1.x supports Kotlin/JVM on Java 17+. Kotlin minor
+families receive an 18-month certification/support window from their first stable
+`.0` release. Runtime and optional Analysis are independently versioned. Find
+supported Kotlin versions and compatible Runtime/Analysis combinations in the
+[compatibility reference](https://BuildMosaic.org/reference/compatibility/).
+These guarantees do not apply to published 0.x artifacts.
+
 ## 🗺️ **Your Code, Your Architecture**
 
 Your Tile graph is already an architecture model. The optional analysis plugin

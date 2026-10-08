@@ -32,7 +32,13 @@ Both Runtime and Analysis support stable Kotlin minor families for **18 months f
 
 After 18 months, routine testing may stop and new releases need not support that family. Existing artifacts remain available; older Kotlin versions may still work without a guarantee. Support expiry does not require a Mosaic major release and does not relax Runtime public API or JVM binary guarantees.
 
-Stable Kotlin releases are discovered automatically. The **machine-readable compatibility registry is authoritative for exact patch-version certification**. Published matrices derive from it and cover Runtime ↔ Kotlin compiler, Analysis ↔ Kotlin compiler/KGP, and Runtime ↔ Analysis compatibility. Analysis automatically selects a compatible compiler extractor. Extractor replacement or consolidation requires passing the complete certification matrix covered by the replaced binaries.
+Stable Kotlin releases are discovered and certified automatically. Analysis automatically selects a compatible compiler extractor. Extractor replacement or consolidation requires passing every previously certified combination covered by the replaced binaries.
+
+The **machine-readable certification registry is authoritative for exact patch versions and complete combinations**. It retains the independent Runtime/compiler, Analysis/compiler/KGP, and Runtime/Analysis relationships, and certifies complete Runtime + Analysis + Kotlin compiler/KGP combinations. Pairwise compatibility alone does not prove a complete combination. Support is never inferred for untested patches from version ranges; versions are grouped only when compatibility, certification, and support status are identical.
+
+The website provides **one unified compatibility view**, with a lookup and an accessible static representation for browsing. Given a Runtime version and Kotlin compiler version, it shows certification/support status, KGP versions where relevant, and compatible optional Analysis versions. Runtime-only consumers need not choose Analysis. The website view and any generated README compatibility summary derive from the same registry; there is no independently maintained compatibility data.
+
+The registry distinguishes **certified and actively supported**, **previously certified but outside the support window**, **not certified**, and **explicitly incompatible**. Expired support does not imply breakage, and previously published release compatibility remains discoverable.
 
 ## Release trains and module alignment
 
