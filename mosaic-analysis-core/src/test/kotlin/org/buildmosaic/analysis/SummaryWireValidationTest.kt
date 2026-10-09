@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 class SummaryWireValidationTest {
   @Test
   fun `unsupported contract versions and legacy formats are rejected with regeneration guidance`() {
-    val text = SummaryCodec.encode(ModuleContract("sample")).decodeToString()
+    val text = SummaryCodec.encode(ModuleContract("sample"), coreAnalysisRevisions = setOf(1)).decodeToString()
     for (header in listOf("\"contractVersion\":5", "\"contractVersion\":999", "\"formatVersion\":5")) {
       val unsupported = text.replace("\"contractVersion\":6", header)
       val error = assertFailsWith<IllegalArgumentException> { SummaryCodec.decode(unsupported.toByteArray()) }
@@ -28,11 +28,20 @@ class SummaryWireValidationTest {
     val first =
       TileContract("a", listOf(Effect.Unknown("first", "reason", site), Effect.Unknown("second", "reason", site)), site)
     val second = TileContract("b", emptyList(), site)
-    val ordered = SummaryCodec.encode(ModuleContract("sample", tiles = listOf(first, second)))
-    val reverseDeclarations = SummaryCodec.encode(ModuleContract("sample", tiles = listOf(second, first)))
+    val ordered =
+      SummaryCodec.encode(
+        ModuleContract("sample", tiles = listOf(first, second)),
+        coreAnalysisRevisions = setOf(1),
+      )
+    val reverseDeclarations =
+      SummaryCodec.encode(
+        ModuleContract("sample", tiles = listOf(second, first)),
+        coreAnalysisRevisions = setOf(1),
+      )
     val reverseEffects =
       SummaryCodec.encode(
         ModuleContract("sample", tiles = listOf(first.copy(effects = first.effects.reversed()), second)),
+        coreAnalysisRevisions = setOf(1),
       )
     assertTrue(ordered.contentEquals(reverseDeclarations))
     assertTrue(!ordered.contentEquals(reverseEffects))
@@ -59,7 +68,10 @@ class SummaryWireValidationTest {
     val before = MosaicAnalyzer().analyze(AnalysisRequest(module, roots = listOf(root)))
     val after =
       MosaicAnalyzer().analyze(
-        AnalysisRequest(SummaryCodec.decode(SummaryCodec.encode(module)).module, roots = listOf(root)),
+        AnalysisRequest(
+          SummaryCodec.decode(SummaryCodec.encode(module, coreAnalysisRevisions = setOf(1))).module,
+          roots = listOf(root),
+        ),
       )
     assertEquals(before, after)
     assertTrue(before.findings.isNotEmpty())
@@ -73,7 +85,7 @@ class SummaryWireValidationTest {
         "sample",
         tiles = listOf(TileContract("tile", listOf(Effect.Unknown("unknown", "reason", site)), site)),
       )
-    val text = SummaryCodec.encode(module).decodeToString()
+    val text = SummaryCodec.encode(module, coreAnalysisRevisions = setOf(1)).decodeToString()
     val mutated = withPayloadHash(text.replace("\"kind\":\"unknown\"", "\"kind\":\"futureEffect\""))
     val error = assertFailsWith<IllegalArgumentException> { SummaryCodec.decode(mutated.toByteArray()) }
     assertTrue(error.message.orEmpty().contains("futureEffect"), error.message)
@@ -81,7 +93,7 @@ class SummaryWireValidationTest {
 
   @Test
   fun `checksum corruption and truncated JSON are rejected`() {
-    val text = SummaryCodec.encode(ModuleContract("sample")).decodeToString()
+    val text = SummaryCodec.encode(ModuleContract("sample"), coreAnalysisRevisions = setOf(1)).decodeToString()
     val corrupt = text.replace(Regex("\"payloadHash\":\"[0-9a-f]+\""), "\"payloadHash\":\"invalid\"")
     val error = assertFailsWith<IllegalArgumentException> { SummaryCodec.decode(corrupt.toByteArray()) }
     assertTrue(error.message.orEmpty().contains("payload hash mismatch"))

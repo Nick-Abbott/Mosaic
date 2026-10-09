@@ -19,6 +19,7 @@ import kotlinx.serialization.Serializable
   val module: WireModule,
   val limitations: List<String>,
   val binaryLocators: List<WireLocator>,
+  val coreAnalysisRevisions: List<Int>,
 )
 
 @Serializable internal data class WireLocator(val id: String, val locator: String)

@@ -8,7 +8,7 @@ import kotlin.test.assertFailsWith
 class SummaryMetadataTest {
   @Test
   fun `H3 absent required metadata cannot acquire optimistic defaults`() {
-    val bytes = SummaryCodec.encode(ModuleContract("sample")).decodeToString()
+    val bytes = SummaryCodec.encode(ModuleContract("sample"), coreAnalysisRevisions = setOf(1)).decodeToString()
     for (field in listOf(
       "complete",
       "analysisVersion",
@@ -58,7 +58,7 @@ class SummaryMetadataTest {
     val expression = CanvasExpression.WithEffects(listOf(initialize, Effect.Unknown("later", "unknown", site)), call)
     val contract = CanvasContract("entry", result = expression, site = site)
     val module = ModuleContract("ordered", canvases = listOf(contract))
-    val bytes = SummaryCodec.encode(module).decodeToString()
+    val bytes = SummaryCodec.encode(module, coreAnalysisRevisions = setOf(1)).decodeToString()
     val original = SummaryCodec.decode(bytes.toByteArray())
     for (producer in listOf(
       original.producer.copy(compilerVersion = "2.2.10"),
@@ -79,8 +79,28 @@ class SummaryMetadataTest {
   }
 
   @Test
+  fun `semantic requirements are required hash covered and independently admitted`() {
+    val module = ModuleContract("sample")
+    val bytes = SummaryCodec.encode(module, coreAnalysisRevisions = setOf(1)).decodeToString()
+    assertEquals(setOf(1), SummaryCodec.decode(bytes.toByteArray()).coreAnalysisRevisions)
+    assertFailsWith<IllegalArgumentException> {
+      SummaryCodec.decode(bytes.replace("\"coreAnalysisRevisions\":[1]", "\"coreAnalysisRevisions\":[2]").toByteArray())
+    }
+    for (requirements in listOf(emptySet(), setOf(2), setOf(1, 2))) {
+      val failure =
+        assertFailsWith<IllegalArgumentException> {
+          SummaryCodec.decode(SummaryCodec.encode(module, coreAnalysisRevisions = requirements))
+        }
+      kotlin.test.assertTrue(failure.message.orEmpty().contains("Mosaic Core"), failure.message)
+    }
+    assertFailsWith<IllegalArgumentException> {
+      SummaryCodec.decode(bytes.replace("coreAnalysisRevisions", "missingRevisions").toByteArray())
+    }
+  }
+
+  @Test
   fun `invalid summaries are rejected`() {
-    val bytes = SummaryCodec.encode(ModuleContract("sample")).decodeToString()
+    val bytes = SummaryCodec.encode(ModuleContract("sample"), coreAnalysisRevisions = setOf(1)).decodeToString()
     assertFailsWith<IllegalArgumentException> {
       SummaryCodec.decode(bytes.replace("\"complete\":true", "\"complete\":false").toByteArray())
     }

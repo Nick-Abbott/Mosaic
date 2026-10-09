@@ -94,7 +94,10 @@ fingerprint. Only paths for current source shards are declared as task inputs.
 If all Kotlin sources are removed, it emits an explicit empty complete summary
 without invoking Mosaic’s compiler plugin, even if `compileKotlin` reports
 `NO_SOURCE` and leaves physical shards behind. A missing current shard or
-malformed shard fails assembly.
+malformed shard fails assembly. Every current shard must have been extracted
+under the selected Core semantic revision; stale or mixed revisions fail.
+Assembly retains dependency semantic requirements in the packaged payload,
+including for an empty source set.
 `jar` embeds the complete summary at
 `META-INF/mosaic-analysis/v1/summary.json`. `verifyMosaicMain` reads that local
 summary and selected dependency summaries, writes
@@ -126,11 +129,27 @@ selected dependency summaries, so it launches no separate compiler process.
 
 ## Incremental and cache behavior
 
+The selected Core JAR declares `Mosaic-Core-Analysis-Revision`; Analysis
+understands exactly revision 1, independently of release versions. Missing,
+malformed, ambiguous, unsupported, or conflicting compile/runtime Core semantics
+fail packaging, verification, and graph generation in both enforcement modes.
+Consumed summaries must also retain only understood semantic requirements.
+`NO_SOURCE` preserves these checks without fabricating compiler execution.
+
+The selected revision is an explicit compiler-plugin option. Changing it
+invalidates Kotlin's incremental state and re-extracts every current source,
+unless an exact complete compilation cache entry is restored. Changing only the
+Core release number adds no semantic invalidation. Current shards and selected
+semantics participate in assembly inputs; metadata bodies remain downstream
+verification and graph inputs.
+
 Dependency contract invalidation is separate from source compilation.
 Verification reads the raw summary resource copied by a cacheable per-JAR
 artifact transform. A dependency Mosaic contract change reruns verification
 without forcing unchanged application source extraction. A JAR without the
-resource produces no summary; a present malformed resource fails verification.
+resource produces no summary. Assembly validates present dependency summaries
+before retaining their semantic requirements, so malformed metadata fails
+packaging as well as verification and graph generation.
 Kotlin’s own incremental compilation handles public constants, typealiases,
 inline bodies, and other source-resolution changes. Mosaic does no additional
 source-resolution fingerprinting or separate K2 compilation.

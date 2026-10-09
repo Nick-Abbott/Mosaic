@@ -117,10 +117,19 @@ supported Mosaic analysis toolchain before consuming them. Construction-time req
 and optional lookups use `REQUIRED` and `OPTIONAL`. Older formats are rejected
 with regeneration guidance.
 
+`payload.coreAnalysisRevisions` records every retained Core semantic requirement.
+Analysis admits revisions by explicit membership and understands exactly revision 1.
+Core declares that revision in its JAR manifest as
+`Mosaic-Core-Analysis-Revision: 1`. Release numbers and producer identities do not
+determine semantic admission. Keep the revision when changes preserve older
+analyzers' soundness; change it when an older analyzer could interpret Core
+operations incorrectly, such as treating a conditional registration as unconditional.
+Admission does not establish full Runtime binary or toolchain compatibility.
+
 `payloadHash` is lowercase SHA-256 of the canonical compact UTF-8 JSON
-serialization of the entire `payload` object (module, limitations, and binary
-locators), without the envelope or hash field. It detects corruption; it does
-not authenticate a producer or serve as a build-cache fingerprint. Missing
+serialization of the entire `payload` object (module, limitations, binary
+locators, and Core semantic requirements), without the envelope or hash field.
+It detects corruption; it does not authenticate a producer or serve as a build-cache fingerprint. Missing
 required fields, unknown kinds, partial output, and checksum mismatches fail
 decoding.
 

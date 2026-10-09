@@ -57,9 +57,12 @@ tasks.jar {
 
 tasks.test {
   useJUnitPlatform()
-  dependsOn(tasks.jar)
+  dependsOn(tasks.jar, ":mosaic-core:jar")
   val fixtureArguments = objects.newInstance<CompilerFixtureArguments>()
   fixtureArguments.pluginJar.set(tasks.jar.flatMap { it.archiveFile })
-  fixtureArguments.fixtureClasspath.from(classpath)
+  fixtureArguments.fixtureClasspath.from(classpath.filter { !it.path.contains("mosaic-core/build/classes") })
+  fixtureArguments.fixtureClasspath.from(
+    project(":mosaic-core").layout.buildDirectory.file("libs/mosaic-core-${project.version}.jar"),
+  )
   jvmArgumentProviders.add(fixtureArguments)
 }

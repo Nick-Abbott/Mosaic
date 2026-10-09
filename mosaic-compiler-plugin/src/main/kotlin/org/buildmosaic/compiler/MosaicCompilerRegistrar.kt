@@ -1,7 +1,10 @@
 package org.buildmosaic.compiler
 
 import org.buildmosaic.analysis.ANALYSIS_KOTLIN_VERSION
+import org.buildmosaic.analysis.CoreAnalysisRevision
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
+import org.jetbrains.kotlin.cli.common.CLIConfigurationKeys
+import org.jetbrains.kotlin.cli.jvm.config.JvmClasspathRoot
 import org.jetbrains.kotlin.compiler.plugin.AbstractCliOption
 import org.jetbrains.kotlin.compiler.plugin.CliOption
 import org.jetbrains.kotlin.compiler.plugin.CommandLineProcessor
@@ -15,6 +18,7 @@ internal val outputKey = CompilerConfigurationKey<String>("Mosaic analysis outpu
 internal val moduleKey = CompilerConfigurationKey<String>("Mosaic analysis module identity")
 internal val probeKey = CompilerConfigurationKey<String>("Mosaic IR shape probe")
 internal val sourceRootKey = CompilerConfigurationKey<String>("Mosaic supported source root")
+internal val revisionKey = CompilerConfigurationKey<String>("Mosaic selected Core semantic revision")
 internal val modeKey = CompilerConfigurationKey<String>("Mosaic output mode")
 
 @OptIn(ExperimentalCompilerApi::class)
@@ -50,6 +54,13 @@ class MosaicCommandLineProcessor : CommandLineProcessor {
         required = false,
         allowMultipleOccurrences = false,
       ),
+      CliOption(
+        "coreRevision",
+        "Internal semantic compilation input",
+        "Core revision",
+        required = false,
+        allowMultipleOccurrences = false,
+      ),
       CliOption("mode", "Mosaic output mode", "complete or shards", required = false, allowMultipleOccurrences = false),
     )
 
@@ -63,6 +74,7 @@ class MosaicCommandLineProcessor : CommandLineProcessor {
       "module" -> configuration.put(moduleKey, value)
       "probe" -> configuration.put(probeKey, value)
       "sourceRoot" -> configuration.put(sourceRootKey, value)
+      "coreRevision" -> configuration.put(revisionKey, value)
       "mode" -> configuration.put(modeKey, value)
       else -> error("Unknown Mosaic compiler option ${option.optionName}")
     }
@@ -77,7 +89,21 @@ class MosaicCompilerRegistrar : CompilerPluginRegistrar() {
   override fun ExtensionStorage.registerExtensions(configuration: CompilerConfiguration) {
     val supportedVersion = Regex("${Regex.escape(ANALYSIS_KOTLIN_VERSION)}(?:-release-[0-9]+)?")
     require(KotlinCompilerVersion.VERSION.matches(supportedVersion)) {
-      "Mosaic analysis requires Kotlin compiler $ANALYSIS_KOTLIN_VERSION; found ${KotlinCompilerVersion.VERSION}"
+      "Mosaic analysis requires Kotlin compiler $ANALYSIS_KOTLIN_VERSION; " +
+        "found ${KotlinCompilerVersion.VERSION}"
+    }
+    val revision =
+      requireNotNull(
+        CoreAnalysisRevision.selected(
+          configuration.getList(
+            CLIConfigurationKeys.CONTENT_ROOTS,
+          ).filterIsInstance<JvmClasspathRoot>().map { it.file },
+        ),
+      )
+    configuration.get(revisionKey)?.let { expected ->
+      require(expected == revision.toString()) {
+        "Mosaic Core revision compiler input $expected disagrees with actual selected Core revision $revision"
+      }
     }
     val mode = configuration.get(modeKey) ?: "complete"
     require(mode == "complete" || mode == "shards") { "Unsupported Mosaic compiler output mode $mode" }
@@ -88,6 +114,7 @@ class MosaicCompilerRegistrar : CompilerPluginRegistrar() {
         requireNotNull(configuration.get(moduleKey)),
         configuration.get(sourceRootKey),
         mode == "shards",
+        revision,
       ),
     )
     configuration.get(probeKey)?.let { IrGenerationExtension.registerExtension(MosaicIrProbe(it)) }
