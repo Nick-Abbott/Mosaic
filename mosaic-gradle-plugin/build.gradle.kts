@@ -36,6 +36,7 @@ dependencies {
   testImplementation(project(":mosaic-core"))
   testImplementation(project(":mosaic-compiler-plugin"))
   testImplementation(gradleTestKit())
+  testImplementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:${libs.versions.kotlin.get()}")
   testImplementation(kotlin("test"))
 }
 

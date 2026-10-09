@@ -160,6 +160,8 @@ class MosaicAnalysisPlugin : KotlinCompilerPluginSupportPlugin {
         task.group = "verification"
         task.description = "Verify selected Mosaic main roots against selected dependency summaries"
         task.summaryFile.set(extract.flatMap { it.summaryFile })
+        task.coreCompileArtifacts.from(coreCompileArtifacts)
+        task.coreRuntimeArtifacts.from(coreRuntimeArtifacts)
         task.dependencyArtifacts.from(project.configurations.getByName("compileClasspath"))
         task.dependencySummaries.from(dependencySummaries)
         task.roots.set(extension.roots)
@@ -173,6 +175,8 @@ class MosaicAnalysisPlugin : KotlinCompilerPluginSupportPlugin {
       task.group = "documentation"
       task.description = "Render local Mosaic contracts and selected root findings as a Mermaid graph"
       task.summaryFile.set(extract.flatMap { it.summaryFile })
+      task.coreCompileArtifacts.from(coreCompileArtifacts)
+      task.coreRuntimeArtifacts.from(coreRuntimeArtifacts)
       task.dependencyArtifacts.from(project.configurations.getByName("compileClasspath"))
       task.dependencySummaries.from(dependencySummaries)
       task.roots.set(extension.roots)
