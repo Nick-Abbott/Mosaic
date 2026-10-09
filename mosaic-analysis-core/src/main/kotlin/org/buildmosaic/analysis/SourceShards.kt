@@ -63,6 +63,7 @@ data class SourceShard(
   val module: ModuleContract,
   val limitations: List<String> = emptyList(),
   val binaryLocators: Map<String, String> = emptyMap(),
+  val coreAnalysisRevision: Int,
 )
 
 @Serializable
@@ -73,6 +74,8 @@ private data class ShardEnvelope(
 )
 
 object SourceShardCodec {
+  private const val SHARD_VERSION = 3
+
   private val json =
     Json {
       classDiscriminator = "kind"
@@ -87,27 +90,43 @@ object SourceShardCodec {
         shard.module.toWire(),
         shard.limitations.distinct().sorted(),
         shard.binaryLocators.toSortedMap().map { (id, locator) -> WireLocator(id, locator) },
+        listOf(shard.coreAnalysisRevision),
       )
-    return (json.encodeToString(ShardEnvelope(2, shard.sourceId, payload)) + "\n").toByteArray(Charsets.UTF_8)
+    val envelope = ShardEnvelope(SHARD_VERSION, shard.sourceId, payload)
+    return (json.encodeToString(envelope) + "\n").toByteArray(Charsets.UTF_8)
   }
 
   fun decode(bytes: ByteArray): SourceShard {
     val raw = bytes.toString(Charsets.UTF_8)
     require(raw.toByteArray(Charsets.UTF_8).contentEquals(bytes)) { "Malformed Mosaic shard UTF-8" }
     val envelope = json.decodeFromString<ShardEnvelope>(raw)
-    require(envelope.shardVersion == 2) { "Unsupported Mosaic shard version ${envelope.shardVersion}" }
+    require(envelope.shardVersion == SHARD_VERSION) { "Unsupported Mosaic shard version ${envelope.shardVersion}" }
     SourceShardPaths.checkSourceId(envelope.sourceId)
     val locators = linkedMapOf<String, String>()
     envelope.payload.binaryLocators.forEach {
       require(locators.putIfAbsent(it.id, it.locator) == null) { "Duplicate Mosaic shard locator ${it.id}" }
     }
-    return SourceShard(envelope.sourceId, envelope.payload.module.toModel(), envelope.payload.limitations, locators)
+    val revision =
+      requireNotNull(envelope.payload.coreAnalysisRevisions.singleOrNull()) {
+        "Mosaic shard must record exactly one observed Core analysis revision"
+      }
+    return SourceShard(
+      envelope.sourceId,
+      envelope.payload.module.toModel(),
+      envelope.payload.limitations,
+      locators,
+      revision,
+    )
   }
 
   fun assemble(
     moduleId: String,
     shards: Collection<SourceShard>,
+    coreAnalysisRevision: Int,
+    dependencyRevisions: Set<Int> = emptySet(),
   ): ByteArray {
+    val requirements = dependencyRevisions + coreAnalysisRevision
+    CoreAnalysisRevision.requireUnderstood(requirements)
     val ids = mutableSetOf<String>()
     val canvases = mutableListOf<CanvasContract>()
     val tiles = mutableListOf<TileContract>()
@@ -125,6 +144,10 @@ object SourceShardCodec {
       require(ids.add("$kind:$id")) { "Duplicate local Mosaic $kind owner $id" }
     }
     shards.sortedBy { it.sourceId }.forEach { shard ->
+      require(shard.coreAnalysisRevision == coreAnalysisRevision) {
+        "Stale or mixed Mosaic Core analysis revision in ${shard.sourceId}: " +
+          "observed ${shard.coreAnalysisRevision}, selected $coreAnalysisRevision. Recompile all current sources."
+      }
       require(sources.add(shard.sourceId)) { "Duplicate Mosaic source shard ${shard.sourceId}" }
       require(shard.module.id == moduleId) { "Mosaic shard module mismatch in ${shard.sourceId}" }
       shard.module.canvases.forEach {
@@ -156,6 +179,7 @@ object SourceShardCodec {
       ModuleContract(moduleId, canvases, tiles, callables, overrides, keys),
       limitations = limitations.distinct().sorted(),
       binaryLocators = locators,
+      coreAnalysisRevisions = requirements,
     )
   }
 }

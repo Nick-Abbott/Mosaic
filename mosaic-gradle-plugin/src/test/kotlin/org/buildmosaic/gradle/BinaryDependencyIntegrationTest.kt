@@ -274,6 +274,10 @@ class BinaryDependencyIntegrationTest {
       assertFalse(bindings.any { it.key.toString().contains("PlatformConfig") })
     }
     assertEquals(adapterHash, sha256(adapterJar))
+    val changedSummary =
+      JarFile(platformJar).use { archive ->
+        archive.getInputStream(archive.getJarEntry(SUMMARY_PATH)).readBytes()
+      }
     val broken = run(app, "build", expectFailure = true)
     val brokenReport = File(app, "build/reports/mosaic-analysis/main.txt").readText()
     assertEquals(TaskOutcome.FAILED, broken.task(":verifyMosaicMain")?.outcome)
@@ -305,6 +309,16 @@ class BinaryDependencyIntegrationTest {
     assertEquals(initialReport, File(app, "build/reports/mosaic-analysis/main.txt").readText())
 
     val completeBytes = platformJar.readBytes()
+    run(app, "mosaicGraph")
+    val originalGraph = File(app, "build/reports/mosaic-analysis/graph.md").readText()
+    rewriteSummary(platformJar, changedSummary)
+    val metadataOnly = run(app, "mosaicGraph verifyMosaicMain", expectFailure = true)
+    assertEquals(TaskOutcome.UP_TO_DATE, metadataOnly.task(":compileKotlin")?.outcome)
+    assertEquals(TaskOutcome.UP_TO_DATE, metadataOnly.task(":extractMosaicMain")?.outcome)
+    assertEquals(TaskOutcome.SUCCESS, metadataOnly.task(":mosaicGraph")?.outcome)
+    assertEquals(TaskOutcome.FAILED, metadataOnly.task(":verifyMosaicMain")?.outcome)
+    assertNotEquals(originalGraph, File(app, "build/reports/mosaic-analysis/graph.md").readText())
+    platformJar.writeBytes(completeBytes)
     appBuildFile.writeText(explicitBuildText)
     rewriteSummary(platformJar, null)
     val missingMetadata = run(app, "verifyMosaicMain", expectFailure = true)
@@ -331,11 +345,10 @@ class BinaryDependencyIntegrationTest {
     appBuildFile.writeText(explicitBuildText)
     rewriteSummary(platformJar, "{malformed".toByteArray())
     val malformed = run(app, "verifyMosaicMain", expectFailure = true)
-    val malformedReport = File(app, "build/reports/mosaic-analysis/main.txt").readText()
-    assertEquals(TaskOutcome.FAILED, malformed.task(":verifyMosaicMain")?.outcome)
-    assertEquals(TaskOutcome.UP_TO_DATE, malformed.task(":extractMosaicMain")?.outcome)
-    assertTrue(malformedReport.contains("Artifact metadata error"), malformedReport)
-    assertTrue(malformedReport.contains("invalid Mosaic summary"), malformedReport)
+    assertEquals(TaskOutcome.FAILED, malformed.task(":extractMosaicMain")?.outcome)
+    assertEquals(TaskOutcome.UP_TO_DATE, malformed.task(":compileKotlin")?.outcome)
+    assertEquals(null, malformed.task(":verifyMosaicMain")?.outcome)
+    assertTrue(malformed.output.contains("invalid Mosaic summary"), malformed.output)
     platformJar.writeBytes(completeBytes)
   }
 }

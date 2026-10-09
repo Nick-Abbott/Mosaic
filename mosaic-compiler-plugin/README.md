@@ -69,6 +69,12 @@ the newest helper body into an already compiled caller.
 
 ## Incremental compiler integration and metadata
 
+Before interpreting Mosaic IR, the compiler validates the manifest revision of
+the actual Core on its compilation classpath, including in direct K2 fixtures.
+Each shard records that observed revision. A private compiler option carries the
+selected revision as a Kotlin incremental compilation input and is checked
+against the actual artifact; it cannot override admission.
+
 The Gradle plugin assembles deterministic UTF-8 JSON at
 `META-INF/mosaic-analysis/v1/summary.json` for packaging. Source shards are
 internal incremental state, keyed by paths relative to `src/main/kotlin`; they

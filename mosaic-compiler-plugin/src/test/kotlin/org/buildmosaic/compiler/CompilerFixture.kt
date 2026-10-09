@@ -37,9 +37,14 @@ private fun compileFixture(
   summary: File?,
   output: File?,
   moduleId: String,
+  coreArtifact: File? = null,
+  expectedRevision: String? = null,
 ) {
   val classpath =
-    System.getProperty("mosaic.fixture.classpath") + (
+    System.getProperty("mosaic.fixture.classpath").split(File.pathSeparator).filterNot { entry ->
+      coreArtifact != null && File(entry).isFile && entry.endsWith(".jar") &&
+        java.util.jar.JarFile(entry).use { it.getJarEntry("org/buildmosaic/core/injection/Canvas.class") != null }
+    }.let { entries -> (entries + listOfNotNull(coreArtifact?.absolutePath)).joinToString(File.pathSeparator) } + (
       dependency?.let {
         File.pathSeparator + it.absolutePath
       } ?: ""
@@ -59,6 +64,7 @@ private fun compileFixture(
     args += "-Xplugin=${System.getProperty("mosaic.plugin.jar")}"
     args += listOf("-P", "plugin:org.buildmosaic.analysis:output=${summary.absolutePath}")
     args += listOf("-P", "plugin:org.buildmosaic.analysis:module=$moduleId")
+    if (expectedRevision != null) args += listOf("-P", "plugin:org.buildmosaic.analysis:coreRevision=$expectedRevision")
     if (output != null) args += listOf("-P", "plugin:org.buildmosaic.analysis:probe=${output.absolutePath}")
   }
   args += sources.map { it.absolutePath }
@@ -112,15 +118,33 @@ private fun compileIsolated(
   summary?.let { it.copyTo(File(evidence, "$name.json")) }
 }
 
+internal fun compileSources(
+  sources: List<File>,
+  destination: File,
+) {
+  compileFixture(sources, destination, null, null, null, "fixture")
+}
+
 internal fun compileAndExtract(
   sources: List<File>,
   directory: File,
   moduleId: String,
   dependency: File? = null,
+  coreArtifact: File? = null,
+  expectedRevision: String? = null,
 ): ModuleContract {
   directory.mkdirs()
   val summary = File(directory, "summary.json")
-  compileFixture(sources, File(directory, "classes"), dependency, summary, null, moduleId)
+  compileFixture(
+    sources,
+    File(directory, "classes"),
+    dependency,
+    summary,
+    null,
+    moduleId,
+    coreArtifact,
+    expectedRevision,
+  )
   return SummaryCodec.decode(summary.readBytes()).module
 }
 
@@ -128,8 +152,9 @@ internal fun jarClasses(
   classes: File,
   output: File,
   summary: File? = null,
+  manifest: java.util.jar.Manifest? = null,
 ) {
-  JarOutputStream(output.outputStream()).use { jar ->
+  (manifest?.let { JarOutputStream(output.outputStream(), it) } ?: JarOutputStream(output.outputStream())).use { jar ->
     classes.walkTopDown().filter { it.isFile }.forEach { file ->
       jar.putNextEntry(JarEntry(file.relativeTo(classes).invariantSeparatorsPath))
       file.inputStream().use { it.copyTo(jar) }

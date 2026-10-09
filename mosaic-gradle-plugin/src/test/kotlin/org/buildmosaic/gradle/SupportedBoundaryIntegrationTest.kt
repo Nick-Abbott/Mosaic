@@ -20,7 +20,8 @@ class SupportedBoundaryIntegrationTest {
     val root = Files.createTempDirectory("mosaic-boundary-integration").toFile()
     val repository = File(System.getProperty("user.dir")).parentFile
     val pluginJar = File(repository, "mosaic-compiler-plugin/build/libs/mosaic-compiler-plugin-${mosaicVersion()}.jar")
-    val project = project(root, "boundary", pluginJar, emptyList())
+    val coreJar = File(repository, "mosaic-core/build/libs/mosaic-core-${mosaicVersion()}.jar")
+    val project = project(root, "boundary", pluginJar, listOf(coreJar))
     val buildFile = File(project, "build.gradle.kts")
     val validBuild = buildFile.readText()
     buildFile.writeText("plugins { java; id(\"org.buildmosaic.analysis\") }")

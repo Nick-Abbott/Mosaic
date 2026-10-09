@@ -1,6 +1,7 @@
 package org.buildmosaic.gradle
 
 import org.buildmosaic.analysis.ANALYSIS_KOTLIN_VERSION
+import org.buildmosaic.analysis.CoreAnalysisRevision
 import org.buildmosaic.analysis.SourceShardCodec
 import org.buildmosaic.analysis.SourceShardPaths
 import org.buildmosaic.analysis.SummaryCodec
@@ -38,6 +39,15 @@ abstract class ExtractMosaicTask : DefaultTask() {
   @get:PathSensitive(PathSensitivity.RELATIVE)
   abstract val shardFiles: ConfigurableFileCollection
 
+  @get:Internal abstract val dependencySummaries: ConfigurableFileCollection
+
+  @get:Input
+  val dependencyCoreRevisions: List<Int>
+    get() =
+      MosaicDependencyReader.metadata(
+        dependencySummaries,
+      ).flatMap { it.coreAnalysisRevisions }.distinct().sorted()
+
   @get:Internal abstract val shardDirectory: DirectoryProperty
 
   @get:Classpath abstract val additionalCompilerPlugins: ConfigurableFileCollection
@@ -59,6 +69,14 @@ abstract class ExtractMosaicTask : DefaultTask() {
   @get:Input abstract val selectedJavaVersion: Property<String>
 
   @get:Internal abstract val supportedSourceRoot: Property<String>
+
+  @get:Internal abstract val coreCompileArtifacts: ConfigurableFileCollection
+
+  @get:Internal abstract val coreRuntimeArtifacts: ConfigurableFileCollection
+
+  @get:Input
+  val coreAnalysisRevision: Int
+    get() = CoreAnalysisRevision.selectedContext(coreCompileArtifacts.files, coreRuntimeArtifacts.files)
 
   @get:OutputFile abstract val summaryFile: RegularFileProperty
 
@@ -98,7 +116,8 @@ abstract class ExtractMosaicTask : DefaultTask() {
           throw GradleException("Invalid Mosaic compiler shard for $sourceId", error)
         }
       }
-    val bytes = SourceShardCodec.assemble(moduleId.get(), shards)
+    val requirements = dependencyCoreRevisions.toSet()
+    val bytes = SourceShardCodec.assemble(moduleId.get(), shards, coreAnalysisRevision, requirements)
     SummaryCodec.decode(bytes)
     output.parentFile.mkdirs()
     val pending = File(output.parentFile, "${output.name}.pending")

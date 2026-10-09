@@ -32,6 +32,7 @@ data class SummaryMetadata(
   val module: ModuleContract,
   val limitations: List<String>,
   val binaryLocators: Map<String, String>,
+  val coreAnalysisRevisions: Set<Int>,
 )
 
 object SummaryCodec {
@@ -60,6 +61,7 @@ object SummaryCodec {
     sourceSet: String = "main",
     limitations: List<String> = emptyList(),
     binaryLocators: Map<String, String> = emptyMap(),
+    coreAnalysisRevisions: Set<Int>,
   ): ByteArray {
     require(module.id == moduleId) { "Module identity mismatch" }
     require(moduleId.isNotBlank() && sourceSet == "main") { "Unsupported Mosaic module or source-set identity" }
@@ -68,6 +70,7 @@ object SummaryCodec {
         module.toWire(),
         limitations.distinct().sorted(),
         binaryLocators.toSortedMap().map { (id, locator) -> WireLocator(id, locator) },
+        coreAnalysisRevisions.sorted(),
       )
     val envelope =
       WireEnvelope(
@@ -106,6 +109,7 @@ object SummaryCodec {
       require(envelope.sourceSet == "main") { "Unsupported source set identity ${envelope.sourceSet}" }
       val hash = sha256(json.encodeToString(envelope.payload).toByteArray(Charsets.UTF_8))
       require(envelope.payloadHash == hash) { "Mosaic summary payload hash mismatch" }
+      CoreAnalysisRevision.requireUnderstood(envelope.payload.coreAnalysisRevisions)
       val locators = linkedMapOf<String, String>()
       envelope.payload.binaryLocators.forEach {
         require(!locators.containsKey(it.id)) { "Duplicate binary locator ${it.id}" }
@@ -115,6 +119,7 @@ object SummaryCodec {
         envelope.contractVersion, SummaryProducer(envelope.producer.analysisVersion, envelope.producer.compilerVersion),
         envelope.moduleId, envelope.sourceSet, envelope.complete,
         envelope.payloadHash, envelope.payload.module.toModel(), envelope.payload.limitations, locators,
+        envelope.payload.coreAnalysisRevisions.toSet(),
       )
     } catch (error: SerializationException) {
       throw IllegalArgumentException("Malformed Mosaic summary: ${error.message}", error)

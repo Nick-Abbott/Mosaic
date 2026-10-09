@@ -97,6 +97,7 @@ import org.jetbrains.kotlin.ir.visitors.acceptChildrenVoid
 internal class SourceContractExtractor(
   private val moduleId: String,
   private val sourceRoot: String?,
+  private val coreAnalysisRevision: Int,
 ) {
   private val limitations = mutableListOf<String>()
   private val freshTemplates = linkedMapOf<String, TileContract>()
@@ -272,6 +273,7 @@ internal class SourceContractExtractor(
         ModuleContract(moduleId, canvases, tiles, callables, overrides, keys),
         limitations.toList(),
         locators,
+        coreAnalysisRevision,
       )
     return shard
   }

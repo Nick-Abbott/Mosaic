@@ -2,18 +2,25 @@
 
 package org.buildmosaic.gradle
 
+import org.buildmosaic.analysis.CoreAnalysisRevision
 import org.buildmosaic.analysis.MosaicRule
 import org.buildmosaic.analysis.MosaicRuleSeverity
 import org.buildmosaic.analysis.SourceShardPaths
 import org.gradle.api.Action
 import org.gradle.api.GradleException
 import org.gradle.api.Project
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.component.ProjectComponentIdentifier
 import org.gradle.api.artifacts.type.ArtifactTypeDefinition
+import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.file.FileCollection
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.provider.ValueSource
+import org.gradle.api.provider.ValueSourceParameters
 import org.gradle.api.tasks.TaskProvider
 import org.gradle.api.tasks.bundling.Jar
 import org.gradle.jvm.toolchain.JavaToolchainService
@@ -70,6 +77,13 @@ enum class MosaicAnalysisEnforcement {
 class MosaicAnalysisPlugin : KotlinCompilerPluginSupportPlugin {
   private lateinit var project: Project
   private lateinit var mosaicVersion: String
+  private val coreCompileArtifacts by lazy { selectedCoreArtifacts(project, "compileClasspath") }
+  private val coreRuntimeArtifacts by lazy { selectedCoreArtifacts(project, "runtimeClasspath") }
+  private val dependencySummaries by lazy {
+    project.configurations.getByName("compileClasspath").incoming.artifactView { view ->
+      view.attributes.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, MOSAIC_SUMMARY_ARTIFACT_TYPE)
+    }.files
+  }
 
   override fun isApplicable(kotlinCompilation: KotlinCompilation<*>): Boolean =
     kotlinCompilation.name == "main" && kotlinCompilation.platformType == KotlinPlatformType.jvm &&
@@ -82,17 +96,24 @@ class MosaicAnalysisPlugin : KotlinCompilerPluginSupportPlugin {
 
   override fun applyToCompilation(
     kotlinCompilation: KotlinCompilation<*>,
-  ): org.gradle.api.provider.Provider<List<SubpluginOption>> =
-    project.provider {
-      val output = project.layout.buildDirectory.dir("mosaic-analysis/main/shards").get().asFile
-      val root = project.file("src/main/kotlin")
+  ): org.gradle.api.provider.Provider<List<SubpluginOption>> {
+    val output = project.layout.buildDirectory.dir("mosaic-analysis/main/shards")
+    val root = project.file("src/main/kotlin")
+    val module = project.group.toString() + ":" + project.name
+    val selectedRevision =
+      project.providers.of(SelectedCoreRevision::class.java) {
+        it.parameters.artifacts.from(coreCompileArtifacts)
+      }
+    return selectedRevision.map { revision ->
       listOf(
-        FilesSubpluginOption("output", listOf(output)),
+        FilesSubpluginOption("output", listOf(output.get().asFile)),
         FilesSubpluginOption("sourceRoot", listOf(root)),
         SubpluginOption("mode", "shards"),
-        SubpluginOption("module", project.group.toString() + ":" + project.name),
+        SubpluginOption("coreRevision", revision.toString()),
+        SubpluginOption("module", module),
       )
     }
+  }
 
   override fun apply(target: Project) {
     val project = target
@@ -140,11 +161,7 @@ class MosaicAnalysisPlugin : KotlinCompilerPluginSupportPlugin {
         task.description = "Verify selected Mosaic main roots against selected dependency summaries"
         task.summaryFile.set(extract.flatMap { it.summaryFile })
         task.dependencyArtifacts.from(project.configurations.getByName("compileClasspath"))
-        task.dependencySummaries.from(
-          project.configurations.getByName("compileClasspath").incoming.artifactView { view ->
-            view.attributes.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, MOSAIC_SUMMARY_ARTIFACT_TYPE)
-          }.files,
-        )
+        task.dependencySummaries.from(dependencySummaries)
         task.roots.set(extension.roots)
         task.role.set(extension.role)
         task.enforcement.set(extension.enforcement)
@@ -157,11 +174,7 @@ class MosaicAnalysisPlugin : KotlinCompilerPluginSupportPlugin {
       task.description = "Render local Mosaic contracts and selected root findings as a Mermaid graph"
       task.summaryFile.set(extract.flatMap { it.summaryFile })
       task.dependencyArtifacts.from(project.configurations.getByName("compileClasspath"))
-      task.dependencySummaries.from(
-        project.configurations.getByName("compileClasspath").incoming.artifactView { view ->
-          view.attributes.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, MOSAIC_SUMMARY_ARTIFACT_TYPE)
-        }.files,
-      )
+      task.dependencySummaries.from(dependencySummaries)
       task.roots.set(extension.roots)
       task.role.set(extension.role)
       task.enforcement.set(extension.enforcement)
@@ -195,6 +208,8 @@ class MosaicAnalysisPlugin : KotlinCompilerPluginSupportPlugin {
       task.group = "verification"
       task.description = "Assemble compiler-produced Mosaic source shards into a complete main summary"
       task.sources.from(mainSources)
+      task.coreCompileArtifacts.from(coreCompileArtifacts)
+      task.coreRuntimeArtifacts.from(coreRuntimeArtifacts)
       task.javaSources.from(project.fileTree("src/main/java") { it.include("**/*.java") })
       task.supportedSourceRoot.set(sourceRoot.absolutePath)
       task.shardFiles.from(
@@ -218,6 +233,7 @@ class MosaicAnalysisPlugin : KotlinCompilerPluginSupportPlugin {
         }.flatMap { it.javaVersion }.map { it.majorVersion },
       )
       task.summaryFile.set(project.layout.buildDirectory.file("mosaic-analysis/main/summary.json"))
+      task.dependencySummaries.from(dependencySummaries)
       task.shardDirectory.set(shardDirectory)
       task.dependsOn(compile)
     }
@@ -250,4 +266,28 @@ private fun registerAnalysisTransforms(project: Project) {
     transform.from.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, ArtifactTypeDefinition.JAR_TYPE)
     transform.to.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, MOSAIC_SUMMARY_ARTIFACT_TYPE)
   }
+}
+
+/** Resolution selects module artifacts; opaque file dependencies use the same targeted class lookup as direct K2. */
+private fun selectedCoreArtifacts(
+  project: Project,
+  configuration: String,
+): FileCollection =
+  project.configurations.getByName(configuration).incoming.artifactView { view ->
+    view.componentFilter { component ->
+      when (component) {
+        is ModuleComponentIdentifier -> component.group == "org.buildmosaic" && component.module == "mosaic-core"
+        is ProjectComponentIdentifier -> component.projectName == "mosaic-core"
+        else -> true
+      }
+    }
+  }.files
+
+/** Reads external semantic state afresh when a configuration-cache entry is checked. */
+internal abstract class SelectedCoreRevision : ValueSource<Int, SelectedCoreRevision.Parameters> {
+  interface Parameters : ValueSourceParameters {
+    val artifacts: ConfigurableFileCollection
+  }
+
+  override fun obtain(): Int = requireNotNull(CoreAnalysisRevision.selected(parameters.artifacts.files))
 }

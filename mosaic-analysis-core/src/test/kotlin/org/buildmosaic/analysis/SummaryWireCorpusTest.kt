@@ -36,6 +36,7 @@ class SummaryWireCorpusTest {
         module,
         limitations = listOf("external const origin", "capture uncertain"),
         binaryLocators = mapOf("export" to "example/Exports#tile"),
+        coreAnalysisRevisions = setOf(1),
       )
     val restored = SummaryCodec.decode(bytes)
     assertEquals(6, restored.contractVersion)
@@ -51,6 +52,7 @@ class SummaryWireCorpusTest {
           module,
           limitations = listOf("capture uncertain", "external const origin"),
           binaryLocators = restored.binaryLocators,
+          coreAnalysisRevisions = setOf(1),
         ),
       ),
     )
