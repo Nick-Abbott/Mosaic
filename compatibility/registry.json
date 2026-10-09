@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "kotlinReleases": {
+    "2.2.0": {
+      "releasedOn": "2025-06-23",
+      "source": "https://kotlinlang.org/docs/releases.html#release-history"
+    },
+    "2.2.10": {
+      "releasedOn": "2025-08-14",
+      "source": "https://kotlinlang.org/docs/releases.html#release-history"
+    },
+    "2.2.20": {
+      "releasedOn": "2025-09-10",
+      "source": "https://kotlinlang.org/docs/releases.html#release-history"
+    },
+    "2.2.21": {
+      "releasedOn": "2025-10-23",
+      "source": "https://kotlinlang.org/docs/releases.html#release-history"
+    },
+    "2.3.0": {
+      "releasedOn": "2025-12-16",
+      "source": "https://kotlinlang.org/docs/releases.html#release-history"
+    },
+    "2.3.10": {
+      "releasedOn": "2026-02-05",
+      "source": "https://kotlinlang.org/docs/releases.html#release-history"
+    },
+    "2.3.20": {
+      "releasedOn": "2026-03-16",
+      "source": "https://kotlinlang.org/docs/releases.html#release-history"
+    },
+    "2.3.21": {
+      "releasedOn": "2026-04-23",
+      "source": "https://kotlinlang.org/docs/releases.html#release-history"
+    },
+    "2.4.0": {
+      "releasedOn": "2026-06-03",
+      "source": "https://kotlinlang.org/docs/releases.html#release-history"
+    },
+    "2.4.10": {
+      "releasedOn": "2026-07-14",
+      "source": "https://kotlinlang.org/docs/releases.html#release-history"
+    },
+    "2.4.20": {
+      "releasedOn": "2026-09-07",
+      "source": "https://kotlinlang.org/docs/releases.html#release-history"
+    }
+  },
+  "artifacts": {},
+  "runtimeReleases": {},
+  "analysisReleases": {},
+  "evidence": {},
+  "certifications": {}
+}
