@@ -1,6 +1,6 @@
 package org.buildmosaic.compiler
 
-import org.buildmosaic.analysis.ANALYSIS_KOTLIN_VERSION
+import org.buildmosaic.analysis.CompilerVersionAdmission
 import org.buildmosaic.analysis.CoreAnalysisRevision
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.cli.common.CLIConfigurationKeys
@@ -87,11 +87,7 @@ class MosaicCompilerRegistrar : CompilerPluginRegistrar() {
   override val supportsK2 = true
 
   override fun ExtensionStorage.registerExtensions(configuration: CompilerConfiguration) {
-    val supportedVersion = Regex("${Regex.escape(ANALYSIS_KOTLIN_VERSION)}(?:-release-[0-9]+)?")
-    require(KotlinCompilerVersion.VERSION.matches(supportedVersion)) {
-      "Mosaic analysis requires Kotlin compiler $ANALYSIS_KOTLIN_VERSION; " +
-        "found ${KotlinCompilerVersion.VERSION}"
-    }
+    CompilerVersionAdmission.requireSupported(KotlinCompilerVersion.VERSION)
     val revision =
       requireNotNull(
         CoreAnalysisRevision.selected(

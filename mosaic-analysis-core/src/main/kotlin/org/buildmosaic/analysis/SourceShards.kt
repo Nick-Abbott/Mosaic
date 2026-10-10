@@ -64,6 +64,7 @@ data class SourceShard(
   val limitations: List<String> = emptyList(),
   val binaryLocators: Map<String, String> = emptyMap(),
   val coreAnalysisRevision: Int,
+  val compilerVersion: String = ANALYSIS_KOTLIN_VERSION,
 )
 
 @Serializable
@@ -71,10 +72,11 @@ private data class ShardEnvelope(
   val shardVersion: Int,
   val sourceId: String,
   val payload: WirePayload,
+  val compilerVersion: String,
 )
 
 object SourceShardCodec {
-  private const val SHARD_VERSION = 3
+  private const val SHARD_VERSION = 4
 
   private val json =
     Json {
@@ -85,6 +87,7 @@ object SourceShardCodec {
 
   fun encode(shard: SourceShard): ByteArray {
     SourceShardPaths.checkSourceId(shard.sourceId)
+    require(shard.compilerVersion.isNotBlank()) { "Missing Mosaic shard compiler version" }
     val payload =
       WirePayload(
         shard.module.toWire(),
@@ -92,7 +95,7 @@ object SourceShardCodec {
         shard.binaryLocators.toSortedMap().map { (id, locator) -> WireLocator(id, locator) },
         listOf(shard.coreAnalysisRevision),
       )
-    val envelope = ShardEnvelope(SHARD_VERSION, shard.sourceId, payload)
+    val envelope = ShardEnvelope(SHARD_VERSION, shard.sourceId, payload, shard.compilerVersion)
     return (json.encodeToString(envelope) + "\n").toByteArray(Charsets.UTF_8)
   }
 
@@ -101,6 +104,7 @@ object SourceShardCodec {
     require(raw.toByteArray(Charsets.UTF_8).contentEquals(bytes)) { "Malformed Mosaic shard UTF-8" }
     val envelope = json.decodeFromString<ShardEnvelope>(raw)
     require(envelope.shardVersion == SHARD_VERSION) { "Unsupported Mosaic shard version ${envelope.shardVersion}" }
+    require(envelope.compilerVersion.isNotBlank()) { "Missing Mosaic shard compiler version" }
     SourceShardPaths.checkSourceId(envelope.sourceId)
     val locators = linkedMapOf<String, String>()
     envelope.payload.binaryLocators.forEach {
@@ -116,6 +120,7 @@ object SourceShardCodec {
       envelope.payload.limitations,
       locators,
       revision,
+      envelope.compilerVersion,
     )
   }
 
@@ -124,6 +129,7 @@ object SourceShardCodec {
     shards: Collection<SourceShard>,
     coreAnalysisRevision: Int,
     dependencyRevisions: Set<Int> = emptySet(),
+    compilerVersion: String = ANALYSIS_KOTLIN_VERSION,
   ): ByteArray {
     val requirements = dependencyRevisions + coreAnalysisRevision
     CoreAnalysisRevision.requireUnderstood(requirements)
@@ -144,6 +150,10 @@ object SourceShardCodec {
       require(ids.add("$kind:$id")) { "Duplicate local Mosaic $kind owner $id" }
     }
     shards.sortedBy { it.sourceId }.forEach { shard ->
+      require(shard.compilerVersion == compilerVersion) {
+        "Stale or mixed Mosaic compiler version in ${shard.sourceId}: " +
+          "observed ${shard.compilerVersion}, selected $compilerVersion. Recompile all current sources."
+      }
       require(shard.coreAnalysisRevision == coreAnalysisRevision) {
         "Stale or mixed Mosaic Core analysis revision in ${shard.sourceId}: " +
           "observed ${shard.coreAnalysisRevision}, selected $coreAnalysisRevision. Recompile all current sources."
@@ -180,6 +190,7 @@ object SourceShardCodec {
       limitations = limitations.distinct().sorted(),
       binaryLocators = locators,
       coreAnalysisRevisions = requirements,
+      compilerVersion = compilerVersion,
     )
   }
 }

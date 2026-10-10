@@ -117,7 +117,14 @@ abstract class ExtractMosaicTask : DefaultTask() {
         }
       }
     val requirements = dependencyCoreRevisions.toSet()
-    val bytes = SourceShardCodec.assemble(moduleId.get(), shards, coreAnalysisRevision, requirements)
+    val bytes =
+      SourceShardCodec.assemble(
+        moduleId.get(),
+        shards,
+        coreAnalysisRevision,
+        requirements,
+        compilerVersion = productionCompilerVersion.get(),
+      )
     SummaryCodec.decode(bytes)
     output.parentFile.mkdirs()
     val pending = File(output.parentFile, "${output.name}.pending")

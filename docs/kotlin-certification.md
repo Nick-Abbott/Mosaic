@@ -27,6 +27,31 @@ To run one scope:
 ./gradlew certifyKotlinAnalysis -Pcompat.kotlin=2.4.20
 ```
 
+To probe the shared-source introspector ABI builds:
+
+```bash
+./gradlew :mosaic-compiler-plugin:introspectorJars
+./gradlew certifyKotlinAnalysis -Pcompat.kotlin=2.2.0 -Pcompat.introspectorApi=2.3.0 -Pcompat.probe=true
+./gradlew certifyKotlinAnalysis -Pcompat.kotlin=2.3.21 -Pcompat.introspectorApi=2.3.20 -Pcompat.probe=true
+```
+
+The default compiler API is `2.4.20`; the alternate builds target `2.3.0` and
+`2.3.20`. All three compile one extraction source tree with the repository's
+Kotlin 2.4.20 build compiler and bundle the same Analysis core. Alternate jars
+have local `kotlin-<API>` classifiers and are not added to Maven publications.
+Their manifest records `Mosaic-Compiler-API`; reproducible packaging permits
+SHA-256 comparisons across runs. The harness snapshots the selected alternate
+jar, records both control and selected identities, and checks those bytes again
+after fixture execution.
+
+`compat.probe=true` forwards `-Dmosaic.analysis.compatibilityProbe=true` to the
+actual isolated compiler JVM. It bypasses only compiler-version admission;
+Core revision validation, extraction, metadata checks, and fixture assertions
+remain active. Reports explicitly mark probing. Without that exact opt-in,
+production admission remains Kotlin 2.4.20, including for the alternate jars.
+These builds do not introduce production profile selection or additional support
+guarantees. Use `compat.introspectorApi` only with Analysis probing.
+
 `harnessResult=pass` means every required area of the requested scope passed.
 `harnessComplete=true` means `scope=all` and all four harness areas passed.
 A successful scoped run sets `harnessComplete=false` and records unexecuted
@@ -51,7 +76,8 @@ never rebuilt with it. A dependency-only build in `compatibility/` resolves exac
 `kotlin-compiler-embeddable` artifacts, independently of KGP. Each compilation
 launches a fresh JVM with one compiler distribution. Compiler jars are absent
 from the JUnit process. The control uses the repository's compiler version and
-the same candidate artifacts and fixture sources.
+default introspector. Control and selected runs use the same Runtime, Analysis
+core, and fixture sources.
 
 ## Test ownership
 
@@ -62,9 +88,12 @@ the same candidate artifacts and fixture sources.
 | Pure metadata | Existing analysis-core `Summary*Test` suites own decoding, codec validation, required fields, metadata compatibility, and the closed wire corpus. They run without invoking or depending on the selected compiler. |
 | Compiler-produced metadata | Every extracted summary is retained and compared against the control. Only the compiler-version header and derived payload hash are omitted from comparison. Payloads, format/semantics, source locations, effect order, binary identities, limitations, and unknown boundaries must agree. Missing, extra, changed, or absent summaries fail comparison. |
 
-The metadata producer currently declares the fixed analysis Kotlin version in its
-header. That declaration is preserved in raw evidence; the report's **actual
-compiler version** comes from the selected compiler's `-version` output. A passing
+Compiler-produced summaries record the executing compiler in their producer
+header. Internal shards carry that provenance too; assembly rejects stale or
+mixed compiler versions, and empty summaries use the configured compiler version.
+The harness checks every raw producer header against the compiler's `-version`
+output before comparing semantics. Earlier investigation logs retain their fixed
+2.4.20 headers and must not be treated as proof of correct provenance. A passing
 wire corpus alone does not prove compiler integration. Metadata format compatibility
 has no Gradle-version dimension.
 
@@ -109,8 +138,8 @@ Kotlin Gradle Plugin, and Gradle distribution versions independently (initially
 defaulting compiler/KGP to a matching pair). It will own public plugins DSL
 installation, extractor selection, Gradle tasks, incremental compilation,
 configuration/build caches, and Gradle-version compatibility. This harness tests
-none of those integration dimensions and introduces no metadata adapters,
-extractor variants, release discovery, or release trains.
+none of those integration dimensions and introduces no production artifact
+selection, metadata adapters, release discovery, or release trains.
 
 ## Compatibility ranges
 
