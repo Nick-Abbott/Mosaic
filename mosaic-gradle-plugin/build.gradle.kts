@@ -58,6 +58,16 @@ tasks.jar {
 
 tasks.test {
   useJUnitPlatform()
+  systemProperty(
+    "mosaic.test.javaInstallations",
+    providers.gradleProperty("org.gradle.java.installations.paths").getOrElse(""),
+  )
+  providers.gradleProperty(
+    "mosaic.test.kotlinVersions",
+  ).orNull?.let { systemProperty("mosaic.test.kotlinVersions", it) }
+  providers.gradleProperty("mosaic.test.runtimeRepository").orNull?.let {
+    systemProperty("mosaic.test.runtimeRepository", it)
+  }
 }
 
 tasks.named<PluginUnderTestMetadata>("pluginUnderTestMetadata") {
@@ -87,5 +97,6 @@ tasks.test {
 }
 
 tasks.named("publishPlugins") {
-  mustRunAfter(rootProject.tasks.named("releaseToMavenCentral"))
+  dependsOn(rootProject.tasks.named("releaseAnalysisToMavenCentral"))
+  mustRunAfter(rootProject.tasks.named("releaseAnalysisToMavenCentral"))
 }

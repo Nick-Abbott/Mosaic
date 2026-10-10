@@ -98,8 +98,8 @@ class Harness:
         self.introspector_api = self.introspector_api or self.baseline
         if self.introspector_api not in ("2.3.0", "2.3.20", self.baseline):
             raise ValueError("Unknown introspector compiler API")
-        if self.introspector_api != self.baseline and (not self.compatibility_probe or self.scope == "runtime"):
-            raise ValueError("Alternate introspector APIs require Analysis scope and --compatibility-probe")
+        if self.introspector_api != self.baseline and self.scope == "runtime":
+            raise ValueError("Alternate introspector APIs require Analysis scope")
         fingerprint = source_identity()
         self.candidate = "0.0.0-compat-" + fingerprint[:20]
         self.repository = self.directory / "repository"
@@ -110,11 +110,9 @@ class Harness:
             introspectorCompilerApi=self.introspector_api,
         )
         modules = ["mosaic-core", "mosaic-test", "mosaic-opentelemetry"]
-        if self.scope != "runtime":
-            modules += ["mosaic-compiler-plugin"]
         tasks = [f":{module}:publishAllPublicationsToInstallTestRepository" for module in modules]
         if self.scope != "runtime":
-            tasks += [":mosaic-compiler-plugin:testClasses", ":mosaic-analysis-core:testClasses"]
+            tasks += ["publishAnalysisToInstallTestRepository", ":mosaic-compiler-plugin:testClasses", ":mosaic-analysis-core:testClasses"]
             if self.introspector_api != self.baseline:
                 tasks += [":mosaic-compiler-plugin:introspectorJar" + self.introspector_api.replace(".", "_")]
         self.run("candidateArtifacts", [
