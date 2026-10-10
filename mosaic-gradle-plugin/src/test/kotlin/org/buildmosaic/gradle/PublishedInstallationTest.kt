@@ -23,14 +23,13 @@ class PublishedInstallationTest {
         .first { it.startsWith("mosaic.version=") }.substringAfter('=')
     val workspace = Files.createTempDirectory("mosaic-published-install-").toFile()
     val maven = workspace.resolve("maven")
-    run(
+    runPublished(
       repositoryRoot,
       ":mosaic-core:publishAllPublicationsToInstallTestRepository",
       ":mosaic-test:publishAllPublicationsToInstallTestRepository",
       ":mosaic-opentelemetry:publishAllPublicationsToInstallTestRepository",
       ":mosaic-bom:publishAllPublicationsToInstallTestRepository",
-      ":mosaic-compiler-plugin:publishAllPublicationsToInstallTestRepository",
-      ":mosaic-gradle-plugin:publishAllPublicationsToInstallTestRepository",
+      "publishAnalysisToInstallTestRepository",
       "-Pmosaic.installTestRepository=${maven.absolutePath}",
     )
 
@@ -123,7 +122,14 @@ class PublishedInstallationTest {
       )
     }
     val result =
-      run(consumer, "build", "mosaicGraph", "dependencies", "--configuration", "kotlinCompilerPluginClasspathMain")
+      runPublished(
+        consumer,
+        "build",
+        "mosaicGraph",
+        "dependencies",
+        "--configuration",
+        "kotlinCompilerPluginClasspathMain",
+      )
     assertEquals(TaskOutcome.SUCCESS, result.task(":verifyMosaicMain")?.outcome)
     assertEquals(TaskOutcome.SUCCESS, result.task(":mosaicGraph")?.outcome)
     assertTrue(result.output.contains("org.buildmosaic:mosaic-compiler-plugin:$version"), result.output)
@@ -208,7 +214,7 @@ private fun verifyRuntimeConsumer(
       """.trimIndent(),
     )
   }
-  val result = run(consumer, "test", "dependencies", "--configuration", "testRuntimeClasspath")
+  val result = runPublished(consumer, "test", "dependencies", "--configuration", "testRuntimeClasspath")
   assertEquals(TaskOutcome.SUCCESS, result.task(":test")?.outcome)
   assertTrue(result.output.contains("org.buildmosaic:mosaic-core:$version"), result.output)
   assertTrue(result.output.contains("org.buildmosaic:mosaic-test:$version"), result.output)
@@ -218,15 +224,19 @@ private fun verifyRuntimeConsumer(
   assertTrue(!result.output.contains("io.opentelemetry:opentelemetry-extension-kotlin:"), result.output)
 }
 
-private fun run(
+internal fun runPublished(
   project: File,
   vararg arguments: String,
+  expectFailure: Boolean = false,
 ): org.gradle.testkit.runner.BuildResult =
   GradleRunner.create().withProjectDir(project)
     .withArguments(
       *arguments,
       "--stacktrace",
+      "--console=plain",
+      "--max-workers=2",
+      "-Porg.gradle.java.installations.paths=${System.getProperty("mosaic.test.javaInstallations", "")}",
       "--gradle-user-home",
       File(System.getProperty("user.home"), ".gradle").absolutePath,
     )
-    .build()
+    .let { if (expectFailure) it.buildAndFail() else it.build() }

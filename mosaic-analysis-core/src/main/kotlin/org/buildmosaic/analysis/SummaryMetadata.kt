@@ -14,7 +14,7 @@ import org.buildmosaic.analysis.metadata.toWire
 import java.security.MessageDigest
 import java.util.Properties
 
-/** Compiler and Gradle plugin version supported by the analysis extractor and metadata writer. */
+/** Host build compiler and default introspector API; production admission uses the measured mapping. */
 const val ANALYSIS_KOTLIN_VERSION = "2.4.20"
 
 /** Internal JAR resource. Compatibility is decided by the header, not this path. */
