@@ -5,8 +5,6 @@ package org.buildmosaic.compiler
 
 import org.buildmosaic.analysis.ContractParameter
 import org.buildmosaic.analysis.ParameterKind
-import org.buildmosaic.analysis.SourceLocation
-import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrConstructor
 import org.jetbrains.kotlin.ir.declarations.IrFile
@@ -181,20 +179,6 @@ internal fun jvmType(type: IrType): String =
     null -> "Ljava/lang/Object;"
     else -> "L${name.replace('.', '/')};"
   }
-
-internal fun location(
-  file: IrFile,
-  element: IrElement,
-  owner: String,
-): SourceLocation {
-  val offset = element.startOffset.coerceAtLeast(0)
-  return SourceLocation(
-    owner,
-    File(file.fileEntry.name).name,
-    file.fileEntry.getLineNumber(offset) + 1,
-    file.fileEntry.getColumnNumber(offset) + 1,
-  )
-}
 
 internal fun IrFunctionAccessExpression.argument(name: String): IrExpression? =
   symbol.owner.parameters.firstOrNull {

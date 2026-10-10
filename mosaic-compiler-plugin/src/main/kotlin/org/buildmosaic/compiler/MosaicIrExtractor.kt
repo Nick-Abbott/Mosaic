@@ -4,6 +4,7 @@ import org.buildmosaic.analysis.SourceShardCodec
 import org.buildmosaic.analysis.SourceShardPaths
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
+import org.jetbrains.kotlin.config.KotlinCompilerVersion
 import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import java.io.File
 
@@ -25,7 +26,7 @@ internal class MosaicIrExtractor(
           moduleId,
           sourceRoot,
           coreAnalysisRevision,
-        ).extract(file).also { shard ->
+        ).extract(file).copy(compilerVersion = KotlinCompilerVersion.VERSION).also { shard ->
           if (shardMode) {
             SourceShardPaths.shardFile(File(output), shard.sourceId).apply {
               parentFile.mkdirs()
@@ -39,7 +40,14 @@ internal class MosaicIrExtractor(
     } else {
       File(output).apply {
         parentFile.mkdirs()
-        writeBytes(SourceShardCodec.assemble(moduleId, shards, coreAnalysisRevision))
+        writeBytes(
+          SourceShardCodec.assemble(
+            moduleId,
+            shards,
+            coreAnalysisRevision,
+            compilerVersion = KotlinCompilerVersion.VERSION,
+          ),
+        )
       }
     }
   }

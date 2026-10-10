@@ -5,6 +5,9 @@ import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.process.CommandLineArgumentProvider
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 abstract class CompilerFixtureArguments : CommandLineArgumentProvider {
   @get:InputFile
@@ -45,15 +48,57 @@ val bundledCompilerRuntime =
   }
 dependencies { add(bundledCompilerRuntime.name, project(":mosaic-analysis-core")) }
 
-tasks.jar {
+fun Jar.bundleIntrospector(compilerApi: String) {
+  isPreserveFileTimestamps = false
+  isReproducibleFileOrder = true
   dependsOn(bundledCompilerRuntime)
   duplicatesStrategy = DuplicatesStrategy.FAIL
   exclude("META-INF/versions/**/module-info.class")
   manifest.attributes("Implementation-Version" to project.version.toString())
+  manifest.attributes("Mosaic-Compiler-API" to compilerApi)
   from({
     bundledCompilerRuntime.filter { it.extension == "jar" }.map { zipTree(it) }
   })
 }
+
+tasks.jar { bundleIntrospector(libs.versions.kotlin.get()) }
+
+// Recompile the same compiler-facing sources against each demonstrated ABI boundary.
+// The host compiler, contract kernel, bundled runtime, and production admission stay fixed.
+val introspectorJars =
+  tasks.register("introspectorJars") {
+    group = "build"
+    description = "Build the shared-source introspector jars for the measured compiler ABI boundaries"
+    dependsOn(tasks.jar)
+  }
+listOf("2.3.0", "2.3.20").forEach { compilerApi ->
+  val suffix = compilerApi.replace(".", "_")
+  val profileSources = sourceSets.create("introspector$suffix")
+  kotlin.sourceSets.named(profileSources.name) { kotlin.srcDir("src/main/kotlin") }
+  dependencies {
+    add(profileSources.compileOnlyConfigurationName, "org.jetbrains.kotlin:kotlin-compiler-embeddable:$compilerApi")
+    add(profileSources.compileOnlyConfigurationName, project(":mosaic-analysis-core"))
+  }
+  val compile =
+    tasks.named<KotlinCompile>(profileSources.getCompileTaskName("kotlin")) {
+      compilerOptions {
+        moduleName.set(project.name)
+        jvmTarget.set(JvmTarget.JVM_17)
+        languageVersion.set(KotlinVersion.KOTLIN_2_4)
+        apiVersion.set(KotlinVersion.KOTLIN_2_4)
+      }
+    }
+  val jar =
+    tasks.register<Jar>("introspectorJar$suffix") {
+      bundleIntrospector(compilerApi)
+      archiveClassifier.set("kotlin-$compilerApi")
+      from(compile.flatMap { it.destinationDirectory })
+      from(sourceSets.main.get().output.resourcesDir)
+      dependsOn(tasks.processResources)
+    }
+  introspectorJars.configure { dependsOn(jar) }
+}
+tasks.assemble { dependsOn(introspectorJars) }
 
 tasks.test {
   useJUnitPlatform()

@@ -57,6 +57,10 @@ listOf(
       "--java-installations",
       providers.gradleProperty("org.gradle.java.installations.paths").getOrElse(""),
     )
+    if (providers.gradleProperty("compat.probe").orNull == "true") {
+      args("--compatibility-probe")
+    }
+    providers.gradleProperty("compat.introspectorApi").orNull?.let { args("--introspector-api", it) }
     // The harness always produces fresh evidence, including failures.
     outputs.upToDateWhen { false }
   }

@@ -94,6 +94,32 @@ class SourceShardTest {
   }
 
   @Test
+  fun `assembly preserves actual compiler provenance`() {
+    val shard = SourceShard("One.kt", ModuleContract("fixture"), coreAnalysisRevision = 1, compilerVersion = "2.2.0")
+    val decoded = SourceShardCodec.decode(SourceShardCodec.encode(shard))
+    val summary =
+      SourceShardCodec.assemble(
+        "fixture",
+        listOf(decoded),
+        coreAnalysisRevision = 1,
+        compilerVersion = "2.2.0",
+      )
+    assertEquals("2.2.0", SummaryCodec.decode(summary).producer.compilerVersion)
+    assertEquals(
+      "2.3.20",
+      SummaryCodec.decode(
+        SourceShardCodec.assemble("fixture", emptyList(), coreAnalysisRevision = 1, compilerVersion = "2.3.20"),
+      ).producer.compilerVersion,
+    )
+    assertFailsWith<IllegalArgumentException> {
+      SourceShardCodec.assemble("fixture", listOf(decoded), coreAnalysisRevision = 1, compilerVersion = "2.3.20")
+    }
+    assertFailsWith<IllegalArgumentException> {
+      SourceShardCodec.encode(shard.copy(compilerVersion = ""))
+    }
+  }
+
+  @Test
   fun `shard paths stay within roots`() {
     val root = Files.createTempDirectory("mosaic-shard-paths").toFile()
     val sourceRoot = File(root, "src/main/kotlin")

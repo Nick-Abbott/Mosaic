@@ -8,10 +8,12 @@ import os
 from pathlib import Path
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import time
 import xml.etree.ElementTree as ET
+import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
 AREAS = ("runtime", "directCompiler", "metadata", "semanticComparison")
@@ -45,8 +47,10 @@ def source_identity():
 
 
 class Harness:
-    def __init__(self, version, scope, java_installations=""):
+    def __init__(self, version, scope, java_installations="", compatibility_probe=False, introspector_api=""):
         self.version, self.scope = version, scope
+        self.compatibility_probe = compatibility_probe
+        self.introspector_api = introspector_api
         self.java_installations = java_installations
         safe_version = version if re.fullmatch(r"[\w.-]+", version) else "invalid"
         # Each invocation is fresh; never reuse a previous report, repository or compiler output.
@@ -55,6 +59,7 @@ class Harness:
         self.report = {
             "requestedCompilerVersion": version, "actualCompilerVersion": None, "scope": scope,
             "harnessResult": "not-run", "harnessComplete": False,
+            "compatibilityProbe": compatibility_probe,
             "areas": {name: {"result": "not-run", "suites": []} for name in AREAS},
             "commands": [], "environment": {"platform": sys.platform, "python": sys.version},
             "failureDiagnostics": [],
@@ -90,13 +95,19 @@ class Harness:
         exact_version(self.version)
         baseline_text = (ROOT / "gradle/libs.versions.toml").read_text()
         self.baseline = re.search(r'^kotlin = "([^"]+)"', baseline_text, re.M)[1]
+        self.introspector_api = self.introspector_api or self.baseline
+        if self.introspector_api not in ("2.3.0", "2.3.20", self.baseline):
+            raise ValueError("Unknown introspector compiler API")
+        if self.introspector_api != self.baseline and (not self.compatibility_probe or self.scope == "runtime"):
+            raise ValueError("Alternate introspector APIs require Analysis scope and --compatibility-probe")
         fingerprint = source_identity()
         self.candidate = "0.0.0-compat-" + fingerprint[:20]
         self.repository = self.directory / "repository"
         self.report.update(
             sourceRevision=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT).decode().strip(),
             sourceFingerprint=fingerprint, candidateVersion=self.candidate, controlCompilerVersion=self.baseline,
-            artifactOrigin="local candidate, built unchanged with repository Kotlin compiler",
+            artifactOrigin="local shared-source candidate, built with repository Kotlin compiler",
+            introspectorCompilerApi=self.introspector_api,
         )
         modules = ["mosaic-core", "mosaic-test", "mosaic-opentelemetry"]
         if self.scope != "runtime":
@@ -104,6 +115,8 @@ class Harness:
         tasks = [f":{module}:publishAllPublicationsToInstallTestRepository" for module in modules]
         if self.scope != "runtime":
             tasks += [":mosaic-compiler-plugin:testClasses", ":mosaic-analysis-core:testClasses"]
+            if self.introspector_api != self.baseline:
+                tasks += [":mosaic-compiler-plugin:introspectorJar" + self.introspector_api.replace(".", "_")]
         self.run("candidateArtifacts", [
             str(ROOT / "gradlew"), *tasks, "--no-configuration-cache", "--console=plain", "--max-workers=2",
             f"-Pmosaic.version={self.candidate}", f"-Pmosaic.installTestRepository={self.repository}",
@@ -207,17 +220,38 @@ class Harness:
         extractor = self.artifacts("extractor")
         if len(extractor) != 1 or extractor[0]["version"] != self.candidate:
             raise RuntimeError("Extractor did not resolve exactly the candidate artifact")
-        self.report["extractorArtifact"] = extractor[0]
+        selected = dict(extractor[0])
+        if self.introspector_api != self.baseline:
+            jar = ROOT / f"mosaic-compiler-plugin/build/libs/mosaic-compiler-plugin-{self.candidate}-kotlin-{self.introspector_api}.jar"
+            snapshot = self.directory / jar.name
+            shutil.copyfile(jar, snapshot)
+            selected.update(file=str(snapshot), sha256=hashlib.sha256(snapshot.read_bytes()).hexdigest(),
+                            artifactOrigin="local shared-source ABI build", coordinate=None)
+        with zipfile.ZipFile(selected["file"]) as jar:
+            manifest = jar.read("META-INF/MANIFEST.MF").decode()
+        if f"Mosaic-Compiler-API: {self.introspector_api}\r\n" not in manifest:
+            raise RuntimeError("Introspector manifest disagrees with selected compiler API")
+        self.report["controlExtractorArtifact"] = extractor[0]
+        self.report["extractorArtifact"] = selected
         # Always establish the control, including when the selected extractor/ABI cannot run.
         for label, config, version in (("control", "controlCompiler", self.baseline), ("selected", "compiler", self.version)):
             self.compiler(config, version)
-            self.junit(label, "mosaic-compiler-plugin", {
-                "mosaic.plugin.jar": extractor[0]["file"],
+            properties = {
+                "mosaic.plugin.jar": (extractor[0] if label == "control" else selected)["file"],
                 "mosaic.fixture.classpath": self.classpath(self.consumer),
                 "mosaic.compat.compiler.classpath": self.classpath(self.artifacts(config)),
                 "mosaic.compat.java": self.java,
                 "mosaic.compat.evidence": str(self.directory / label / "summaries"),
-            }, r".*Test", r".*ObserverCompositionConsumerTest")
+            }
+            if self.compatibility_probe:
+                properties["mosaic.analysis.compatibilityProbe"] = "true"
+            self.junit(label, "mosaic-compiler-plugin", properties, r".*Test", r".*ObserverCompositionConsumerTest")
+            artifact = extractor[0] if label == "control" else selected
+            if hashlib.sha256(Path(artifact["file"]).read_bytes()).hexdigest() != artifact["sha256"]:
+                raise RuntimeError("Introspector bytes changed during fixture execution")
+            summaries = list((self.directory / label / "summaries").glob("*.json"))
+            if not summaries or any(json.loads(p.read_text())["producer"]["compilerVersion"] != version for p in summaries):
+                raise RuntimeError(f"{label}: raw producer compiler provenance disagrees with actual compiler {version}")
         area["suites"] = self.report["junit"]["selected"]["suites"]
 
     def metadata(self):
@@ -249,6 +283,8 @@ class Harness:
         lines = [f"# Kotlin {self.version or '(missing)'} compatibility harness: {self.report['harnessResult']}", "",
                  f"Scope: {self.scope}; all harness areas passed: {self.report['harnessComplete']}",
                  "Harness evidence only; this is not full Mosaic compatibility certification. Gradle/KGP integration is not tested.",
+                 "Compiler-version admission bypassed for an explicit compatibility probe."
+                 if self.report.get("compatibilityProbe") else "Production compiler-version admission enforced.",
                  f"Actual compiler: {self.report['actualCompilerVersion'] or 'not run'}",
                  f"Candidate: {self.report.get('candidateVersion', 'not built')}", "",
                  "| Area | Result | Suites |", "| --- | --- | --- |"]
@@ -307,8 +343,11 @@ def main():
     parser.add_argument("--kotlin", required=True)
     parser.add_argument("--scope", choices=("all", "runtime", "analysis"), default="all")
     parser.add_argument("--java-installations", default="")
+    parser.add_argument("--compatibility-probe", action="store_true",
+                        help="Experimentally bypass compiler-version admission only; does not establish production support")
+    parser.add_argument("--introspector-api", default="", choices=("2.3.0", "2.3.20", "2.4.20"))
     args = parser.parse_args()
-    harness = Harness(args.kotlin, args.scope, args.java_installations)
+    harness = Harness(args.kotlin, args.scope, args.java_installations, args.compatibility_probe, args.introspector_api)
     try:
         harness.prepare()
     except Exception as failure:

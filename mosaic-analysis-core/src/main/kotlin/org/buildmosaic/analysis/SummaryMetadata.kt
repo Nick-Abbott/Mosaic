@@ -62,7 +62,27 @@ object SummaryCodec {
     limitations: List<String> = emptyList(),
     binaryLocators: Map<String, String> = emptyMap(),
     coreAnalysisRevisions: Set<Int>,
+  ): ByteArray =
+    encode(
+      module,
+      moduleId,
+      sourceSet,
+      limitations,
+      binaryLocators,
+      coreAnalysisRevisions,
+      ANALYSIS_KOTLIN_VERSION,
+    )
+
+  fun encode(
+    module: ModuleContract,
+    moduleId: String = module.id,
+    sourceSet: String = "main",
+    limitations: List<String> = emptyList(),
+    binaryLocators: Map<String, String> = emptyMap(),
+    coreAnalysisRevisions: Set<Int>,
+    compilerVersion: String,
   ): ByteArray {
+    require(compilerVersion.isNotBlank()) { "Missing Mosaic producer compiler version" }
     require(module.id == moduleId) { "Module identity mismatch" }
     require(moduleId.isNotBlank() && sourceSet == "main") { "Unsupported Mosaic module or source-set identity" }
     val payload =
@@ -75,7 +95,7 @@ object SummaryCodec {
     val envelope =
       WireEnvelope(
         CONTRACT_VERSION,
-        WireProducer(analysisVersion, ANALYSIS_KOTLIN_VERSION),
+        WireProducer(analysisVersion, compilerVersion),
         moduleId,
         sourceSet,
         true,
