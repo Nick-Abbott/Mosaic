@@ -111,3 +111,33 @@ installation, extractor selection, Gradle tasks, incremental compilation,
 configuration/build caches, and Gradle-version compatibility. This harness tests
 none of those integration dimensions and introduces no metadata adapters,
 extractor variants, release discovery, or release trains.
+
+## Compatibility ranges
+
+[`compatibility/registry.json`](../compatibility/registry.json) records published
+compatibility guarantees: `schemaVersion: 1`, nullable `latestCertifiedKotlin`, and
+`runtime`/`analysis` maps keyed by stable release version. Both maps start empty.
+Each release requires `minKotlin`; `maxKotlin` is optional. Runtime can also set
+`minAnalysis`/`maxAnalysis`, and Analysis can set `minRuntime`/`maxRuntime`.
+Bounds are inclusive and compared numerically. Missing `maxKotlin` uses the global
+frontier; a null frontier establishes no Kotlin support for that release. Missing
+relationship bounds impose no constraint. Runtime works alone; when Analysis is
+selected, both Kotlin intervals and both relationship intervals must match.
+Unknown releases are unsupported. Ranges promise continuous stable-version support,
+including backported patches inside their boundaries; test those patches too.
+
+```bash
+python3 compatibility/registry.py validate
+python3 compatibility/registry.py check --runtime 1.0.0 --kotlin 2.4.20
+python3 compatibility/registry.py check --runtime 1.0.0 --analysis 1.0.0 --kotlin 2.4.20
+```
+
+Maintain boundaries through reviewed PRs linked to actual CI certification reports.
+Future automation should discover stable Kotlin releases, try existing introspectors,
+build a profile only when needed, run certification, and propose boundary/frontier
+updates. Any incompatible stable patch lowers the affected release's `maxKotlin`
+to the last supported version before the failure; fix the gap before extending it.
+Cap failing releases before advancing the global frontier. Test reports retain
+failures; the registry stores guarantees only.
+The [18-month support policy](../website/src/content/docs/reference/compatibility.md)
+remains separate. This tool checks recorded ranges, not evidence or environments.
